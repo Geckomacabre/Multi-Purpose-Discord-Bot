@@ -1,5 +1,6 @@
-import type { Client } from "discord.js";
+import { type Client } from "discord.js";
+import logger from "../infrastructure/logger";
 
 export const onReady = async (Bot: Client) => {
-  console.log(`Logged in as ${Bot.user?.tag}`);
+  logger.info(`Logged in as ${Bot.user?.tag}`);
 };
