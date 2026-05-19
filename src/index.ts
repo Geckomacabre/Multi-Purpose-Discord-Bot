@@ -1,6 +1,8 @@
 import { Client, GatewayIntentBits, Partials } from "discord.js";
 import Config from "./config";
 import { registerEvents } from "./events";
+import { registerFeatures } from "./features";
+import { initDb } from "./infrastructure/db";
 
 process.on("unhandledRejection", (error) => {
   console.error("Unhandled promise rejection:", error);
@@ -36,7 +38,9 @@ const bot = new Client({
   partials: [Partials.Message, Partials.Channel, Partials.Reaction],
 });
 
+initDb()
 registerEvents(bot);
+await registerFeatures(bot);
 
 bot.login(Config.DISCORD_TOKEN).catch((error) => {
   console.error("Failed to login:", error);

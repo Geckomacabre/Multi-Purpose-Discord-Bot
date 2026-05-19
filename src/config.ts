@@ -1,5 +1,8 @@
 const envVars = {
+  CLIENT_ID: Bun.env.CLIENT_ID,
+  GUILD_ID: Bun.env.GUILD_ID,
   DISCORD_TOKEN: Bun.env.TOKEN,
+  ACTION_LOG_CHANNEL: Bun.env.ACTION_LOG_CHANNEL,
   NODE_ENV: Bun.env.NODE_ENV || "development",
 };
 
@@ -13,11 +16,17 @@ if (missingVars.length > 0) {
 
 interface Env {
   DISCORD_TOKEN: string;
+  CLIENT_ID: string;
+  GUILD_ID: string;
+  ACTION_LOG_CHANNEL: string;
   NODE_ENV: string;
 }
 
 const Config: Env = {
+  CLIENT_ID: envVars.CLIENT_ID!,
+  GUILD_ID: envVars.GUILD_ID!,
   DISCORD_TOKEN: envVars.DISCORD_TOKEN!,
+  ACTION_LOG_CHANNEL: envVars.ACTION_LOG_CHANNEL!,
   NODE_ENV: envVars.NODE_ENV!,
 };
 

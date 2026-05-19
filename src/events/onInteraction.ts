@@ -1,5 +1,4 @@
-import { type Interaction } from "discord.js";
-import { MessageFlags } from "discord.js";
+import { MessageFlags, type Interaction } from "discord.js";
 import commands from "../handlers/commandHandler";
 import logger from "../infrastructure/logger";
 
