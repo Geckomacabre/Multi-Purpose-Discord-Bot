@@ -6,7 +6,6 @@ export const Channels = {
   Applications: "1495297972408291438",
   Info: "1477434466392735838",
   General: "1495591083080548534",
-  Voice: "1496346696471416912",
   Verification: "1505342327697313863"
 } as const;
 
