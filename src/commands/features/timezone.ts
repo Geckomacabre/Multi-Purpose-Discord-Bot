@@ -10,9 +10,7 @@ import {
   REGION_MAP,
   buildTimezoneSelect,
   formatInZone,
-  updateSticky,
   getUserTimezone,
-  removeUserTimezone,
   listCard,
 } from "../../features/timezone";
 import { setStickyMessage } from "../../infrastructure/db";
@@ -60,9 +58,6 @@ const Timezone: Command = {
     )
     .addSubcommand((sub) =>
       sub.setName("post").setDescription("Post timezone board"),
-    )
-    .addSubcommand((sub) =>
-      sub.setName("remove").setDescription("Remove your timezone"),
     ),
 
   async run(interaction: ChatInputCommandInteraction) {
@@ -118,29 +113,6 @@ const Timezone: Command = {
       return;
     }
 
-    // if (sub === "post") {
-    //   const member = interaction.guild?.members.cache.get(interaction.user.id);
-
-    //   if (!member?.permissions.has(PermissionFlagsBits.ManageMessages)) {
-    //     await interaction.reply({
-    //       content: "No permission.",
-    //       flags: MessageFlags.Ephemeral,
-    //     });
-    //     return;
-    //   }
-
-    //   const channel = interaction.channel as TextChannel;
-    //   const msg = await channel.send({
-    //     content: "Timezone board active.",
-    //   });
-
-    //   await interaction.reply({
-    //     content: "Posted.",
-    //     flags: MessageFlags.Ephemeral,
-    //   });
-    //   return;
-    // }
-
     if (sub === "post") {
       const member = interaction.guild?.members.cache.get(interaction.user.id);
 
@@ -174,27 +146,6 @@ const Timezone: Command = {
 
       await interaction.reply({
         content: "Timezone board posted and pinned.",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-
-    if (sub === "remove") {
-      const existing = await getUserTimezone(interaction.user.id);
-
-      if (!existing) {
-        await interaction.reply({
-          content: "Nothing to remove.",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
-
-      await removeUserTimezone(interaction.user.id, interaction.client);
-      await updateSticky(interaction.client);
-
-      await interaction.reply({
-        content: "Removed.",
         flags: MessageFlags.Ephemeral,
       });
       return;

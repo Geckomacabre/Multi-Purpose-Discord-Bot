@@ -32,15 +32,6 @@ function formatPublicBirthday(month: number, day: number) {
   }).format(date);
 }
 
-function formatPrivateBirthday(month: number, day: number, year: number) {
-  const date = new Date(year, month - 1, day);
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "2-digit",
-    year: "numeric",
-  }).format(date);
-}
-
 function formatPublicRow(row: any) {
   return `🎂 <@${row.user_id}> — **${formatPublicBirthday(row.month, row.day)}**`;
 }
@@ -106,29 +97,7 @@ async function updateStickyBirthdayList(client: Client, commandId: string) {
     return;
   }
 
-  await message
-    .edit({ components: [container] })
-    .catch(() => null);
-}
-
-function getNextBirthday(birthdays: any[]) {
-  const now = new Date();
-  const todayMonth = now.getMonth() + 1;
-  const todayDay = now.getDate();
-
-  const sorted = birthdays
-    .map((b) => {
-      let next = new Date(now.getFullYear(), b.month - 1, b.day);
-
-      if (next < now) {
-        next = new Date(now.getFullYear() + 1, b.month - 1, b.day);
-      }
-
-      return { ...b, nextDate: next };
-    })
-    .sort((a, b) => a.nextDate - b.nextDate);
-
-  return sorted;
+  await message.edit({ components: [container] }).catch(() => null);
 }
 
 const Birthday: Command = {
@@ -161,23 +130,6 @@ const Birthday: Command = {
         .addUserOption((opt) =>
           opt.setName("user").setDescription("Target user"),
         ),
-    )
-    .addSubcommand((sub) =>
-      sub
-        .setName("inspect")
-        .setDescription("Staff: view raw birthday record.")
-        .addUserOption((opt) =>
-          opt
-            .setName("user")
-            .setDescription("User to inspect")
-            .setRequired(true),
-        ),
-    )
-    .addSubcommand((sub) =>
-      sub.setName("upcoming").setDescription("Show upcoming birthdays."),
-    )
-    .addSubcommand((sub) =>
-      sub.setName("next").setDescription("Show the next birthday."),
     ),
 
   async run(interaction: ChatInputCommandInteraction) {
@@ -260,99 +212,6 @@ const Birthday: Command = {
           data.month,
           data.day,
         )}`,
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-
-    if (sub === "inspect") {
-      const member = interaction.guild?.members.cache.get(interaction.user.id);
-      if (!member?.permissions.has(PermissionFlagsBits.ManageGuild)) {
-        await interaction.reply({
-          content: "❌ No permission.",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
-
-      const target = interaction.options.getUser("user", true);
-      const data = await getBirthday(target.id);
-
-      if (!data) {
-        await interaction.reply({
-          content: "No record found.",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
-
-      await interaction.reply({
-        content:
-          `### 🎂 Raw Birthday Record\n` +
-          `**User:** <@${target.id}>\n` +
-          `**Month:** ${data.month}\n` +
-          `**Day:** ${data.day}\n` +
-          `**Year:** ${data.year}\n`,
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-
-    if (sub === "upcoming") {
-      const rows = await db`
-        SELECT user_id, month, day
-        FROM birthdays
-      `;
-
-      if (!rows.length) {
-        await interaction.reply({
-          content: "📭 No birthdays registered.",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
-
-      const sorted = getNextBirthday(rows);
-
-      const list = sorted
-        .map(
-          (b) =>
-            `🎂 <@${b.user_id}> — **${formatPublicBirthday(
-              b.month,
-              b.day,
-            )}** (${b.nextDate.toDateString()})`,
-        )
-        .join("\n");
-
-      await interaction.reply({
-        content: `### 🎉 Upcoming Birthdays\n${list}`,
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-
-    if (sub === "next") {
-      const rows = await db`
-        SELECT user_id, month, day
-        FROM birthdays
-      `;
-
-      if (!rows.length) {
-        await interaction.reply({
-          content: "📭 No birthdays registered.",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
-
-      const sorted = getNextBirthday(rows);
-      const next = sorted[0];
-
-      await interaction.reply({
-        content: `🎉 **Next Birthday:** <@${next.user_id}> — **${formatPublicBirthday(
-          next.month,
-          next.day,
-        )}**`,
         flags: MessageFlags.Ephemeral,
       });
       return;
