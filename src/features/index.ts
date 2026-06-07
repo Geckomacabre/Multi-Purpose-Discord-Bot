@@ -21,7 +21,16 @@ import timezone from "./timezone";
 import verification from "./verification";
 import voice from "./voice";
 
-const features: Feature[] = [applications, counting, honeypot, info, rules, timezone, verification, voice];
+const features: Feature[] = [
+  applications,
+  counting,
+  honeypot,
+  info,
+  rules,
+  timezone,
+  verification,
+  voice,
+];
 
 export async function registerFeatures(bot: Client) {
   await Promise.all(features.map((feature) => feature.register?.(bot)));
