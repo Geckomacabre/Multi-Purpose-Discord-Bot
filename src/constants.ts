@@ -10,6 +10,7 @@ export const Channels = {
 } as const;
 
 export const Roles = {
+  MidnightSystems: "1477434976172511272",
   EXCLUSIVE: "1496264991266050290",
   BirthdayOperative: "1492365413873619095",
   ACCESS: "1496263685151391865",
