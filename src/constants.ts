@@ -6,19 +6,20 @@ export const Channels = {
   Applications: "1495297972408291438",
   Info: "1477434466392735838",
   General: "1495591083080548534",
-  Verification: "1505342327697313863"
+  Verification: "1505342327697313863",
 } as const;
 
 export const Roles = {
   MidnightSystems: "1477434976172511272",
   EXCLUSIVE: "1496264991266050290",
+  ContentCreator: "1513471197080326345",
   BirthdayOperative: "1492365413873619095",
   ACCESS: "1496263685151391865",
   ClubMember: "1490332253627089007",
   LoungeGuest: "1505343240596099122",
   Newcomer: "1478173271253061633",
   ALERTS: "1496265313614823445",
-  BirthdayPings: "1492368009673834496"
+  BirthdayPings: "1492368009673834496",
 } as const;
 
 export type LinkedRoleRule = {
@@ -53,6 +54,13 @@ export const LinkedRoles: LinkedRoleRule[] = [
       "1496964362391257178", // Activity Pings
       "1492368009673834496", // Birthday Pings
     ],
+  },
+  {
+    parent: Roles.ContentCreator,
+    children: [
+      "1513482261398290553" // Stream Connection
+    ],
+    mode: "ANY",
   },
 ];
 
@@ -105,7 +113,8 @@ export const Positions: ApplicationPosition[] = [
         custom_id: "q_about_you",
         label: "Tell us about your hosting style",
         type: "paragraph",
-        placeholder: "Explain how you would keep the Lounge engaging and welcoming.",
+        placeholder:
+          "Explain how you would keep the Lounge engaging and welcoming.",
         required: true,
       },
     ],
