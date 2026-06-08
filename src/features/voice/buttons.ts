@@ -15,7 +15,7 @@ export interface Room {
   hidden: boolean;
 }
 
-type VoiceRoomError = "NOT_IN_VC" | "NOT_PRIVATE_ROOM";
+type VoiceRoomError = "NOT_IN_VC" | "NOT_PRIVATE_ROOM" | "NOT_OWNER";
 
 interface UserRoomResult {
   error: VoiceRoomError | null;
@@ -27,6 +27,7 @@ interface UserRoomResult {
 const ERROR_REPLIES: Record<VoiceRoomError, string> = {
   NOT_IN_VC: "You must be in your private room.",
   NOT_PRIVATE_ROOM: "This is not a private room.",
+  NOT_OWNER: "You don't own this room.",
 };
 
 async function getUserRoom(
@@ -43,6 +44,10 @@ async function getUserRoom(
 
   const room = await getRoom(channel.id);
   if (!room) return { error: "NOT_PRIVATE_ROOM" };
+
+  if (room.owner_id !== interaction.user.id) {
+    return { error: "NOT_OWNER" };
+  }
 
   return { error: null, member, channel: channel as VoiceChannel, room };
 }

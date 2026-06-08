@@ -3,13 +3,14 @@ import {
   VoiceChannel,
   VoiceState,
   PermissionFlagsBits,
+  ComponentType,
+  ButtonStyle,
   MessageFlags,
 } from "discord.js";
 
 import logger from "../infrastructure/logger";
 import {
   createRoom,
-  db,
   deleteRoom,
   getRoom,
   getRoomsByOwner,
@@ -18,8 +19,10 @@ import {
 const pendingChecks = new Map<string, NodeJS.Timeout>();
 const deletionTimeouts = new Map<string, NodeJS.Timeout>();
 
-const JOIN_HUB_CHANNEL_ID = "1477434082160934932";
-const ROOMS_CATEGORY_ID = "1477428111959134359";
+const ROOM_HUBS: Record<string, string> = {
+  "1477434082160934932": "1477428111959134359",
+  "1506400483013824663": "1495591577211375767",
+};
 
 export const onVoiceStateUpdate = async (
   oldState: VoiceState,
@@ -43,15 +46,6 @@ export const onVoiceStateUpdate = async (
     }
   } catch (error) {
     console.error(error);
-    // logger.error(
-    //   {
-    //     err: error,
-    //     oldChannelId: oldState.channel?.id,
-    //     newChannelId: newState.channel?.id,
-    //     guildId: newState.guild?.id,
-    //   },
-    //   "[voice] Unhandled error in voiceStateUpdate",
-    // );
   }
 };
 
@@ -60,8 +54,10 @@ async function handleVoiceJoin(state: VoiceState) {
 
   const { channel, member, guild } = state;
 
-  if (state.channelId === JOIN_HUB_CHANNEL_ID) {
-    await createPrivateRoom(state);
+  const targetCategoryId = ROOM_HUBS[state.channelId!];
+
+  if (targetCategoryId) {
+    await createPrivateRoom(state, targetCategoryId);
     return;
   }
 
@@ -191,12 +187,11 @@ async function handleVoiceLeave(state: VoiceState) {
   pendingChecks.set(channelId, check);
 }
 
-async function createPrivateRoom(state: VoiceState) {
+async function createPrivateRoom(state: VoiceState, categoryId: string) {
   if (!state.guild || !state.channel || !state.member) return;
 
   const { guild, member } = state;
 
-  // --- ONE ROOM PER USER ENFORCEMENT ---
   const existingRooms = await getRoomsByOwner(member.id);
 
   if (existingRooms && existingRooms.length > 0) {
@@ -214,9 +209,7 @@ async function createPrivateRoom(state: VoiceState) {
     await deleteRoom(existing.channel_id).catch(() => {});
   }
 
-  const category = await guild.channels
-    .fetch(ROOMS_CATEGORY_ID)
-    .catch(() => null);
+  const category = await guild.channels.fetch(categoryId).catch(() => null);
   if (!category || category.type !== ChannelType.GuildCategory) {
     logger.warn(
       { guildId: guild.id },
@@ -313,6 +306,58 @@ async function createPrivateRoom(state: VoiceState) {
     await deleteRoom(newChannel.id).catch(() => {});
     await member.voice.setChannel(null).catch(() => {});
   });
+
+  const pingMessage = await newChannel
+    .send({
+      content: `${member}`,
+    })
+    .catch(() => null);
+
+  if (pingMessage) {
+    await pingMessage.delete().catch(() => {});
+  }
+
+  await newChannel
+    .send({
+      flags: MessageFlags.IsComponentsV2,
+      components: [
+        {
+          type: ComponentType.Container,
+          components: [
+            {
+              type: ComponentType.TextDisplay,
+              content: [
+                `## 🔊 Private Voice Interface`,
+                ``,
+                `Manage your temporary voice channel using the controls below.`,
+                `More advanced options are available through **/voice** commands.`,
+              ].join("\n"),
+            },
+            { type: ComponentType.Separator, divider: true, spacing: 2 },
+            {
+              type: ComponentType.ActionRow,
+              components: [
+                {
+                  type: ComponentType.Button,
+                  style: ButtonStyle.Secondary,
+                  custom_id: "voice_lock",
+                  label: "Lock",
+                  emoji: { name: "🔒" },
+                },
+                {
+                  type: ComponentType.Button,
+                  style: ButtonStyle.Secondary,
+                  custom_id: "voice_unlock",
+                  label: "Unlock",
+                  emoji: { name: "🔓" },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    })
+    .catch(() => {});
 }
 
 function cancelPendingCheck(channelId: string) {
