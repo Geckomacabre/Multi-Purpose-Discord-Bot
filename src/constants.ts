@@ -7,6 +7,7 @@ export const Channels = {
   Info: "1477434466392735838",
   General: "1495591083080548534",
   Verification: "1505342327697313863",
+  SelfPromo: "1495317045724708914"
 } as const;
 
 export const Roles = {
