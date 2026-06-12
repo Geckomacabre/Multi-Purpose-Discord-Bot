@@ -17,13 +17,14 @@ const auditCache = new Map<
 
 export const onMessageDelete = async (message: Message | PartialMessage) => {
   if (message.partial) {
-    try {
-      await message.fetch();
-    } catch (err: any) {
-      if (err?.code === 10008) return;
-      console.error("Could not fetch partial message:", err);
-      return;
-    }
+    message
+      .fetch()
+      .then((fullMessage) => {
+        console.log(fullMessage.content);
+      })
+      .catch((error) => {
+        console.log("Something went wrong when fetching the message: ", error);
+      });
   }
 
   const guild = message.guild;
@@ -116,6 +117,15 @@ export const onMessageDelete = async (message: Message | PartialMessage) => {
     logEmbed.addFields({
       name: `${imageUrls.length} Attachment(s)`,
       value: `> ${imageUrls.join(", ")}`.slice(0, 1024),
+    });
+  }
+
+  const sticker = message.stickers.first();
+
+  if (sticker) {
+    logEmbed.addFields({
+      name: `1 Attachment(s)`,
+      value: `> Sticker [${sticker.name}](${sticker.url})`,
     });
   }
 
