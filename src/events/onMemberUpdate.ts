@@ -13,11 +13,11 @@ import config from "../config";
 
 const EMBED = {
   added: {
-    title: "<:roleGiven:1514964541136572426> User Roles Added",
+    title: "<:roleGiven:1514964541136572426> Role Given",
     color: "#54b470",
   },
   removed: {
-    title: "<:roleTaken:1514963661071061171> User Roles Removed",
+    title: "<:roleTaken:1514963661071061171> Role Taken",
     color: "#da4b50",
   },
 } as const;
