@@ -11,27 +11,32 @@ export const onMessageUpdate = async (
   oldMessage: Message | PartialMessage,
   newMessage: Message | PartialMessage,
 ) => {
-  if (oldMessage.content === newMessage.content) return;
+  const oldFull = oldMessage.partial
+    ? await oldMessage.fetch().catch(() => null)
+    : oldMessage;
 
-  if (oldMessage.partial) {
-    oldMessage
-      .fetch()
-      .then((fullMessage) => {
-        console.log(fullMessage.content);
-      })
-      .catch((error) => {
-        console.log("Something went wrong when fetching the message: ", error);
-      });
-  }
+  const newFull = newMessage.partial
+    ? await newMessage.fetch().catch(() => null)
+    : newMessage;
 
-  const guild = oldMessage.guild;
-  if (!guild || !oldMessage.author) return;
+  if (!oldFull || !newFull) return;
 
-  const editedMessageChannel = guild.channels.cache.get(
-    oldMessage.channel.id,
-  ) as TextChannel;
+  if (!oldFull.content || !newFull.content) return;
 
-  const messageCreatedTime = Math.floor(oldMessage.createdTimestamp / 1000);
+  const before = oldFull.content;
+  const after = newFull.content;
+
+  if (before === after) return;
+
+  if (!oldFull.guild || !oldFull.author) return;
+
+  const guild = oldFull.guild;
+
+  if (!newFull.channel) return;
+  const channel = guild.channels.cache.get(newFull.channel.id) as TextChannel;
+  if (!channel) return;
+
+  const messageCreatedTime = Math.floor(oldFull.createdTimestamp / 1000);
 
   const logChannel = guild.channels.cache.get(config.ACTION_LOG_CHANNEL);
   if (!logChannel || logChannel.type !== ChannelType.GuildText) return;
@@ -40,18 +45,20 @@ export const onMessageUpdate = async (
     .setColor("#fca41c")
     .setTitle("<:editMessage:1514948246676443136> Message Edited")
     .setAuthor({
-      name: oldMessage.author.username,
-      iconURL: oldMessage.author.displayAvatarURL(),
+      name: oldFull.author.username,
+      iconURL: oldFull.author.displayAvatarURL(),
     })
     .setDescription(
-      `> **Channel:** ${editedMessageChannel.name} (<#${editedMessageChannel.id}>)\n` +
-        `> **Message ID:** [${oldMessage.id}](https://discord.com/channels/${oldMessage.guild.id}/${editedMessageChannel.id}/${oldMessage.id})\n` +
-        `> **Message Author:** @${oldMessage.author.username} (<@${oldMessage.author.id}>)\n` +
+      [
+        `> **Channel:** ${channel.name} (<#${channel.id}>)`,
+        `> **Message ID:** [${oldFull.id}](https://discord.com/channels/${guild.id}/${channel.id}/${oldFull.id})`,
+        `> **Message Author:** @${oldFull.author.username} (<@${oldFull.author.id}>)`,
         `> **Message Created:** <t:${messageCreatedTime}:R>`,
+      ].join("\n"),
     )
     .addFields(
-      { name: "Before", value: `${oldMessage.content}`, inline: true },
-      { name: "After", value: `${newMessage.content}`, inline: true },
+      { name: "Before", value: before.slice(0, 1024), inline: true },
+      { name: "After", value: after.slice(0, 1024), inline: true },
     )
     .setTimestamp();
 
