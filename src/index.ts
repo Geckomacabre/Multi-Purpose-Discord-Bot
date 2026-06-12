@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, Partials } from "discord.js";
+import { Client, GatewayIntentBits, Options, Partials } from "discord.js";
 import Config from "./config";
 import { registerEvents } from "./events";
 import { registerFeatures } from "./features";
@@ -34,11 +34,22 @@ const bot = new Client({
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessageReactions,
     GatewayIntentBits.GuildVoiceStates,
+    GatewayIntentBits.GuildPresences,
   ],
-  partials: [Partials.Message, Partials.Channel, Partials.Reaction],
+  partials: [
+    Partials.Message,
+    Partials.Channel,
+    Partials.Reaction,
+    Partials.User,
+    Partials.GuildMember,
+  ],
+  makeCache: Options.cacheWithLimits({
+    ...Options.DefaultMakeCacheSettings,
+    MessageManager: 500,
+  }),
 });
 
-initDb()
+initDb();
 registerEvents(bot);
 await registerFeatures(bot);
 
