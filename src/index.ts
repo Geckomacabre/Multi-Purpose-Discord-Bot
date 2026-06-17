@@ -3,7 +3,6 @@ import Config from './config';
 import * as db from './utils/db';
 import { onReady } from './events/onReady';
 import { onInteraction } from './events/onInteraction';
-import { onMessageCreate } from './events/onMessageCreate';
 import { onMessageDeleteBulk } from './events/onMessageDeleteBulk';
 import { onMessageUpdate } from './events/onMessageUpdate';
 import { registerFeatures } from './features';
@@ -16,7 +15,6 @@ db.initDb();
 
 Bot.once(Events.ClientReady, async () => await onReady(Bot));
 
-Bot.on(Events.MessageCreate, async (message) => await onMessageCreate(message));
 Bot.on(Events.MessageUpdate, async (oldMessage, newMessage) => await onMessageUpdate(oldMessage, newMessage));
 Bot.on(Events.MessageBulkDelete, async (messages, channel) => await onMessageDeleteBulk(messages, channel));
 
