@@ -1,7 +1,9 @@
-import type { ClientEvents } from 'discord.js';
+import type { Client, ClientEvents } from 'discord.js';
 
 type HandlerContext<K extends keyof ClientEvents> = {
   data: ClientEvents[K][0];
+  bot: Client;
+  db: typeof import('../utils/db');
 };
 
 export type EventModule = {
