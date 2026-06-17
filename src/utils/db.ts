@@ -226,6 +226,49 @@ export type IScheduledTask = {
   fired: number;
 };
 
+export type IEconomy = {
+  guild_id: string;
+  user_id: string;
+  balance: number;
+  total_earned: number;
+};
+
+export type IEconomyConfig = {
+  guild_id: string;
+  currency_name: string;
+  currency_symbol: string;
+  starting_balance: number;
+  daily_min: number;
+  daily_max: number;
+  work_min: number;
+  work_max: number;
+};
+
+export type IXp = {
+  guild_id: string;
+  user_id: string;
+  xp: number;
+  level: number;
+  total_messages: number;
+};
+
+export type IXpConfig = {
+  guild_id: string;
+  enabled: number;
+  xp_min: number;
+  xp_max: number;
+  cooldown_seconds: number;
+  level_up_channel_id: string | null;
+  level_up_message: string;
+};
+
+export type ILevelRole = {
+  id: number;
+  guild_id: string;
+  level: number;
+  role_id: string;
+};
+
 // ─── DB instance ─────────────────────────────────────────────────────────────
 
 export const db = new SQL('sqlite://db.sqlite');
@@ -480,6 +523,59 @@ export async function initDb() {
     fires_at   INTEGER NOT NULL,
     fired      INTEGER NOT NULL DEFAULT 0
   )`;
+
+  await db`CREATE TABLE IF NOT EXISTS economy (
+    guild_id     TEXT NOT NULL,
+    user_id      TEXT NOT NULL,
+    balance      INTEGER NOT NULL DEFAULT 0,
+    total_earned INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (guild_id, user_id)
+  )`;
+
+  await db`CREATE TABLE IF NOT EXISTS economy_config (
+    guild_id         TEXT PRIMARY KEY,
+    currency_name    TEXT NOT NULL DEFAULT 'coins',
+    currency_symbol  TEXT NOT NULL DEFAULT '🪙',
+    starting_balance INTEGER NOT NULL DEFAULT 0,
+    daily_min        INTEGER NOT NULL DEFAULT 100,
+    daily_max        INTEGER NOT NULL DEFAULT 500,
+    work_min         INTEGER NOT NULL DEFAULT 50,
+    work_max         INTEGER NOT NULL DEFAULT 200
+  )`;
+
+  await db`CREATE TABLE IF NOT EXISTS economy_cooldowns (
+    guild_id  TEXT NOT NULL,
+    user_id   TEXT NOT NULL,
+    type      TEXT NOT NULL,
+    last_used INTEGER NOT NULL,
+    PRIMARY KEY (guild_id, user_id, type)
+  )`;
+
+  await db`CREATE TABLE IF NOT EXISTS xp (
+    guild_id       TEXT NOT NULL,
+    user_id        TEXT NOT NULL,
+    xp             INTEGER NOT NULL DEFAULT 0,
+    level          INTEGER NOT NULL DEFAULT 0,
+    total_messages INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (guild_id, user_id)
+  )`;
+
+  await db`CREATE TABLE IF NOT EXISTS xp_config (
+    guild_id            TEXT PRIMARY KEY,
+    enabled             INTEGER NOT NULL DEFAULT 1,
+    xp_min              INTEGER NOT NULL DEFAULT 15,
+    xp_max              INTEGER NOT NULL DEFAULT 25,
+    cooldown_seconds    INTEGER NOT NULL DEFAULT 60,
+    level_up_channel_id TEXT,
+    level_up_message    TEXT NOT NULL DEFAULT 'GG {user}, you just advanced to **level {level}**! 🎉'
+  )`;
+
+  await db`CREATE TABLE IF NOT EXISTS level_roles (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    level    INTEGER NOT NULL,
+    role_id  TEXT NOT NULL
+  )`;
 }
 
 // ─── Guild cleanup ────────────────────────────────────────────────────────────
@@ -492,6 +588,7 @@ export async function removeGuild(guild_id: string) {
     'rep_config', 'rep_cooldowns', 'ticket_config', 'tickets', 'reminders',
     'custom_commands', 'twitch_feeds', 'youtube_feeds', 'reddit_feeds',
     'rss_feeds', 'serverstats', 'streaming_config', 'rsvp_events',
+    'economy', 'economy_config', 'economy_cooldowns', 'xp', 'xp_config', 'level_roles',
   ]) {
     await db`DELETE FROM ${db(table)} WHERE guild_id = ${guild_id}`.catch(() => {});
   }
@@ -1172,4 +1269,155 @@ export async function markScheduledTaskFired(id: number) {
 
 export async function deleteScheduledTask(id: number) {
   await db`DELETE FROM scheduled_tasks WHERE id = ${id}`;
+}
+
+// ─── XP level formula (MEE6-style) ───────────────────────────────────────────
+
+export function xpForLevel(level: number): number {
+  return 5 * level * level + 50 * level + 100;
+}
+
+export function calcLevelFromXp(totalXp: number): { level: number; currentXp: number; xpNeeded: number } {
+  let level = 0;
+  let remaining = totalXp;
+  while (remaining >= xpForLevel(level)) {
+    remaining -= xpForLevel(level);
+    level++;
+  }
+  return { level, currentXp: remaining, xpNeeded: xpForLevel(level) };
+}
+
+// ─── Economy ──────────────────────────────────────────────────────────────────
+
+export async function getEconomyConfig(guild_id: string): Promise<IEconomyConfig> {
+  const [row] = await db`SELECT * FROM economy_config WHERE guild_id = ${guild_id}`;
+  return (row as IEconomyConfig) || {
+    guild_id, currency_name: 'coins', currency_symbol: '🪙',
+    starting_balance: 0, daily_min: 100, daily_max: 500, work_min: 50, work_max: 200,
+  };
+}
+
+export async function setEconomyConfig(guild_id: string, fields: Partial<Omit<IEconomyConfig, 'guild_id'>>) {
+  await ensureConfig(guild_id);
+  await db`INSERT OR IGNORE INTO economy_config (guild_id) VALUES (${guild_id})`;
+  if (fields.currency_name !== undefined) await db`UPDATE economy_config SET currency_name = ${fields.currency_name} WHERE guild_id = ${guild_id}`;
+  if (fields.currency_symbol !== undefined) await db`UPDATE economy_config SET currency_symbol = ${fields.currency_symbol} WHERE guild_id = ${guild_id}`;
+  if (fields.starting_balance !== undefined) await db`UPDATE economy_config SET starting_balance = ${fields.starting_balance} WHERE guild_id = ${guild_id}`;
+  if (fields.daily_min !== undefined) await db`UPDATE economy_config SET daily_min = ${fields.daily_min} WHERE guild_id = ${guild_id}`;
+  if (fields.daily_max !== undefined) await db`UPDATE economy_config SET daily_max = ${fields.daily_max} WHERE guild_id = ${guild_id}`;
+  if (fields.work_min !== undefined) await db`UPDATE economy_config SET work_min = ${fields.work_min} WHERE guild_id = ${guild_id}`;
+  if (fields.work_max !== undefined) await db`UPDATE economy_config SET work_max = ${fields.work_max} WHERE guild_id = ${guild_id}`;
+}
+
+export async function getOrCreateEconomy(guild_id: string, user_id: string): Promise<IEconomy> {
+  const [existing] = await db`SELECT * FROM economy WHERE guild_id = ${guild_id} AND user_id = ${user_id}`;
+  if (existing) return existing as IEconomy;
+  await ensureConfig(guild_id);
+  const cfg = await getEconomyConfig(guild_id);
+  const [row] = await db`
+    INSERT INTO economy (guild_id, user_id, balance, total_earned)
+    VALUES (${guild_id}, ${user_id}, ${cfg.starting_balance}, ${cfg.starting_balance})
+    ON CONFLICT(guild_id, user_id) DO UPDATE SET guild_id = guild_id
+    RETURNING *
+  `;
+  return row as IEconomy;
+}
+
+export async function adjustBalance(
+  guild_id: string, user_id: string, delta: number
+): Promise<{ success: boolean; newBalance: number }> {
+  const eco = await getOrCreateEconomy(guild_id, user_id);
+  const newBalance = eco.balance + delta;
+  if (newBalance < 0) return { success: false, newBalance: eco.balance };
+  const earned = delta > 0 ? delta : 0;
+  await db`UPDATE economy SET balance = ${newBalance}, total_earned = total_earned + ${earned} WHERE guild_id = ${guild_id} AND user_id = ${user_id}`;
+  return { success: true, newBalance };
+}
+
+export async function getEconomyLeaderboard(guild_id: string, limit = 10): Promise<IEconomy[]> {
+  const rows = await db`SELECT * FROM economy WHERE guild_id = ${guild_id} ORDER BY balance DESC LIMIT ${limit}`;
+  return rows as IEconomy[];
+}
+
+export async function getEconomyCooldown(guild_id: string, user_id: string, type: string): Promise<number> {
+  const [row] = await db`SELECT last_used FROM economy_cooldowns WHERE guild_id = ${guild_id} AND user_id = ${user_id} AND type = ${type}`;
+  return row ? (row.last_used as number) : 0;
+}
+
+export async function setEconomyCooldown(guild_id: string, user_id: string, type: string) {
+  await db`
+    INSERT INTO economy_cooldowns (guild_id, user_id, type, last_used) VALUES (${guild_id}, ${user_id}, ${type}, ${Date.now()})
+    ON CONFLICT(guild_id, user_id, type) DO UPDATE SET last_used = excluded.last_used
+  `;
+}
+
+// ─── XP / Levels ─────────────────────────────────────────────────────────────
+
+export async function getXp(guild_id: string, user_id: string): Promise<IXp | null> {
+  const [row] = await db`SELECT * FROM xp WHERE guild_id = ${guild_id} AND user_id = ${user_id}`;
+  return (row as IXp) || null;
+}
+
+export async function addXp(
+  guild_id: string, user_id: string, amount: number
+): Promise<{ row: IXp; oldLevel: number }> {
+  await ensureConfig(guild_id);
+  const existing = await getXp(guild_id, user_id);
+  const oldLevel = existing?.level ?? 0;
+  const newXp = (existing?.xp ?? 0) + amount;
+  const { level: newLevel } = calcLevelFromXp(newXp);
+  const [row] = await db`
+    INSERT INTO xp (guild_id, user_id, xp, level, total_messages)
+    VALUES (${guild_id}, ${user_id}, ${amount}, ${newLevel}, 1)
+    ON CONFLICT(guild_id, user_id) DO UPDATE SET
+      xp = xp + ${amount},
+      level = ${newLevel},
+      total_messages = total_messages + 1
+    RETURNING *
+  `;
+  return { row: row as IXp, oldLevel };
+}
+
+export async function getXpConfig(guild_id: string): Promise<IXpConfig> {
+  const [row] = await db`SELECT * FROM xp_config WHERE guild_id = ${guild_id}`;
+  return (row as IXpConfig) || {
+    guild_id, enabled: 1, xp_min: 15, xp_max: 25, cooldown_seconds: 60,
+    level_up_channel_id: null,
+    level_up_message: 'GG {user}, you just advanced to **level {level}**! 🎉',
+  };
+}
+
+export async function setXpConfig(guild_id: string, fields: Partial<Omit<IXpConfig, 'guild_id'>>) {
+  await ensureConfig(guild_id);
+  await db`INSERT OR IGNORE INTO xp_config (guild_id) VALUES (${guild_id})`;
+  if (fields.enabled !== undefined) await db`UPDATE xp_config SET enabled = ${fields.enabled} WHERE guild_id = ${guild_id}`;
+  if (fields.xp_min !== undefined) await db`UPDATE xp_config SET xp_min = ${fields.xp_min} WHERE guild_id = ${guild_id}`;
+  if (fields.xp_max !== undefined) await db`UPDATE xp_config SET xp_max = ${fields.xp_max} WHERE guild_id = ${guild_id}`;
+  if (fields.cooldown_seconds !== undefined) await db`UPDATE xp_config SET cooldown_seconds = ${fields.cooldown_seconds} WHERE guild_id = ${guild_id}`;
+  if (fields.level_up_channel_id !== undefined) await db`UPDATE xp_config SET level_up_channel_id = ${fields.level_up_channel_id} WHERE guild_id = ${guild_id}`;
+  if (fields.level_up_message !== undefined) await db`UPDATE xp_config SET level_up_message = ${fields.level_up_message} WHERE guild_id = ${guild_id}`;
+}
+
+export async function getXpLeaderboard(guild_id: string, limit = 10): Promise<IXp[]> {
+  const rows = await db`SELECT * FROM xp WHERE guild_id = ${guild_id} ORDER BY xp DESC LIMIT ${limit}`;
+  return rows as IXp[];
+}
+
+export async function getLevelRoles(guild_id: string): Promise<ILevelRole[]> {
+  const rows = await db`SELECT * FROM level_roles WHERE guild_id = ${guild_id} ORDER BY level ASC`;
+  return rows as ILevelRole[];
+}
+
+export async function addLevelRole(guild_id: string, level: number, role_id: string): Promise<ILevelRole> {
+  await ensureConfig(guild_id);
+  const [row] = await db`
+    INSERT INTO level_roles (guild_id, level, role_id) VALUES (${guild_id}, ${level}, ${role_id})
+    RETURNING *
+  `;
+  return row as ILevelRole;
+}
+
+export async function removeLevelRole(id: number, guild_id: string): Promise<boolean> {
+  const result = await db`DELETE FROM level_roles WHERE id = ${id} AND guild_id = ${guild_id} RETURNING id`;
+  return result.length > 0;
 }
