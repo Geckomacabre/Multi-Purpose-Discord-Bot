@@ -6,7 +6,7 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "build": "bun build src/index.ts --outdir dist --minify --target=node",
+    "build": "bun build src/index.ts --outdir dist --minify --target=bun",
     "start": "bun dist/index.js",
     "start:production": "bun run build && bun run start",
     "dev": "bun --watch src/index.ts",
