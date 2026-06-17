@@ -3,6 +3,7 @@ import Config from './config';
 import { onReady } from './events/onReady';
 import * as db from './utils/db';
 import { onInteraction } from './events/onInteraction';
+import { onMessageCreate } from './events/onMessageCreate';
 
 export const Bot = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
@@ -12,6 +13,7 @@ db.initDb();
 
 Bot.once(Events.ClientReady, async () => await onReady(Bot));
 
+Bot.on(Events.MessageCreate, async (message) => await onMessageCreate(message));
 Bot.on(Events.InteractionCreate, async (interaction) => await onInteraction(interaction));
 
 Bot.login(Config.DISCORD_TOKEN);
