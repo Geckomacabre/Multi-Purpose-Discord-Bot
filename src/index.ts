@@ -17,7 +17,7 @@ Bot.once(Events.ClientReady, async () => await onReady(Bot));
 
 Bot.on(Events.MessageDelete, async (message) => await onMessageDelete(message));
 Bot.on(Events.MessageCreate, async (message) => await onMessageCreate(message));
-Bot.on(Events.MessageBulkDelete, onMessageDeleteBulk);
+Bot.on(Events.MessageBulkDelete, async (messages, channel) => await onMessageDeleteBulk(messages, channel));
 Bot.on(Events.InteractionCreate, async (interaction) => await onInteraction(interaction));
 
 Bot.login(Config.DISCORD_TOKEN);

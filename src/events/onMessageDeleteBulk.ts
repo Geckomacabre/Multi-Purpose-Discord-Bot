@@ -1,8 +1,8 @@
-import { GuildTextBasedChannel, Message, PartialMessage, Collection } from 'discord.js';
+import { GuildTextBasedChannel, Message, PartialMessage, ReadonlyCollection } from 'discord.js';
 import * as db from '../utils/db';
 
 export const onMessageDeleteBulk = async (
-  messages: Collection<string, Message<boolean> | PartialMessage>,
+  messages: ReadonlyCollection<string, Message | PartialMessage>,
   channel: GuildTextBasedChannel
 ) => {
   const counting = await db.getCounting(channel.id);
