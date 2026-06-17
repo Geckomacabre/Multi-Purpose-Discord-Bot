@@ -10,7 +10,7 @@ export function registerFeatures(bot: Client) {
       bot.on(event as any, async (...args) => {
         try {
           await handler({
-            data: args[0],
+            data: args,
             bot,
             db,
           } as any);
