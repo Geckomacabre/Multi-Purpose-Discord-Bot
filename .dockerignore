@@ -1,0 +1,14 @@
+node_modules
+dist
+.idea
+.gitignore
+.eslintrc
+.prettierrc.json
+.prettierignore
+README.md
+Dockerfile
+.env.example
+*.db
+*.sqlite
+*.rdb
+*.sqlite-*
