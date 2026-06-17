@@ -1,13 +1,14 @@
-import { Client, DMChannel, Events, GatewayIntentBits, NonThreadGuildBasedChannel } from 'discord.js';
+import { Client, Events, GatewayIntentBits } from 'discord.js';
 import Config from './config';
-import { onReady } from './events/onReady';
 import * as db from './utils/db';
+import { onReady } from './events/onReady';
 import { onInteraction } from './events/onInteraction';
 import { onMessageCreate } from './events/onMessageCreate';
 import { onMessageDelete } from './events/onMessageDelete';
 import { onMessageDeleteBulk } from './events/onMessageDeleteBulk';
 import { onMessageUpdate } from './events/onMessageUpdate';
 import { onChannelDelete } from './events/onChannelDelete';
+import { registerFeatures } from './features';
 
 export const Bot = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
@@ -26,5 +27,7 @@ Bot.on(Events.ChannelDelete, async (channel) => {
 });
 
 Bot.on(Events.InteractionCreate, async (interaction) => await onInteraction(interaction));
+
+registerFeatures();
 
 Bot.login(Config.DISCORD_TOKEN);
