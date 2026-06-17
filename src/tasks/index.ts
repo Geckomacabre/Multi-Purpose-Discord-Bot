@@ -1,6 +1,7 @@
 import { Client } from "discord.js";
 import logger from "../infrastructure/logger";
 import birthdayCheck from "./birthday-check";
+import liveStreamSync from "./live-stream-sync";
 
 type CronTask =
   | {
@@ -13,7 +14,7 @@ type CronTask =
       start: (bot: Client) => void | Promise<void>;
     };
 
-const tasks: CronTask[] = [birthdayCheck];
+const tasks: CronTask[] = [birthdayCheck, liveStreamSync];
 
 export function initCronJobs(bot: Client) {
   tasks.forEach((task) => {

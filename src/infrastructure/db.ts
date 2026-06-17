@@ -86,6 +86,47 @@ export async function initDb() {
     updated_at INTEGER NOT NULL
   );
 `;
+  await db`
+  CREATE TABLE IF NOT EXISTS discord_oauth (
+    user_id TEXT PRIMARY KEY,
+    access_token TEXT NOT NULL,
+    refresh_token TEXT NOT NULL,
+    expires_at INTEGER NOT NULL
+  );
+`;
+
+  await db`
+  CREATE TABLE IF NOT EXISTS twitch_links (
+    discord_user_id TEXT PRIMARY KEY,
+    twitch_id TEXT NOT NULL,
+    login TEXT NOT NULL,
+    access_token TEXT,
+    refresh_token TEXT,
+    expires_at INTEGER
+  );
+`;
+
+  await db`
+  CREATE TABLE IF NOT EXISTS oauth_states (
+    state TEXT PRIMARY KEY,
+    discord_user_id TEXT,
+    created_at INTEGER NOT NULL
+  );
+`;
+  await db`
+  CREATE INDEX IF NOT EXISTS idx_oauth_states_created_at
+  ON oauth_states(created_at);
+`;
+  await db`
+CREATE TABLE IF NOT EXISTS live_streams (
+  user_id TEXT PRIMARY KEY,
+  guild_id TEXT NOT NULL,
+  channel_id TEXT NOT NULL,
+  message_id TEXT NOT NULL,
+  platform TEXT NOT NULL,
+  started_at INTEGER NOT NULL
+);
+`;
 }
 
 export async function removeGuild(guild_id: string): Promise<void> {
@@ -400,4 +441,51 @@ export async function updateRoom(
 
 export async function deleteRoom(channel_id: string) {
   await db`DELETE FROM rooms WHERE channel_id = ${channel_id}`;
+}
+
+export async function cleanupOAuthStates() {
+  await db`
+    DELETE FROM oauth_states
+    WHERE created_at < ${Date.now() - 1000 * 60 * 10}
+  `;
+}
+
+export async function getLiveStream(user_id: string) {
+  const [row] = await db`
+    SELECT * FROM live_streams WHERE user_id = ${user_id}
+  `;
+  return row ?? null;
+}
+
+export async function setLiveStream(data: {
+  user_id: string;
+  guild_id: string;
+  channel_id: string;
+  message_id: string;
+  platform: string;
+}) {
+  await db`
+    INSERT INTO live_streams (
+      user_id, guild_id, channel_id, message_id, platform, started_at
+    )
+    VALUES (
+      ${data.user_id},
+      ${data.guild_id},
+      ${data.channel_id},
+      ${data.message_id},
+      ${data.platform},
+      ${Date.now()}
+    )
+    ON CONFLICT(user_id) DO UPDATE SET
+      guild_id = excluded.guild_id,
+      channel_id = excluded.channel_id,
+      message_id = excluded.message_id,
+      platform = excluded.platform;
+  `;
+}
+
+export async function removeLiveStream(user_id: string) {
+  await db`
+    DELETE FROM live_streams WHERE user_id = ${user_id}
+  `;
 }
