@@ -235,6 +235,59 @@ No configuration needed — active automatically. Detects and deletes messages c
 
 ---
 
+### Economy & Leveling
+These features were added natively to TMCBot (not ported from YAGPDB).
+
+#### Leveling
+XP is awarded per message sent (15–25 XP by default, 60-second cooldown per user). Level-up announcements are posted automatically. Leveling up also awards coins as a bonus reward.
+
+Level formula (MEE6-style): `5n² + 50n + 100` XP required per level.
+Coin reward on level-up: `level × 50` coins.
+
+| Command | Description |
+|---|---|
+| `/rank [user]` | View your or another user's level, XP progress bar, and total messages. |
+| `/leaderboard` | Show the top users by XP and level. |
+| `/levelconfig toggle` | Enable or disable XP gain for the server. |
+| `/levelconfig channel` | Set the channel for level-up announcements. |
+| `/levelconfig xp` | Set XP per message range and cooldown seconds. |
+| `/levelconfig message` | Customize the level-up announcement. Supports `{user}`, `{username}`, `{level}`. |
+| `/levelconfig view` | View current leveling settings. |
+| `/levelroles add` | Assign a role automatically when users reach a specific level. |
+| `/levelroles remove` | Remove a level role binding by ID. |
+| `/levelroles list` | List all level role bindings. |
+
+#### Economy
+Each server has its own virtual currency. Earn coins through daily rewards, work, leveling up, and gambling.
+
+| Command | Description |
+|---|---|
+| `/balance [user]` | Check your or another user's coin balance and total earned. |
+| `/daily` | Claim a daily coin reward (20-hour cooldown). |
+| `/work` | Work to earn coins with a random job flavor text (1-hour cooldown). |
+| `/pay <user> <amount>` | Transfer coins to another user. |
+| `/baltop` | Show the richest users in the server. |
+
+#### Gambling
+All gambling commands bet against your coin balance.
+
+| Command | Description |
+|---|---|
+| `/gamble flip <bet>` | Bet on a coin flip — win doubles your bet (50/50). |
+| `/gamble roll <bet>` | Roll 1–100 against the bot — higher roll wins; ties refund your bet. |
+| `/gamble slots <bet>` | Spin the slot machine — match 3 symbols to win. Payouts: 🍒×3=1.5× \| 🍋×3=2× \| 🔔×3=3× \| 💎×3=5× \| 7️⃣×3=10×. |
+
+#### Economy Admin
+| Command | Description |
+|---|---|
+| `/econconfig currency` | Set the currency name and symbol for this server. |
+| `/econconfig starting` | Set how many coins new users start with. |
+| `/econconfig daily` | Set the daily reward min/max range. |
+| `/econconfig work` | Set the work reward min/max range. |
+| `/econconfig view` | View current economy settings. |
+
+---
+
 ## Database
 
 TMCBot uses a local SQLite file (`db.sqlite`) managed automatically on startup. No external database is required.
