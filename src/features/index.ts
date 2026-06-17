@@ -12,6 +12,7 @@ import streamingModule from './streaming';
 import ticketsModule from './tickets';
 import customCommandsModule from './customcommands';
 import { startFeedsPollers } from './feeds';
+import xpModule from './xp';
 
 const features = [
   countingModule,
@@ -25,6 +26,7 @@ const features = [
   streamingModule,
   ticketsModule,
   customCommandsModule,
+  xpModule,
 ];
 
 export function registerFeatures(bot: Client) {
