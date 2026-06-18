@@ -39,6 +39,7 @@ TWITCH_CLIENT_SECRET=    # Twitch live alerts (/twitch)
 YOUTUBE_API_KEY=         # YouTube upload alerts (/youtube)
 WEATHER_API_KEY=         # OpenWeatherMap key (/weather)
 REPORT_CHANNEL_ID=       # Fallback channel for /report when no modlog is set
+TENOR_API_KEY=           # GIF search (/gif) — free key at https://developers.google.com/tenor
 ```
 
 ### Running
@@ -232,6 +233,8 @@ No configuration needed — active automatically. Detects and deletes messages c
 | `/cah play` | Play a card from your hand. |
 | `/cah pick` | Card Czar: pick the winning submission. |
 | `/cah end` | End the current game. |
+| `/trivia [category] [difficulty]` | Answer a multiple-choice trivia question with button responses. 10 categories, 3 difficulties, 30-second timer. Powered by OpenTDB (no API key needed). |
+| `/gif <query>` | Search for a GIF using Tenor. Requires `TENOR_API_KEY` in `.env`. |
 
 ---
 
@@ -302,6 +305,130 @@ Supported platforms:
 | `/econconfig daily` | Set the daily reward min/max range. |
 | `/econconfig work` | Set the work reward min/max range. |
 | `/econconfig view` | View current economy settings. |
+
+---
+
+### Welcome System
+Sends a customizable message to a channel (and optionally a DM) whenever a new member joins.
+
+Supports template variables: `{user}`, `{username}`, `{server}`, `{membercount}`, `{#membercount}`.
+
+| Command | Description |
+|---|---|
+| `/welcome channel <channel>` | Set the channel where welcome messages are posted. |
+| `/welcome message <text>` | Set the welcome message template. |
+| `/welcome dm <text>` | Set a DM sent to new members (`none` to disable). |
+| `/welcome toggle` | Enable or disable the welcome system. |
+| `/welcome test` | Preview the welcome message as if you just joined. |
+| `/welcome view` | View current welcome settings. |
+
+---
+
+### Birthday Tracker
+Members set their birthday once and the bot announces it on the day in a configured channel.
+
+| Command | Description |
+|---|---|
+| `/birthday set <month> <day>` | Set your birthday. |
+| `/birthday view [user]` | View a user's birthday and how many days away it is. |
+| `/birthday list` | Show upcoming birthdays in the server, sorted by soonest. |
+| `/birthday remove` | Remove your birthday from this server. |
+| `/birthday delete <user>` | Remove a user's birthday (Manage Server required). |
+| `/birthdayconfig channel <channel>` | Set the birthday announcement channel. |
+| `/birthdayconfig toggle` | Enable or disable birthday announcements. |
+| `/birthdayconfig view` | View current birthday settings. |
+
+---
+
+### Timezone Tracker
+Members register their IANA timezone so others can see what time it is for them.
+
+| Command | Description |
+|---|---|
+| `/timezone set <timezone>` | Set your timezone (e.g. `America/New_York`, `Europe/London`). |
+| `/timezone view [user]` | See the current local time for a user. |
+| `/timezone list` | List timezones of all members who have set one. |
+| `/timezone remove` | Remove your timezone. |
+
+---
+
+### Starboard
+Messages that receive enough of a configured reaction are automatically reposted to a dedicated starboard channel. The star count updates live.
+
+| Command | Description |
+|---|---|
+| `/starboard channel <channel>` | Set the starboard channel. |
+| `/starboard threshold <count>` | Set the minimum reaction count needed (default: 3). |
+| `/starboard emoji <emoji>` | Set which reaction to watch (default: ⭐). |
+| `/starboard toggle` | Enable or disable the starboard. |
+| `/starboard view` | View current starboard settings. |
+
+---
+
+### Topic Rotation
+Automatically posts a discussion prompt to a channel on a configurable schedule. Topics cycle sequentially or randomly.
+
+| Command | Description |
+|---|---|
+| `/topics setup <channel> <interval> [mode]` | Set up rotation for a channel. Interval examples: `6h`, `1d`, `12h`. Mode: `sequential` or `random`. |
+| `/topics add <channel> <topic>` | Add a discussion topic to a channel's queue. |
+| `/topics delete <id>` | Remove a topic by ID. |
+| `/topics list <channel>` | List all topics and current settings for a channel. |
+| `/topics post <channel>` | Manually post the next topic immediately. |
+| `/topics remove <channel>` | Stop topic rotation for a channel. |
+
+---
+
+### Giveaways
+Button-based giveaway system. Users click to enter, winners are picked randomly when time expires or the host ends it early.
+
+| Command | Description |
+|---|---|
+| `/giveaway start <prize> <duration> <winners> [channel]` | Start a giveaway. Duration examples: `1h`, `30m`, `2d`. |
+| `/giveaway end <id>` | End a giveaway early and pick winners immediately. |
+| `/giveaway reroll <id>` | Re-pick winners for an already-ended giveaway. |
+| `/giveaway list` | List all active giveaways in the server. |
+
+---
+
+### Reaction Roles
+Attach a role to a reaction emoji on any message. Members gain the role by reacting and lose it by removing the reaction.
+
+| Command | Description |
+|---|---|
+| `/reactionroles add <message_link> <emoji> <role>` | Bind an emoji reaction on a message to a role. Paste the message link directly from Discord. |
+| `/reactionroles remove <id>` | Remove a binding by ID. |
+| `/reactionroles clear <message_link>` | Remove all reaction roles from a message. |
+| `/reactionroles list` | List all active reaction role bindings. |
+
+---
+
+### Server Stat Channels
+Creates read-only voice channels that display live server statistics, updating every 10 minutes.
+
+| Command | Description |
+|---|---|
+| `/statschannels add <type> [label]` | Create a stat channel. Types: `members`, `humans`, `bots`, `channels`, `roles`. |
+| `/statschannels remove <id>` | Delete a stat channel. |
+| `/statschannels list` | List all stat channels. |
+
+---
+
+### Translation
+Translate text between 16 languages instantly. No API key required.
+
+| Command | Description |
+|---|---|
+| `/translate <text> [to] [from]` | Translate text. Target language defaults to English. Source is auto-detected if not specified. Powered by MyMemory. |
+
+---
+
+### Message Purge
+Advanced bulk message deletion with multiple filters. Works on messages less than 14 days old.
+
+| Command | Description |
+|---|---|
+| `/purge <amount> [user] [keyword] [bots] [attachments] [embeds]` | Delete up to 200 messages. Filter by author, content keyword, bots only, has attachment, or has embed. |
 
 ---
 
