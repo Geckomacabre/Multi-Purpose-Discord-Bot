@@ -69,13 +69,17 @@ const Work: Command = {
     const existing = pendingNotifications.get(userId);
     if (existing) clearTimeout(existing);
 
+    const { channelId, client } = interaction;
+
     const timer = setTimeout(async () => {
       pendingNotifications.delete(userId);
       try {
-        const dmChannel = await interaction.user.createDM();
-        await dmChannel.send(`⏰ Your work cooldown is up! Head back to **${interaction.guild?.name}** and run \`/work\` to earn more ${cfg.currency_symbol} ${cfg.currency_name}.`);
+        const channel = await client.channels.fetch(channelId);
+        if (channel?.isTextBased()) {
+          await channel.send(`⏰ <@${userId}> Your work cooldown is up! Run \`/work\` to earn more ${cfg.currency_symbol} ${cfg.currency_name}.`);
+        }
       } catch {
-        // User has DMs disabled — silently ignore
+        // Channel deleted or missing permissions — silently ignore
       }
     }, WORK_COOLDOWN_MS);
 
