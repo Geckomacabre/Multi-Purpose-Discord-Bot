@@ -301,6 +301,12 @@ export type ITimezone = {
   timezone: string;
 };
 
+export type ITimezoneMessage = {
+  guild_id: string;
+  channel_id: string;
+  message_id: string;
+};
+
 export type IWelcomeConfig = {
   guild_id: string;
   channel_id: string | null;
@@ -714,6 +720,19 @@ export async function initDb() {
     timezone TEXT NOT NULL
   )`;
 
+  await db`CREATE TABLE IF NOT EXISTS timezone_user (
+    guild_id TEXT NOT NULL,
+    user_id  TEXT NOT NULL,
+    timezone TEXT NOT NULL,
+    PRIMARY KEY (guild_id, user_id)
+  )`;
+
+  await db`CREATE TABLE IF NOT EXISTS timezone_message (
+    guild_id   TEXT PRIMARY KEY,
+    channel_id TEXT NOT NULL,
+    message_id TEXT NOT NULL
+  )`;
+
   await db`CREATE TABLE IF NOT EXISTS welcome_config (
     guild_id   TEXT PRIMARY KEY,
     channel_id TEXT,
@@ -801,6 +820,7 @@ export async function removeGuild(guild_id: string) {
     'rss_feeds', 'serverstats', 'streaming_config', 'rsvp_events',
     'economy', 'economy_config', 'economy_cooldowns', 'xp', 'xp_config', 'level_roles',
     'free_game_config', 'free_game_posted', 'birthdays', 'birthday_config',
+    'timezone_user', 'timezone_message',
     'welcome_config', 'stat_channels', 'giveaways', 'reaction_roles',
     'topic_channels', 'topics', 'starboard_config', 'starboard_posts',
   ]) {
@@ -1725,6 +1745,69 @@ export async function removeTimezone(user_id: string) {
 export async function getTimezone(user_id: string): Promise<ITimezone | null> {
   const [row] = await db`SELECT * FROM timezones WHERE user_id = ${user_id}`;
   return (row as ITimezone) || null;
+}
+
+// ─── Guild timezone (per-guild, with autocomplete + live message) ─────────────
+
+export async function setUserTimezone(guild_id: string, user_id: string, timezone: string): Promise<void> {
+  await ensureConfig(guild_id);
+  await db`
+    INSERT INTO timezone_user (guild_id, user_id, timezone) VALUES (${guild_id}, ${user_id}, ${timezone})
+    ON CONFLICT(guild_id, user_id) DO UPDATE SET timezone = excluded.timezone
+  `;
+}
+
+export async function removeUserTimezone(guild_id: string, user_id: string): Promise<boolean> {
+  const result = await db`DELETE FROM timezone_user WHERE guild_id = ${guild_id} AND user_id = ${user_id}`;
+  return result.changes != null && result.changes > 0;
+}
+
+export async function getUserTimezone(guild_id: string, user_id: string): Promise<string | null> {
+  const result = await db`SELECT timezone FROM timezone_user WHERE guild_id = ${guild_id} AND user_id = ${user_id}`;
+  return result.length > 0 ? result[0].timezone : null;
+}
+
+export async function getGuildTimezones(guild_id: string): Promise<{ user_id: string; timezone: string }[]> {
+  const result = await db`SELECT user_id, timezone FROM timezone_user WHERE guild_id = ${guild_id}`;
+  return Array.isArray(result) ? result : [];
+}
+
+export async function removeGuildTimezones(guild_id: string): Promise<void> {
+  await db`DELETE FROM timezone_user WHERE guild_id = ${guild_id}`;
+}
+
+export async function removeUserTimezonesEverywhere(user_id: string): Promise<void> {
+  await db`DELETE FROM timezone_user WHERE user_id = ${user_id}`;
+}
+
+export async function setGuildTimezoneMessage(guild_id: string, channel_id: string, message_id: string): Promise<void> {
+  await ensureConfig(guild_id);
+  await db`
+    INSERT INTO timezone_message (guild_id, channel_id, message_id)
+    VALUES (${guild_id}, ${channel_id}, ${message_id})
+    ON CONFLICT(guild_id) DO UPDATE SET
+      channel_id = excluded.channel_id,
+      message_id = excluded.message_id
+  `;
+}
+
+export async function removeGuildTimezoneMessageByMsgId(guild_id: string, message_id: string): Promise<void> {
+  await db`DELETE FROM timezone_message WHERE guild_id = ${guild_id} AND message_id = ${message_id}`;
+}
+
+export async function removeGuildTimezoneMessageByChannelId(guild_id: string, channel_id: string): Promise<void> {
+  await db`DELETE FROM timezone_message WHERE guild_id = ${guild_id} AND channel_id = ${channel_id}`;
+}
+
+export async function getGuildTimezoneMessage(guild_id: string): Promise<{ channel_id: string; message_id: string } | null> {
+  const result = await db`SELECT channel_id, message_id FROM timezone_message WHERE guild_id = ${guild_id}`;
+  if (result.length === 0) return null;
+  return { channel_id: result[0].channel_id, message_id: result[0].message_id };
+}
+
+export async function getTimezoneMessages(): Promise<{ channel_id: string; message_id: string; guild_id: string }[]> {
+  const result = await db`SELECT channel_id, message_id, guild_id FROM timezone_message`;
+  return Array.isArray(result) ? result : [];
 }
 
 // ─── Welcome config ───────────────────────────────────────────────────────────
