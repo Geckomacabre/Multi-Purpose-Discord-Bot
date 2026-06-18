@@ -12,8 +12,7 @@ const Case: Command = {
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
     .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
     .setContexts([InteractionContextType.Guild])
-    .addIntegerOption(o => o.setName('number').setDescription('Case number').setRequired(true))
-    as any,
+    .addIntegerOption(o => o.setName('number').setDescription('Case number').setRequired(true)) as any,
 
   async run(interaction: ChatInputCommandInteraction) {
     const caseNum = interaction.options.getInteger('number', true);

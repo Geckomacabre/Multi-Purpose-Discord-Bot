@@ -13,8 +13,7 @@ const Unban: Command = {
     .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
     .setContexts([InteractionContextType.Guild])
     .addStringOption(o => o.setName('user_id').setDescription('User ID to unban').setRequired(true))
-    .addStringOption(o => o.setName('reason').setDescription('Reason for unban'))
-    as any,
+    .addStringOption(o => o.setName('reason').setDescription('Reason for unban')) as any,
 
   async run(interaction: ChatInputCommandInteraction) {
     const userId = interaction.options.getString('user_id', true).trim();

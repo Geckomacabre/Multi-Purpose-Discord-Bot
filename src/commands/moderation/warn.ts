@@ -13,8 +13,7 @@ const Warn: Command = {
     .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
     .setContexts([InteractionContextType.Guild])
     .addUserOption(o => o.setName('user').setDescription('Member to warn').setRequired(true))
-    .addStringOption(o => o.setName('reason').setDescription('Reason for the warning').setRequired(true))
-    as any,
+    .addStringOption(o => o.setName('reason').setDescription('Reason for the warning').setRequired(true)) as any,
 
   async run(interaction: ChatInputCommandInteraction) {
     const user = interaction.options.getUser('user', true);

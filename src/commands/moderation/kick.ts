@@ -13,8 +13,7 @@ const Kick: Command = {
     .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
     .setContexts([InteractionContextType.Guild])
     .addUserOption(o => o.setName('user').setDescription('Member to kick').setRequired(true))
-    .addStringOption(o => o.setName('reason').setDescription('Reason for the kick'))
-    as any,
+    .addStringOption(o => o.setName('reason').setDescription('Reason for the kick')) as any,
 
   async run(interaction: ChatInputCommandInteraction) {
     const user = interaction.options.getUser('user', true);

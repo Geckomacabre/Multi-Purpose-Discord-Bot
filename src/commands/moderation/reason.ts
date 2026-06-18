@@ -13,8 +13,7 @@ const Reason: Command = {
     .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
     .setContexts([InteractionContextType.Guild])
     .addIntegerOption(o => o.setName('case').setDescription('Case number').setRequired(true))
-    .addStringOption(o => o.setName('reason').setDescription('New reason').setRequired(true))
-    as any,
+    .addStringOption(o => o.setName('reason').setDescription('New reason').setRequired(true)) as any,
 
   async run(interaction: ChatInputCommandInteraction) {
     const caseNum = interaction.options.getInteger('case', true);

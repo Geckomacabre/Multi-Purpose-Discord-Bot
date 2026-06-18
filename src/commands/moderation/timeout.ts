@@ -25,8 +25,7 @@ const Timeout: Command = {
     .setContexts([InteractionContextType.Guild])
     .addUserOption(o => o.setName('user').setDescription('Member to timeout').setRequired(true))
     .addStringOption(o => o.setName('duration').setDescription('Duration (e.g. 10m, 1h, 7d)').setRequired(true))
-    .addStringOption(o => o.setName('reason').setDescription('Reason'))
-    as any,
+    .addStringOption(o => o.setName('reason').setDescription('Reason')) as any,
 
   async run(interaction: ChatInputCommandInteraction) {
     const user = interaction.options.getUser('user', true);

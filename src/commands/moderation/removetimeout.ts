@@ -13,8 +13,7 @@ const RemoveTimeout: Command = {
     .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
     .setContexts([InteractionContextType.Guild])
     .addUserOption(o => o.setName('user').setDescription('Member to un-timeout').setRequired(true))
-    .addStringOption(o => o.setName('reason').setDescription('Reason'))
-    as any,
+    .addStringOption(o => o.setName('reason').setDescription('Reason')) as any,
 
   async run(interaction: ChatInputCommandInteraction) {
     const user = interaction.options.getUser('user', true);

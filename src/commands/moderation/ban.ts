@@ -15,8 +15,7 @@ const Ban: Command = {
     .addUserOption(o => o.setName('user').setDescription('User to ban').setRequired(true))
     .addStringOption(o => o.setName('reason').setDescription('Reason for the ban'))
     .addIntegerOption(o => o.setName('days').setDescription('Days of messages to delete (0-7)').setMinValue(0).setMaxValue(7))
-    .addStringOption(o => o.setName('duration').setDescription('Temporary ban duration (e.g. 1d, 12h). Leave blank for permanent.'))
-    as any,
+    .addStringOption(o => o.setName('duration').setDescription('Temporary ban duration (e.g. 1d, 12h). Leave blank for permanent.')) as any,
 
   async run(interaction: ChatInputCommandInteraction) {
     const user = interaction.options.getUser('user', true);

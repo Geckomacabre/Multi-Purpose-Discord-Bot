@@ -13,8 +13,7 @@ const Clean: Command = {
     .setContexts([InteractionContextType.Guild])
     .addIntegerOption(o => o.setName('amount').setDescription('Number of messages to delete (1–100)').setRequired(true).setMinValue(1).setMaxValue(100))
     .addUserOption(o => o.setName('user').setDescription('Only delete messages from this user'))
-    .addBooleanOption(o => o.setName('bots').setDescription('Only delete bot messages'))
-    as any,
+    .addBooleanOption(o => o.setName('bots').setDescription('Only delete bot messages')) as any,
 
   async run(interaction: ChatInputCommandInteraction) {
     const amount = interaction.options.getInteger('amount', true);
