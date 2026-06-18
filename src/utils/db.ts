@@ -339,6 +339,39 @@ export type IReactionRole = {
   role_id: string;
 };
 
+export type ITopicChannel = {
+  id: number;
+  guild_id: string;
+  channel_id: string;
+  interval_seconds: number;
+  last_posted: number;
+  mode: 'sequential' | 'random';
+};
+
+export type ITopic = {
+  id: number;
+  guild_id: string;
+  channel_id: string;
+  text: string;
+  order_index: number;
+};
+
+export type IStarboardConfig = {
+  guild_id: string;
+  channel_id: string | null;
+  threshold: number;
+  emoji: string;
+  enabled: number;
+};
+
+export type IStarboardPost = {
+  id: number;
+  guild_id: string;
+  source_message_id: string;
+  starboard_message_id: string;
+  stars: number;
+};
+
 // ─── DB instance ─────────────────────────────────────────────────────────────
 
 export const db = new SQL('sqlite://db.sqlite');
@@ -719,6 +752,41 @@ export async function initDb() {
     role_id    TEXT NOT NULL,
     UNIQUE(guild_id, message_id, emoji)
   )`;
+
+  await db`CREATE TABLE IF NOT EXISTS topic_channels (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id         TEXT NOT NULL,
+    channel_id       TEXT NOT NULL,
+    interval_seconds INTEGER NOT NULL DEFAULT 86400,
+    last_posted      INTEGER NOT NULL DEFAULT 0,
+    mode             TEXT NOT NULL DEFAULT 'sequential',
+    UNIQUE(guild_id, channel_id)
+  )`;
+
+  await db`CREATE TABLE IF NOT EXISTS topics (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id    TEXT NOT NULL,
+    channel_id  TEXT NOT NULL,
+    text        TEXT NOT NULL,
+    order_index INTEGER NOT NULL DEFAULT 0
+  )`;
+
+  await db`CREATE TABLE IF NOT EXISTS starboard_config (
+    guild_id   TEXT PRIMARY KEY,
+    channel_id TEXT,
+    threshold  INTEGER NOT NULL DEFAULT 3,
+    emoji      TEXT NOT NULL DEFAULT '⭐',
+    enabled    INTEGER NOT NULL DEFAULT 1
+  )`;
+
+  await db`CREATE TABLE IF NOT EXISTS starboard_posts (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id            TEXT NOT NULL,
+    source_message_id   TEXT NOT NULL,
+    starboard_message_id TEXT NOT NULL,
+    stars               INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(guild_id, source_message_id)
+  )`;
 }
 
 // ─── Guild cleanup ────────────────────────────────────────────────────────────
@@ -734,6 +802,7 @@ export async function removeGuild(guild_id: string) {
     'economy', 'economy_config', 'economy_cooldowns', 'xp', 'xp_config', 'level_roles',
     'free_game_config', 'free_game_posted', 'birthdays', 'birthday_config',
     'welcome_config', 'stat_channels', 'giveaways', 'reaction_roles',
+    'topic_channels', 'topics', 'starboard_config', 'starboard_posts',
   ]) {
     await db`DELETE FROM ${db(table)} WHERE guild_id = ${guild_id}`.catch(() => {});
   }
@@ -1790,4 +1859,123 @@ export async function removeReactionRole(id: number, guild_id: string): Promise<
 
 export async function clearReactionRolesForMessage(guild_id: string, message_id: string) {
   await db`DELETE FROM reaction_roles WHERE guild_id = ${guild_id} AND message_id = ${message_id}`;
+}
+
+// ─── Topic channels ───────────────────────────────────────────────────────────
+
+export async function getTopicChannel(guild_id: string, channel_id: string): Promise<ITopicChannel | null> {
+  const [row] = await db`SELECT * FROM topic_channels WHERE guild_id = ${guild_id} AND channel_id = ${channel_id}`;
+  return (row as ITopicChannel) || null;
+}
+
+export async function getAllTopicChannels(): Promise<ITopicChannel[]> {
+  const rows = await db`SELECT * FROM topic_channels`;
+  return rows as ITopicChannel[];
+}
+
+export async function getTopicChannelsForGuild(guild_id: string): Promise<ITopicChannel[]> {
+  const rows = await db`SELECT * FROM topic_channels WHERE guild_id = ${guild_id}`;
+  return rows as ITopicChannel[];
+}
+
+export async function setTopicChannel(
+  guild_id: string, channel_id: string, interval_seconds: number, mode: 'sequential' | 'random'
+): Promise<ITopicChannel> {
+  await ensureConfig(guild_id);
+  const [row] = await db`
+    INSERT INTO topic_channels (guild_id, channel_id, interval_seconds, mode)
+    VALUES (${guild_id}, ${channel_id}, ${interval_seconds}, ${mode})
+    ON CONFLICT(guild_id, channel_id) DO UPDATE SET
+      interval_seconds = excluded.interval_seconds,
+      mode = excluded.mode
+    RETURNING *
+  `;
+  return row as ITopicChannel;
+}
+
+export async function removeTopicChannel(guild_id: string, channel_id: string): Promise<boolean> {
+  const result = await db`DELETE FROM topic_channels WHERE guild_id = ${guild_id} AND channel_id = ${channel_id} RETURNING id`;
+  return result.length > 0;
+}
+
+export async function updateTopicLastPosted(id: number) {
+  await db`UPDATE topic_channels SET last_posted = ${Date.now()} WHERE id = ${id}`;
+}
+
+export async function getTopics(guild_id: string, channel_id: string): Promise<ITopic[]> {
+  const rows = await db`SELECT * FROM topics WHERE guild_id = ${guild_id} AND channel_id = ${channel_id} ORDER BY order_index, id`;
+  return rows as ITopic[];
+}
+
+export async function addTopic(guild_id: string, channel_id: string, text: string): Promise<ITopic> {
+  await ensureConfig(guild_id);
+  const existing = await getTopics(guild_id, channel_id);
+  const order_index = existing.length;
+  const [row] = await db`
+    INSERT INTO topics (guild_id, channel_id, text, order_index)
+    VALUES (${guild_id}, ${channel_id}, ${text}, ${order_index})
+    RETURNING *
+  `;
+  return row as ITopic;
+}
+
+export async function removeTopic(id: number, guild_id: string): Promise<boolean> {
+  const result = await db`DELETE FROM topics WHERE id = ${id} AND guild_id = ${guild_id} RETURNING id`;
+  return result.length > 0;
+}
+
+export async function getNextTopic(guild_id: string, channel_id: string, mode: string): Promise<ITopic | null> {
+  const topics = await getTopics(guild_id, channel_id);
+  if (!topics.length) return null;
+  if (mode === 'random') return topics[Math.floor(Math.random() * topics.length)];
+  // Sequential: find the one with the lowest order_index that hasn't been used most recently
+  // Simple: rotate through by cycling order_index
+  return topics[0];
+}
+
+export async function rotateTopic(guild_id: string, channel_id: string) {
+  // Move the first topic to the end (increment all others, or just reorder)
+  const topics = await getTopics(guild_id, channel_id);
+  if (topics.length <= 1) return;
+  const first = topics[0];
+  await db`UPDATE topics SET order_index = ${topics.length} WHERE id = ${first.id}`;
+  // Decrement others
+  for (const t of topics.slice(1)) {
+    await db`UPDATE topics SET order_index = ${t.order_index - 1} WHERE id = ${t.id}`;
+  }
+}
+
+// ─── Starboard ────────────────────────────────────────────────────────────────
+
+export async function getStarboardConfig(guild_id: string): Promise<IStarboardConfig | null> {
+  const [row] = await db`SELECT * FROM starboard_config WHERE guild_id = ${guild_id}`;
+  return (row as IStarboardConfig) || null;
+}
+
+export async function setStarboardConfig(guild_id: string, fields: Partial<Omit<IStarboardConfig, 'guild_id'>>) {
+  await ensureConfig(guild_id);
+  await db`INSERT OR IGNORE INTO starboard_config (guild_id) VALUES (${guild_id})`;
+  if (fields.channel_id !== undefined) await db`UPDATE starboard_config SET channel_id = ${fields.channel_id} WHERE guild_id = ${guild_id}`;
+  if (fields.threshold !== undefined) await db`UPDATE starboard_config SET threshold = ${fields.threshold} WHERE guild_id = ${guild_id}`;
+  if (fields.emoji !== undefined) await db`UPDATE starboard_config SET emoji = ${fields.emoji} WHERE guild_id = ${guild_id}`;
+  if (fields.enabled !== undefined) await db`UPDATE starboard_config SET enabled = ${fields.enabled} WHERE guild_id = ${guild_id}`;
+}
+
+export async function getStarboardPost(guild_id: string, source_message_id: string): Promise<IStarboardPost | null> {
+  const [row] = await db`SELECT * FROM starboard_posts WHERE guild_id = ${guild_id} AND source_message_id = ${source_message_id}`;
+  return (row as IStarboardPost) || null;
+}
+
+export async function createStarboardPost(guild_id: string, source_message_id: string, starboard_message_id: string, stars: number): Promise<IStarboardPost> {
+  const [row] = await db`
+    INSERT INTO starboard_posts (guild_id, source_message_id, starboard_message_id, stars)
+    VALUES (${guild_id}, ${source_message_id}, ${starboard_message_id}, ${stars})
+    ON CONFLICT(guild_id, source_message_id) DO UPDATE SET stars = excluded.stars, starboard_message_id = excluded.starboard_message_id
+    RETURNING *
+  `;
+  return row as IStarboardPost;
+}
+
+export async function updateStarboardPostStars(guild_id: string, source_message_id: string, stars: number) {
+  await db`UPDATE starboard_posts SET stars = ${stars} WHERE guild_id = ${guild_id} AND source_message_id = ${source_message_id}`;
 }

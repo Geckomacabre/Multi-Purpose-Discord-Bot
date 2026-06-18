@@ -19,6 +19,8 @@ import reactionRolesModule from './reactionroles';
 import giveawayModule, { startGiveawayChecker } from './giveaway';
 import { startBirthdayChecker } from './birthday';
 import { startStatChannelUpdater } from './statchannels';
+import { startTopicPoller } from './topics';
+import starboardModule from './starboard';
 
 const features = [
   countingModule,
@@ -36,6 +38,7 @@ const features = [
   welcomeModule,
   reactionRolesModule,
   giveawayModule,
+  starboardModule,
 ];
 
 export function registerFeatures(bot: Client) {
@@ -58,5 +61,6 @@ export function registerFeatures(bot: Client) {
     startGiveawayChecker(bot);
     startBirthdayChecker(bot);
     startStatChannelUpdater(bot);
+    startTopicPoller(bot);
   });
 }
