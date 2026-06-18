@@ -277,6 +277,23 @@ All gambling commands bet against your coin balance.
 | `/gamble roll <bet>` | Roll 1–100 against the bot — higher roll wins; ties refund your bet. |
 | `/gamble slots <bet>` | Spin the slot machine — match 3 symbols to win. Payouts: 🍒×3=1.5× \| 🍋×3=2× \| 🔔×3=3× \| 💎×3=5× \| 7️⃣×3=10×. |
 
+#### Free Game Tracker
+Polls Epic Games Store, Steam, and GOG every hour for free game promotions. Posts to a configured channel with a claim button, the original price, and how long the freebie lasts. Deduplicates per server so no game is posted twice.
+
+| Command | Description |
+|---|---|
+| `/freegames setup <channel>` | Enable the tracker and set the announcement channel. Optionally set a role to ping. |
+| `/freegames platforms` | Toggle which platforms to track (Epic, Steam, GOG). |
+| `/freegames ping [role]` | Set or clear the role pinged for new free game alerts. |
+| `/freegames disable` | Disable the tracker for this server. |
+| `/freegames view` | View current tracker settings. |
+| `/freegames check` | Manually trigger a check and post any new free games immediately. |
+
+Supported platforms:
+- **Epic Games Store** — weekly free games via their official promotions API
+- **Steam** — featured 100%-off specials (free weekends, permanent giveaways)
+- **GOG** — discounted-to-free games from their catalog
+
 #### Economy Admin
 | Command | Description |
 |---|---|
