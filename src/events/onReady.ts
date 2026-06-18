@@ -1,4 +1,4 @@
-import { REST, Routes, type Client } from 'discord.js';
+import { ActivityType, REST, Routes, type Client } from 'discord.js';
 import logger from '../utils/logger';
 import Config from '../config';
 import commands from '../handlers/commandHandler';
@@ -32,6 +32,11 @@ export const onReady = async (Bot: Client) => {
     }
 
     logger.info(`Logged in as ${Bot.user?.tag}!`);
+
+    Bot.user?.setPresence({
+      activities: [{ name: 'Message the TMC Discord Mods', type: ActivityType.Custom }],
+      status: 'online',
+    });
   } catch (error) {
     console.error('Failed to register commands:', error);
   }

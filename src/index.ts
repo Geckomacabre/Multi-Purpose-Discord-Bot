@@ -4,6 +4,14 @@ import { registerEvents } from './events';
 import { registerFeatures } from './features';
 import * as db from './utils/db';
 
+process.on('uncaughtException', (err) => {
+  console.error(`Unhandled Exception: ${err}`);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error(`Unhandled Rejection at: ${promise}, reason: ${reason}`);
+});
+
 export const Bot = new Client({
   intents: [
     GatewayIntentBits.Guilds,

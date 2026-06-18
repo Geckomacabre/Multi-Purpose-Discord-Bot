@@ -21,6 +21,7 @@ import { startBirthdayChecker } from './birthday';
 import { startStatChannelUpdater } from './statchannels';
 import { startTopicPoller } from './topics';
 import starboardModule from './starboard';
+import joinRolesModule from './joinroles';
 
 const features = [
   countingModule,
@@ -39,6 +40,7 @@ const features = [
   reactionRolesModule,
   giveawayModule,
   starboardModule,
+  joinRolesModule,
 ];
 
 export function registerFeatures(bot: Client) {
