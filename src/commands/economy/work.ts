@@ -8,6 +8,8 @@ import { getEconomyConfig, getEconomyCooldown, setEconomyCooldown, adjustBalance
 
 const WORK_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
 
+const pendingNotifications = new Map<string, ReturnType<typeof setTimeout>>();
+
 const WORK_JOBS = [
   'worked the night shift at a gas station',
   'delivered pizzas',
@@ -62,6 +64,22 @@ const Work: Command = {
       .setFooter({ text: 'You can work again in 1 hour.' });
 
     await interaction.reply({ embeds: [embed] });
+
+    // Cancel any existing timer for this user (shouldn't happen, but be safe)
+    const existing = pendingNotifications.get(userId);
+    if (existing) clearTimeout(existing);
+
+    const timer = setTimeout(async () => {
+      pendingNotifications.delete(userId);
+      try {
+        const dmChannel = await interaction.user.createDM();
+        await dmChannel.send(`⏰ Your work cooldown is up! Head back to **${interaction.guild?.name}** and run \`/work\` to earn more ${cfg.currency_symbol} ${cfg.currency_name}.`);
+      } catch {
+        // User has DMs disabled — silently ignore
+      }
+    }, WORK_COOLDOWN_MS);
+
+    pendingNotifications.set(userId, timer);
   },
 };
 
