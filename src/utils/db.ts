@@ -283,6 +283,62 @@ export type IFreeGamePosted = {
   posted_at: number;
 };
 
+export type IBirthday = {
+  guild_id: string;
+  user_id: string;
+  month: number;
+  day: number;
+};
+
+export type IBirthdayConfig = {
+  guild_id: string;
+  channel_id: string | null;
+  enabled: number;
+};
+
+export type ITimezone = {
+  user_id: string;
+  timezone: string;
+};
+
+export type IWelcomeConfig = {
+  guild_id: string;
+  channel_id: string | null;
+  message: string;
+  dm_message: string | null;
+  enabled: number;
+};
+
+export type IStatChannel = {
+  id: number;
+  guild_id: string;
+  channel_id: string;
+  type: string;
+  label: string;
+};
+
+export type IGiveaway = {
+  id: number;
+  guild_id: string;
+  channel_id: string;
+  message_id: string | null;
+  host_id: string;
+  prize: string;
+  winner_count: number;
+  ends_at: number;
+  ended: number;
+  entries: string;
+};
+
+export type IReactionRole = {
+  id: number;
+  guild_id: string;
+  channel_id: string;
+  message_id: string;
+  emoji: string;
+  role_id: string;
+};
+
 // ─── DB instance ─────────────────────────────────────────────────────────────
 
 export const db = new SQL('sqlite://db.sqlite');
@@ -605,6 +661,64 @@ export async function initDb() {
     posted_at INTEGER NOT NULL,
     UNIQUE(guild_id, game_id)
   )`;
+
+  await db`CREATE TABLE IF NOT EXISTS birthdays (
+    guild_id TEXT NOT NULL,
+    user_id  TEXT NOT NULL,
+    month    INTEGER NOT NULL,
+    day      INTEGER NOT NULL,
+    PRIMARY KEY (guild_id, user_id)
+  )`;
+
+  await db`CREATE TABLE IF NOT EXISTS birthday_config (
+    guild_id   TEXT PRIMARY KEY,
+    channel_id TEXT,
+    enabled    INTEGER NOT NULL DEFAULT 1
+  )`;
+
+  await db`CREATE TABLE IF NOT EXISTS timezones (
+    user_id  TEXT PRIMARY KEY,
+    timezone TEXT NOT NULL
+  )`;
+
+  await db`CREATE TABLE IF NOT EXISTS welcome_config (
+    guild_id   TEXT PRIMARY KEY,
+    channel_id TEXT,
+    message    TEXT NOT NULL DEFAULT 'Welcome {user} to **{server}**! You are member #{membercount}.',
+    dm_message TEXT,
+    enabled    INTEGER NOT NULL DEFAULT 1
+  )`;
+
+  await db`CREATE TABLE IF NOT EXISTS stat_channels (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id   TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    type       TEXT NOT NULL,
+    label      TEXT NOT NULL
+  )`;
+
+  await db`CREATE TABLE IF NOT EXISTS giveaways (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id     TEXT NOT NULL,
+    channel_id   TEXT NOT NULL,
+    message_id   TEXT,
+    host_id      TEXT NOT NULL,
+    prize        TEXT NOT NULL,
+    winner_count INTEGER NOT NULL DEFAULT 1,
+    ends_at      INTEGER NOT NULL,
+    ended        INTEGER NOT NULL DEFAULT 0,
+    entries      TEXT NOT NULL DEFAULT '[]'
+  )`;
+
+  await db`CREATE TABLE IF NOT EXISTS reaction_roles (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id   TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    emoji      TEXT NOT NULL,
+    role_id    TEXT NOT NULL,
+    UNIQUE(guild_id, message_id, emoji)
+  )`;
 }
 
 // ─── Guild cleanup ────────────────────────────────────────────────────────────
@@ -618,7 +732,8 @@ export async function removeGuild(guild_id: string) {
     'custom_commands', 'twitch_feeds', 'youtube_feeds', 'reddit_feeds',
     'rss_feeds', 'serverstats', 'streaming_config', 'rsvp_events',
     'economy', 'economy_config', 'economy_cooldowns', 'xp', 'xp_config', 'level_roles',
-    'free_game_config', 'free_game_posted',
+    'free_game_config', 'free_game_posted', 'birthdays', 'birthday_config',
+    'welcome_config', 'stat_channels', 'giveaways', 'reaction_roles',
   ]) {
     await db`DELETE FROM ${db(table)} WHERE guild_id = ${guild_id}`.catch(() => {});
   }
@@ -1482,4 +1597,197 @@ export async function markFreeGamePosted(guild_id: string, game_id: string) {
     INSERT OR IGNORE INTO free_game_posted (guild_id, game_id, posted_at)
     VALUES (${guild_id}, ${game_id}, ${Date.now()})
   `;
+}
+
+// ─── Birthdays ────────────────────────────────────────────────────────────────
+
+export async function setBirthday(guild_id: string, user_id: string, month: number, day: number) {
+  await ensureConfig(guild_id);
+  await db`
+    INSERT INTO birthdays (guild_id, user_id, month, day) VALUES (${guild_id}, ${user_id}, ${month}, ${day})
+    ON CONFLICT(guild_id, user_id) DO UPDATE SET month = excluded.month, day = excluded.day
+  `;
+}
+
+export async function removeBirthday(guild_id: string, user_id: string) {
+  await db`DELETE FROM birthdays WHERE guild_id = ${guild_id} AND user_id = ${user_id}`;
+}
+
+export async function getBirthday(guild_id: string, user_id: string): Promise<IBirthday | null> {
+  const [row] = await db`SELECT * FROM birthdays WHERE guild_id = ${guild_id} AND user_id = ${user_id}`;
+  return (row as IBirthday) || null;
+}
+
+export async function getBirthdays(guild_id: string): Promise<IBirthday[]> {
+  const rows = await db`SELECT * FROM birthdays WHERE guild_id = ${guild_id} ORDER BY month, day`;
+  return rows as IBirthday[];
+}
+
+export async function getTodaysBirthdays(month: number, day: number): Promise<IBirthday[]> {
+  const rows = await db`SELECT * FROM birthdays WHERE month = ${month} AND day = ${day}`;
+  return rows as IBirthday[];
+}
+
+export async function getBirthdayConfig(guild_id: string): Promise<IBirthdayConfig> {
+  const [row] = await db`SELECT * FROM birthday_config WHERE guild_id = ${guild_id}`;
+  return (row as IBirthdayConfig) || { guild_id, channel_id: null, enabled: 1 };
+}
+
+export async function setBirthdayConfig(guild_id: string, fields: Partial<Omit<IBirthdayConfig, 'guild_id'>>) {
+  await ensureConfig(guild_id);
+  await db`INSERT OR IGNORE INTO birthday_config (guild_id) VALUES (${guild_id})`;
+  if (fields.channel_id !== undefined) await db`UPDATE birthday_config SET channel_id = ${fields.channel_id} WHERE guild_id = ${guild_id}`;
+  if (fields.enabled !== undefined) await db`UPDATE birthday_config SET enabled = ${fields.enabled} WHERE guild_id = ${guild_id}`;
+}
+
+// ─── Timezones ────────────────────────────────────────────────────────────────
+
+export async function setTimezone(user_id: string, timezone: string) {
+  await db`
+    INSERT INTO timezones (user_id, timezone) VALUES (${user_id}, ${timezone})
+    ON CONFLICT(user_id) DO UPDATE SET timezone = excluded.timezone
+  `;
+}
+
+export async function removeTimezone(user_id: string) {
+  await db`DELETE FROM timezones WHERE user_id = ${user_id}`;
+}
+
+export async function getTimezone(user_id: string): Promise<ITimezone | null> {
+  const [row] = await db`SELECT * FROM timezones WHERE user_id = ${user_id}`;
+  return (row as ITimezone) || null;
+}
+
+// ─── Welcome config ───────────────────────────────────────────────────────────
+
+export async function getWelcomeConfig(guild_id: string): Promise<IWelcomeConfig | null> {
+  const [row] = await db`SELECT * FROM welcome_config WHERE guild_id = ${guild_id}`;
+  return (row as IWelcomeConfig) || null;
+}
+
+export async function setWelcomeConfig(guild_id: string, fields: Partial<Omit<IWelcomeConfig, 'guild_id'>>) {
+  await ensureConfig(guild_id);
+  await db`INSERT OR IGNORE INTO welcome_config (guild_id) VALUES (${guild_id})`;
+  if (fields.channel_id !== undefined) await db`UPDATE welcome_config SET channel_id = ${fields.channel_id} WHERE guild_id = ${guild_id}`;
+  if (fields.message !== undefined) await db`UPDATE welcome_config SET message = ${fields.message} WHERE guild_id = ${guild_id}`;
+  if (fields.dm_message !== undefined) await db`UPDATE welcome_config SET dm_message = ${fields.dm_message} WHERE guild_id = ${guild_id}`;
+  if (fields.enabled !== undefined) await db`UPDATE welcome_config SET enabled = ${fields.enabled} WHERE guild_id = ${guild_id}`;
+}
+
+// ─── Stat channels ────────────────────────────────────────────────────────────
+
+export async function getStatChannels(guild_id: string): Promise<IStatChannel[]> {
+  const rows = await db`SELECT * FROM stat_channels WHERE guild_id = ${guild_id}`;
+  return rows as IStatChannel[];
+}
+
+export async function getAllStatChannels(): Promise<IStatChannel[]> {
+  const rows = await db`SELECT * FROM stat_channels`;
+  return rows as IStatChannel[];
+}
+
+export async function addStatChannel(guild_id: string, channel_id: string, type: string, label: string): Promise<IStatChannel> {
+  await ensureConfig(guild_id);
+  const [row] = await db`
+    INSERT INTO stat_channels (guild_id, channel_id, type, label) VALUES (${guild_id}, ${channel_id}, ${type}, ${label})
+    RETURNING *
+  `;
+  return row as IStatChannel;
+}
+
+export async function removeStatChannel(guild_id: string, channel_id: string): Promise<boolean> {
+  const result = await db`DELETE FROM stat_channels WHERE guild_id = ${guild_id} AND channel_id = ${channel_id} RETURNING id`;
+  return result.length > 0;
+}
+
+export async function removeStatChannelById(id: number, guild_id: string): Promise<boolean> {
+  const result = await db`DELETE FROM stat_channels WHERE id = ${id} AND guild_id = ${guild_id} RETURNING id`;
+  return result.length > 0;
+}
+
+// ─── Giveaways ────────────────────────────────────────────────────────────────
+
+export async function createGiveaway(
+  guild_id: string, channel_id: string, host_id: string,
+  prize: string, winner_count: number, ends_at: number
+): Promise<IGiveaway> {
+  await ensureConfig(guild_id);
+  const [row] = await db`
+    INSERT INTO giveaways (guild_id, channel_id, host_id, prize, winner_count, ends_at)
+    VALUES (${guild_id}, ${channel_id}, ${host_id}, ${prize}, ${winner_count}, ${ends_at})
+    RETURNING *
+  `;
+  return row as IGiveaway;
+}
+
+export async function updateGiveawayMessageId(id: number, message_id: string) {
+  await db`UPDATE giveaways SET message_id = ${message_id} WHERE id = ${id}`;
+}
+
+export async function getGiveaway(id: number, guild_id: string): Promise<IGiveaway | null> {
+  const [row] = await db`SELECT * FROM giveaways WHERE id = ${id} AND guild_id = ${guild_id}`;
+  return (row as IGiveaway) || null;
+}
+
+export async function getActiveGiveaways(guild_id: string): Promise<IGiveaway[]> {
+  const rows = await db`SELECT * FROM giveaways WHERE guild_id = ${guild_id} AND ended = 0 ORDER BY ends_at ASC`;
+  return rows as IGiveaway[];
+}
+
+export async function getExpiredGiveaways(): Promise<IGiveaway[]> {
+  const rows = await db`SELECT * FROM giveaways WHERE ended = 0 AND ends_at <= ${Date.now()}`;
+  return rows as IGiveaway[];
+}
+
+export async function endGiveaway(id: number) {
+  await db`UPDATE giveaways SET ended = 1 WHERE id = ${id}`;
+}
+
+export async function enterGiveaway(id: number, user_id: string): Promise<{ entered: boolean; count: number }> {
+  const [row] = await db`SELECT entries FROM giveaways WHERE id = ${id}`;
+  if (!row) return { entered: false, count: 0 };
+  const entries: string[] = JSON.parse(row.entries as string);
+  if (entries.includes(user_id)) return { entered: false, count: entries.length };
+  entries.push(user_id);
+  await db`UPDATE giveaways SET entries = ${JSON.stringify(entries)} WHERE id = ${id}`;
+  return { entered: true, count: entries.length };
+}
+
+export async function getGiveawayEntries(id: number): Promise<string[]> {
+  const [row] = await db`SELECT entries FROM giveaways WHERE id = ${id}`;
+  return row ? JSON.parse(row.entries as string) : [];
+}
+
+// ─── Reaction roles ───────────────────────────────────────────────────────────
+
+export async function getReactionRoles(guild_id: string): Promise<IReactionRole[]> {
+  const rows = await db`SELECT * FROM reaction_roles WHERE guild_id = ${guild_id}`;
+  return rows as IReactionRole[];
+}
+
+export async function getReactionRolesForMessage(guild_id: string, message_id: string): Promise<IReactionRole[]> {
+  const rows = await db`SELECT * FROM reaction_roles WHERE guild_id = ${guild_id} AND message_id = ${message_id}`;
+  return rows as IReactionRole[];
+}
+
+export async function addReactionRole(
+  guild_id: string, channel_id: string, message_id: string, emoji: string, role_id: string
+): Promise<IReactionRole> {
+  await ensureConfig(guild_id);
+  const [row] = await db`
+    INSERT INTO reaction_roles (guild_id, channel_id, message_id, emoji, role_id)
+    VALUES (${guild_id}, ${channel_id}, ${message_id}, ${emoji}, ${role_id})
+    ON CONFLICT(guild_id, message_id, emoji) DO UPDATE SET role_id = excluded.role_id
+    RETURNING *
+  `;
+  return row as IReactionRole;
+}
+
+export async function removeReactionRole(id: number, guild_id: string): Promise<boolean> {
+  const result = await db`DELETE FROM reaction_roles WHERE id = ${id} AND guild_id = ${guild_id} RETURNING id`;
+  return result.length > 0;
+}
+
+export async function clearReactionRolesForMessage(guild_id: string, message_id: string) {
+  await db`DELETE FROM reaction_roles WHERE guild_id = ${guild_id} AND message_id = ${message_id}`;
 }

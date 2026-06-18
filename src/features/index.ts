@@ -14,6 +14,11 @@ import customCommandsModule from './customcommands';
 import { startFeedsPollers } from './feeds';
 import { startFreeGamesPoller } from './freegames';
 import xpModule from './xp';
+import welcomeModule from './welcome';
+import reactionRolesModule from './reactionroles';
+import giveawayModule, { startGiveawayChecker } from './giveaway';
+import { startBirthdayChecker } from './birthday';
+import { startStatChannelUpdater } from './statchannels';
 
 const features = [
   countingModule,
@@ -28,6 +33,9 @@ const features = [
   ticketsModule,
   customCommandsModule,
   xpModule,
+  welcomeModule,
+  reactionRolesModule,
+  giveawayModule,
 ];
 
 export function registerFeatures(bot: Client) {
@@ -43,10 +51,12 @@ export function registerFeatures(bot: Client) {
     }
   }
 
-  // Start the scheduler (handles temp bans) once the client is ready
   bot.once('clientReady', () => {
     initModerationScheduler(bot);
     startFeedsPollers(bot);
     startFreeGamesPoller(bot);
+    startGiveawayChecker(bot);
+    startBirthdayChecker(bot);
+    startStatChannelUpdater(bot);
   });
 }

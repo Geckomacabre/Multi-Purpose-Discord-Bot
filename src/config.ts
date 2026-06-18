@@ -26,6 +26,7 @@ interface Config {
   REDDIT_CLIENT_ID?: string;
   REDDIT_CLIENT_SECRET?: string;
   REPORT_CHANNEL_ID?: string;
+  TENOR_API_KEY?: string;
 }
 
 const Config: Config = {
@@ -40,6 +41,7 @@ const Config: Config = {
   REDDIT_CLIENT_ID: Bun.env.REDDIT_CLIENT_ID,
   REDDIT_CLIENT_SECRET: Bun.env.REDDIT_CLIENT_SECRET,
   REPORT_CHANNEL_ID: Bun.env.REPORT_CHANNEL_ID,
+  TENOR_API_KEY: Bun.env.TENOR_API_KEY,
 };
 
 export default Config;
