@@ -44,7 +44,7 @@ export function registerFeatures(bot: Client) {
   }
 
   // Start the scheduler (handles temp bans) once the client is ready
-  bot.once('ready', () => {
+  bot.once('clientReady', () => {
     initModerationScheduler(bot);
     startFeedsPollers(bot);
     startFreeGamesPoller(bot);
