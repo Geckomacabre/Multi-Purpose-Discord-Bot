@@ -1,6 +1,7 @@
 import {
   ApplicationIntegrationType, ChatInputCommandInteraction, Colors, EmbedBuilder,
   InteractionContextType, SlashCommandBuilder, TextChannel,
+  MessageFlags,
 } from 'discord.js';
 import * as db from '../../utils/db';
 import Config from '../../config';
@@ -19,7 +20,7 @@ const Report: Command = {
     const user = interaction.options.getUser('user', true);
     const reason = interaction.options.getString('reason', true);
 
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const cfg = await db.getModConfig(interaction.guildId!);
     const channelId = cfg.modlog_channel_id ?? Config.REPORT_CHANNEL_ID;

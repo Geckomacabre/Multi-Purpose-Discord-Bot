@@ -1,6 +1,7 @@
 import {
   ApplicationIntegrationType, ChatInputCommandInteraction, Colors,
   EmbedBuilder, InteractionContextType, PermissionFlagsBits, SlashCommandBuilder,
+  MessageFlags,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
 import { getLevelRoles, addLevelRole, removeLevelRole } from '../../utils/db';
@@ -38,7 +39,7 @@ const Levelroles: Command = {
       const binding = await addLevelRole(guildId, level, role.id);
       await interaction.reply({
         content: `✅ <@&${role.id}> will be assigned when users reach **level ${level}**. (ID: ${binding.id})`,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -48,7 +49,7 @@ const Levelroles: Command = {
       const removed = await removeLevelRole(id, guildId);
       await interaction.reply({
         content: removed ? `✅ Level role binding #${id} removed.` : `❌ No binding found with ID ${id}.`,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -56,7 +57,7 @@ const Levelroles: Command = {
     if (sub === 'list') {
       const rows = await getLevelRoles(guildId);
       if (rows.length === 0) {
-        await interaction.reply({ content: 'No level roles configured. Use `/levelroles add` to set one up.', ephemeral: true });
+        await interaction.reply({ content: 'No level roles configured. Use `/levelroles add` to set one up.', flags: MessageFlags.Ephemeral });
         return;
       }
       const lines = rows.map(r => `**ID ${r.id}** — Level **${r.level}** → <@&${r.role_id}>`);
@@ -64,7 +65,7 @@ const Levelroles: Command = {
         .setColor(Colors.Blurple)
         .setTitle('Level Roles')
         .setDescription(lines.join('\n'));
-      await interaction.reply({ embeds: [embed], ephemeral: true });
+      await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
       return;
     }
   },

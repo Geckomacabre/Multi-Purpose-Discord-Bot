@@ -1,4 +1,6 @@
-import { ApplicationIntegrationType, ChatInputCommandInteraction, InteractionContextType, SlashCommandBuilder } from 'discord.js';
+import { ApplicationIntegrationType, ChatInputCommandInteraction, InteractionContextType, SlashCommandBuilder,
+  MessageFlags,
+} from 'discord.js';
 import { Command } from '../../interfaces/command';
 
 const Roll: Command = {
@@ -12,7 +14,7 @@ const Roll: Command = {
   async run(interaction: ChatInputCommandInteraction) {
     const expr = interaction.options.getString('dice') ?? '1d6';
     const match = /^(\d+)d(\d+)([+-]\d+)?$/i.exec(expr.trim());
-    if (!match) { await interaction.reply({ content: '❌ Invalid dice format. Use e.g. `2d6`, `1d20`, `1d8+3`.', ephemeral: true }); return; }
+    if (!match) { await interaction.reply({ content: '❌ Invalid dice format. Use e.g. `2d6`, `1d20`, `1d8+3`.', flags: MessageFlags.Ephemeral }); return; }
 
     const count = Math.min(parseInt(match[1]), 20);
     const sides = Math.min(parseInt(match[2]), 1000);

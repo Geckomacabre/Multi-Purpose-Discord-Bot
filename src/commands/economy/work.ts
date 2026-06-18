@@ -1,6 +1,7 @@
 import {
   ApplicationIntegrationType, ChatInputCommandInteraction, Colors,
   EmbedBuilder, InteractionContextType, SlashCommandBuilder,
+  MessageFlags,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
 import { getEconomyConfig, getEconomyCooldown, setEconomyCooldown, adjustBalance } from '../../utils/db';
@@ -44,7 +45,7 @@ const Work: Command = {
       const seconds = Math.floor((remaining % 60_000) / 1000);
       await interaction.reply({
         content: `You're tired from your last job. Rest for **${minutes}m ${seconds}s** before working again.`,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }

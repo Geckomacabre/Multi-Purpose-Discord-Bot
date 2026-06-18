@@ -1,4 +1,6 @@
-import { ApplicationIntegrationType, ChatInputCommandInteraction, Colors, EmbedBuilder, InteractionContextType, PermissionsBitField, SlashCommandBuilder } from 'discord.js';
+import { ApplicationIntegrationType, ChatInputCommandInteraction, Colors, EmbedBuilder, InteractionContextType, PermissionsBitField, SlashCommandBuilder,
+  MessageFlags,
+} from 'discord.js';
 import { Command } from '../../interfaces/command';
 
 const PERM_NAMES: Record<string, string> = {
@@ -34,7 +36,7 @@ const Viewperms: Command = {
     const user = interaction.options.getUser('user') ?? interaction.user;
     const channel = interaction.options.getChannel('channel');
     const member = await interaction.guild!.members.fetch(user.id).catch(() => null);
-    if (!member) { await interaction.reply({ content: 'Could not find that member.', ephemeral: true }); return; }
+    if (!member) { await interaction.reply({ content: 'Could not find that member.', flags: MessageFlags.Ephemeral }); return; }
 
     const perms = channel
       ? member.permissionsIn(channel.id)
@@ -50,7 +52,7 @@ const Viewperms: Command = {
       .setDescription(granted.length ? granted.map(p => `✅ ${p}`).join('\n') : 'No permissions')
       .setThumbnail(user.displayAvatarURL());
 
-    await interaction.reply({ embeds: [embed], ephemeral: true });
+    await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
   },
 };
 

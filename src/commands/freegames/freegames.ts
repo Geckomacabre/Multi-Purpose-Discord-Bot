@@ -2,6 +2,7 @@ import {
   ActionRowBuilder, ApplicationIntegrationType, ButtonBuilder, ButtonStyle,
   ChannelType, ChatInputCommandInteraction, Colors, EmbedBuilder,
   InteractionContextType, PermissionFlagsBits, SlashCommandBuilder, TextChannel,
+  MessageFlags,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
 import {
@@ -75,7 +76,7 @@ const Freegames: Command = {
       });
       await interaction.reply({
         content: `✅ Free game tracker enabled. Alerts → <#${channel.id}>${ping ? ` | Ping: <@&${ping.id}>` : ''}.\nAll platforms tracked: Epic, Steam, GOG.\nUse \`/freegames platforms\` to toggle platforms.`,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -83,7 +84,7 @@ const Freegames: Command = {
     if (sub === 'platforms') {
       const config = await getFreeGameConfig(guildId);
       if (!config?.channel_id) {
-        await interaction.reply({ content: '❌ Set up the tracker first with `/freegames setup`.', ephemeral: true }); return;
+        await interaction.reply({ content: '❌ Set up the tracker first with `/freegames setup`.', flags: MessageFlags.Ephemeral }); return;
       }
 
       const current: Platform[] = JSON.parse(config.platforms);
@@ -99,39 +100,39 @@ const Freegames: Command = {
       });
 
       if (updated.length === 0) {
-        await interaction.reply({ content: '❌ At least one platform must be enabled.', ephemeral: true }); return;
+        await interaction.reply({ content: '❌ At least one platform must be enabled.', flags: MessageFlags.Ephemeral }); return;
       }
 
       await setFreeGameConfig(guildId, { platforms: JSON.stringify(updated) });
       const labels = updated.map(p => PLATFORM_LABELS[p]).join(', ');
-      await interaction.reply({ content: `✅ Now tracking: **${labels}**.`, ephemeral: true });
+      await interaction.reply({ content: `✅ Now tracking: **${labels}**.`, flags: MessageFlags.Ephemeral });
       return;
     }
 
     if (sub === 'ping') {
       const config = await getFreeGameConfig(guildId);
       if (!config?.channel_id) {
-        await interaction.reply({ content: '❌ Set up the tracker first with `/freegames setup`.', ephemeral: true }); return;
+        await interaction.reply({ content: '❌ Set up the tracker first with `/freegames setup`.', flags: MessageFlags.Ephemeral }); return;
       }
       const role = interaction.options.getRole('role');
       await setFreeGameConfig(guildId, { ping_role_id: role?.id ?? null });
       await interaction.reply({
         content: role ? `✅ Will ping <@&${role.id}> for new free games.` : '✅ Ping role cleared.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
 
     if (sub === 'disable') {
       await setFreeGameConfig(guildId, { channel_id: null });
-      await interaction.reply({ content: '✅ Free game tracker disabled.', ephemeral: true });
+      await interaction.reply({ content: '✅ Free game tracker disabled.', flags: MessageFlags.Ephemeral });
       return;
     }
 
     if (sub === 'view') {
       const config = await getFreeGameConfig(guildId);
       if (!config?.channel_id) {
-        await interaction.reply({ content: 'Free game tracker is not set up. Use `/freegames setup` to get started.', ephemeral: true }); return;
+        await interaction.reply({ content: 'Free game tracker is not set up. Use `/freegames setup` to get started.', flags: MessageFlags.Ephemeral }); return;
       }
       const platforms: Platform[] = JSON.parse(config.platforms);
       const embed = new EmbedBuilder()
@@ -143,12 +144,12 @@ const Freegames: Command = {
           { name: 'Platforms', value: platforms.map(p => PLATFORM_LABELS[p]).join(', '), inline: true },
         )
         .setFooter({ text: 'Checks for new free games every hour.' });
-      await interaction.reply({ embeds: [embed], ephemeral: true });
+      await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
       return;
     }
 
     if (sub === 'check') {
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       const config = await getFreeGameConfig(guildId);
       if (!config?.channel_id) {
         await interaction.editReply('❌ Set up the tracker first with `/freegames setup`.'); return;

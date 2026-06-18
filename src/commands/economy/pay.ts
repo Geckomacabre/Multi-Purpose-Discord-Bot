@@ -1,6 +1,7 @@
 import {
   ApplicationIntegrationType, ChatInputCommandInteraction, Colors,
   EmbedBuilder, InteractionContextType, SlashCommandBuilder,
+  MessageFlags,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
 import { getEconomyConfig, getOrCreateEconomy, adjustBalance } from '../../utils/db';
@@ -21,10 +22,10 @@ const Pay: Command = {
     const amount = interaction.options.getInteger('amount', true);
 
     if (target.id === sender.id) {
-      await interaction.reply({ content: '❌ You cannot pay yourself.', ephemeral: true }); return;
+      await interaction.reply({ content: '❌ You cannot pay yourself.', flags: MessageFlags.Ephemeral }); return;
     }
     if (target.bot) {
-      await interaction.reply({ content: '❌ You cannot pay bots.', ephemeral: true }); return;
+      await interaction.reply({ content: '❌ You cannot pay bots.', flags: MessageFlags.Ephemeral }); return;
     }
 
     const cfg = await getEconomyConfig(guildId);
@@ -32,7 +33,7 @@ const Pay: Command = {
     if (senderEco.balance < amount) {
       await interaction.reply({
         content: `❌ Insufficient balance. You have **${cfg.currency_symbol} ${senderEco.balance.toLocaleString()}**.`,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }

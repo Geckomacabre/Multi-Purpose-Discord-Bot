@@ -1,6 +1,7 @@
 import {
   ApplicationIntegrationType, ChatInputCommandInteraction, Colors,
   EmbedBuilder, InteractionContextType, SlashCommandBuilder,
+  MessageFlags,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
 import { getEconomyConfig, getOrCreateEconomy, adjustBalance } from '../../utils/db';
@@ -71,7 +72,7 @@ const Gamble: Command = {
     if (eco.balance < bet) {
       await interaction.reply({
         content: `❌ Not enough ${cfg.currency_name}. Your balance: **${cfg.currency_symbol} ${eco.balance.toLocaleString()}**.`,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }

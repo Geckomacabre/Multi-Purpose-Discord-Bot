@@ -1,6 +1,7 @@
 import {
   ApplicationIntegrationType, ChatInputCommandInteraction, InteractionContextType,
   PermissionFlagsBits, SlashCommandBuilder, TextChannel,
+  MessageFlags,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
 
@@ -20,7 +21,7 @@ const Clean: Command = {
     const filterUser = interaction.options.getUser('user');
     const botsOnly = interaction.options.getBoolean('bots') ?? false;
 
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const channel = interaction.channel as TextChannel;
     if (!channel) { await interaction.editReply('Cannot delete messages in this channel.'); return; }

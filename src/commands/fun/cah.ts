@@ -2,6 +2,7 @@ import {
   ApplicationIntegrationType, ButtonBuilder, ButtonStyle,
   ActionRowBuilder, ChatInputCommandInteraction, Colors, EmbedBuilder,
   InteractionContextType, SlashCommandBuilder, TextChannel,
+  MessageFlags,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
 
@@ -110,7 +111,7 @@ const Cah: Command = {
 
     if (sub === 'create') {
       if (game && game.phase !== 'ended') {
-        await interaction.reply({ content: '❌ A game is already running in this channel. Use `/cah end` to stop it.', ephemeral: true }); return;
+        await interaction.reply({ content: '❌ A game is already running in this channel. Use `/cah end` to stop it.', flags: MessageFlags.Ephemeral }); return;
       }
       const newGame: CAHGame = {
         guildId: interaction.guildId!,
@@ -138,12 +139,12 @@ const Cah: Command = {
     }
 
     if (!game || game.phase === 'ended') {
-      await interaction.reply({ content: '❌ No active CAH game. Use `/cah create` to start one.', ephemeral: true }); return;
+      await interaction.reply({ content: '❌ No active CAH game. Use `/cah create` to start one.', flags: MessageFlags.Ephemeral }); return;
     }
 
     if (sub === 'join') {
-      if (game.phase !== 'joining') { await interaction.reply({ content: '❌ The game has already started.', ephemeral: true }); return; }
-      if (game.players.includes(interaction.user.id)) { await interaction.reply({ content: 'You\'re already in the game!', ephemeral: true }); return; }
+      if (game.phase !== 'joining') { await interaction.reply({ content: '❌ The game has already started.', flags: MessageFlags.Ephemeral }); return; }
+      if (game.players.includes(interaction.user.id)) { await interaction.reply({ content: 'You\'re already in the game!', flags: MessageFlags.Ephemeral }); return; }
       game.players.push(interaction.user.id);
       game.hands.set(interaction.user.id, deal(game.handSize));
       await interaction.reply(`✅ <@${interaction.user.id}> joined! Players: ${game.players.map(p => `<@${p}>`).join(', ')}`);
@@ -151,9 +152,9 @@ const Cah: Command = {
     }
 
     if (sub === 'start') {
-      if (interaction.user.id !== game.hostId) { await interaction.reply({ content: '❌ Only the host can start the game.', ephemeral: true }); return; }
-      if (game.phase !== 'joining') { await interaction.reply({ content: '❌ Game already started.', ephemeral: true }); return; }
-      if (game.players.length < 3) { await interaction.reply({ content: '❌ Need at least 3 players to start.', ephemeral: true }); return; }
+      if (interaction.user.id !== game.hostId) { await interaction.reply({ content: '❌ Only the host can start the game.', flags: MessageFlags.Ephemeral }); return; }
+      if (game.phase !== 'joining') { await interaction.reply({ content: '❌ Game already started.', flags: MessageFlags.Ephemeral }); return; }
+      if (game.players.length < 3) { await interaction.reply({ content: '❌ Need at least 3 players to start.', flags: MessageFlags.Ephemeral }); return; }
       game.phase = 'submitting';
       game.round = 1;
       const judge = game.players[game.judgeIndex];
@@ -173,28 +174,28 @@ const Cah: Command = {
 
     if (sub === 'hand') {
       const hand = game.hands.get(interaction.user.id);
-      if (!hand) { await interaction.reply({ content: '❌ You\'re not in this game.', ephemeral: true }); return; }
+      if (!hand) { await interaction.reply({ content: '❌ You\'re not in this game.', flags: MessageFlags.Ephemeral }); return; }
       const embed = new EmbedBuilder()
         .setColor(Colors.White)
         .setTitle('Your Hand')
         .setDescription(hand.map((c, i) => `**${i + 1}.** ${c}`).join('\n'));
-      await interaction.reply({ embeds: [embed], ephemeral: true });
+      await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
       return;
     }
 
     if (sub === 'play') {
-      if (game.phase !== 'submitting') { await interaction.reply({ content: '❌ Not in submission phase.', ephemeral: true }); return; }
+      if (game.phase !== 'submitting') { await interaction.reply({ content: '❌ Not in submission phase.', flags: MessageFlags.Ephemeral }); return; }
       const judge = game.players[game.judgeIndex];
-      if (interaction.user.id === judge) { await interaction.reply({ content: '❌ Card Czar cannot play cards.', ephemeral: true }); return; }
-      if (!game.players.includes(interaction.user.id)) { await interaction.reply({ content: '❌ You\'re not in this game.', ephemeral: true }); return; }
+      if (interaction.user.id === judge) { await interaction.reply({ content: '❌ Card Czar cannot play cards.', flags: MessageFlags.Ephemeral }); return; }
+      if (!game.players.includes(interaction.user.id)) { await interaction.reply({ content: '❌ You\'re not in this game.', flags: MessageFlags.Ephemeral }); return; }
 
       const cardIdx = interaction.options.getInteger('card', true) - 1;
       const hand = game.hands.get(interaction.user.id) ?? [];
-      if (cardIdx >= hand.length) { await interaction.reply({ content: '❌ Invalid card number.', ephemeral: true }); return; }
+      if (cardIdx >= hand.length) { await interaction.reply({ content: '❌ Invalid card number.', flags: MessageFlags.Ephemeral }); return; }
 
       const needed = blanksNeeded(game.blackCard);
       const existing = game.submissions.get(interaction.user.id) ?? [];
-      if (existing.length >= needed) { await interaction.reply({ content: '❌ You\'ve already submitted enough cards.', ephemeral: true }); return; }
+      if (existing.length >= needed) { await interaction.reply({ content: '❌ You\'ve already submitted enough cards.', flags: MessageFlags.Ephemeral }); return; }
 
       const [card] = hand.splice(cardIdx, 1);
       existing.push(card);
@@ -206,7 +207,7 @@ const Cah: Command = {
       const activePlayers = game.players.filter(p => p !== judge);
       const submitted = activePlayers.filter(p => (game.submissions.get(p)?.length ?? 0) >= needed).length;
 
-      await interaction.reply({ content: `✅ Card played! (${submitted}/${activePlayers.length} submitted)`, ephemeral: true });
+      await interaction.reply({ content: `✅ Card played! (${submitted}/${activePlayers.length} submitted)`, flags: MessageFlags.Ephemeral });
 
       // All submitted — reveal to judge
       if (submitted === activePlayers.length) {
@@ -226,13 +227,13 @@ const Cah: Command = {
     }
 
     if (sub === 'pick') {
-      if (game.phase !== 'judging') { await interaction.reply({ content: '❌ Not in judging phase.', ephemeral: true }); return; }
+      if (game.phase !== 'judging') { await interaction.reply({ content: '❌ Not in judging phase.', flags: MessageFlags.Ephemeral }); return; }
       const judge = game.players[game.judgeIndex];
-      if (interaction.user.id !== judge) { await interaction.reply({ content: '❌ Only the Card Czar can pick.', ephemeral: true }); return; }
+      if (interaction.user.id !== judge) { await interaction.reply({ content: '❌ Only the Card Czar can pick.', flags: MessageFlags.Ephemeral }); return; }
 
       const pick = interaction.options.getInteger('submission', true) - 1;
       const activePlayers = game.players.filter(p => p !== judge);
-      if (pick >= activePlayers.length) { await interaction.reply({ content: '❌ Invalid submission number.', ephemeral: true }); return; }
+      if (pick >= activePlayers.length) { await interaction.reply({ content: '❌ Invalid submission number.', flags: MessageFlags.Ephemeral }); return; }
 
       const winner = activePlayers[pick];
       const winningCards = game.submissions.get(winner) ?? [];
@@ -263,7 +264,7 @@ const Cah: Command = {
 
     if (sub === 'end') {
       if (interaction.user.id !== game.hostId && !interaction.memberPermissions?.has('ManageGuild')) {
-        await interaction.reply({ content: '❌ Only the host can end the game.', ephemeral: true }); return;
+        await interaction.reply({ content: '❌ Only the host can end the game.', flags: MessageFlags.Ephemeral }); return;
       }
       game.phase = 'ended';
       games.delete(channelId);

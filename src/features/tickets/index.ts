@@ -1,4 +1,6 @@
-import { ButtonInteraction } from 'discord.js';
+import { ButtonInteraction,
+  MessageFlags,
+} from 'discord.js';
 import { EventModule } from '../feature';
 
 const ticketsModule: EventModule = {
@@ -11,7 +13,7 @@ const ticketsModule: EventModule = {
       const channelId = btn.customId.split(':')[2];
       if (btn.channelId !== channelId) return;
 
-      await btn.deferReply({ ephemeral: true });
+      await btn.deferReply({ flags: MessageFlags.Ephemeral });
       const ticket = await db.getTicketByChannel(channelId);
       if (!ticket) {
         await btn.editReply('This channel is not an open ticket.');

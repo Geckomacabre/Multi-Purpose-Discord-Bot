@@ -1,6 +1,7 @@
 import {
   ApplicationIntegrationType, ChatInputCommandInteraction, Colors, EmbedBuilder,
   InteractionContextType, SlashCommandBuilder,
+  MessageFlags,
 } from 'discord.js';
 import * as db from '../../utils/db';
 import { Command } from '../../interfaces/command';
@@ -15,7 +16,7 @@ const Role: Command = {
 
   async run(interaction: ChatInputCommandInteraction) {
     const name = interaction.options.getString('name', true);
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const rc = await db.getRoleCommandByName(interaction.guildId!, name);
     if (!rc) { await interaction.editReply(`❌ No self-assignable role named \`${name}\`. Use \`/rolecommands list\` to see available roles.`); return; }

@@ -1,4 +1,6 @@
-import { ApplicationIntegrationType, ChatInputCommandInteraction, Colors, EmbedBuilder, InteractionContextType, SlashCommandBuilder } from 'discord.js';
+import { ApplicationIntegrationType, ChatInputCommandInteraction, Colors, EmbedBuilder, InteractionContextType, SlashCommandBuilder,
+  MessageFlags,
+} from 'discord.js';
 import Config from '../../config';
 import { Command } from '../../interfaces/command';
 
@@ -12,7 +14,7 @@ const Weather: Command = {
 
   async run(interaction: ChatInputCommandInteraction) {
     if (!Config.WEATHER_API_KEY) {
-      await interaction.reply({ content: '❌ Weather API key not configured. Set `WEATHER_API_KEY` in your environment.', ephemeral: true }); return;
+      await interaction.reply({ content: '❌ Weather API key not configured. Set `WEATHER_API_KEY` in your environment.', flags: MessageFlags.Ephemeral }); return;
     }
     const location = interaction.options.getString('location', true);
     await interaction.deferReply();

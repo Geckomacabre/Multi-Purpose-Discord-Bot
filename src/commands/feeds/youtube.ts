@@ -1,6 +1,7 @@
 import {
   ApplicationIntegrationType, ChatInputCommandInteraction, Colors, EmbedBuilder,
   InteractionContextType, PermissionFlagsBits, SlashCommandBuilder,
+  MessageFlags,
 } from 'discord.js';
 import * as db from '../../utils/db';
 import Config from '../../config';
@@ -32,7 +33,7 @@ const Youtube: Command = {
 
   async run(interaction: ChatInputCommandInteraction) {
     const sub = interaction.options.getSubcommand();
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     if (sub === 'add') {
       if (!Config.YOUTUBE_API_KEY) {

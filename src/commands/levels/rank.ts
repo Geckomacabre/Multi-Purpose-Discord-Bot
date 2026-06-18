@@ -1,6 +1,7 @@
 import {
   ApplicationIntegrationType, ChatInputCommandInteraction, Colors,
   EmbedBuilder, InteractionContextType, SlashCommandBuilder,
+  MessageFlags,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
 import { getXp, calcLevelFromXp, xpForLevel } from '../../utils/db';
@@ -23,7 +24,7 @@ const Rank: Command = {
         content: target.id === interaction.user.id
           ? 'You haven\'t earned any XP yet — start chatting!'
           : `**${target.username}** hasn\'t earned any XP yet.`,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }

@@ -1,6 +1,7 @@
 import {
   ApplicationIntegrationType, ChatInputCommandInteraction, Colors, EmbedBuilder,
   InteractionContextType, PermissionFlagsBits, SlashCommandBuilder,
+  MessageFlags,
 } from 'discord.js';
 import * as db from '../../utils/db';
 import { Command } from '../../interfaces/command';
@@ -17,7 +18,7 @@ const Case: Command = {
   async run(interaction: ChatInputCommandInteraction) {
     const caseNum = interaction.options.getInteger('number', true);
     const modCase = await db.getModCase(interaction.guildId!, caseNum);
-    if (!modCase) { await interaction.reply({ content: `❌ Case #${caseNum} not found.`, ephemeral: true }); return; }
+    if (!modCase) { await interaction.reply({ content: `❌ Case #${caseNum} not found.`, flags: MessageFlags.Ephemeral }); return; }
 
     const typeColors: Record<string, number> = {
       ban: Colors.Red, unban: Colors.Green, kick: Colors.Orange,

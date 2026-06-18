@@ -1,4 +1,6 @@
-import { ApplicationIntegrationType, ChatInputCommandInteraction, Colors, EmbedBuilder, InteractionContextType, SlashCommandBuilder } from 'discord.js';
+import { ApplicationIntegrationType, ChatInputCommandInteraction, Colors, EmbedBuilder, InteractionContextType, SlashCommandBuilder,
+  MessageFlags,
+} from 'discord.js';
 import { Command } from '../../interfaces/command';
 
 const Listroles: Command = {
@@ -28,7 +30,7 @@ const Listroles: Command = {
       .setDescription(chunks[0] ?? 'No roles found.')
       .setFooter({ text: `${roles.size} role(s) total` });
 
-    await interaction.reply({ embeds: [embed], ephemeral: true });
+    await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
   },
 };
 

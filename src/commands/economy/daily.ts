@@ -1,6 +1,7 @@
 import {
   ApplicationIntegrationType, ChatInputCommandInteraction, Colors,
   EmbedBuilder, InteractionContextType, SlashCommandBuilder,
+  MessageFlags,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
 import { getEconomyConfig, getEconomyCooldown, setEconomyCooldown, adjustBalance } from '../../utils/db';
@@ -27,7 +28,7 @@ const Daily: Command = {
       const minutes = Math.floor((remaining % 3_600_000) / 60_000);
       await interaction.reply({
         content: `You already claimed your daily reward. Come back in **${hours}h ${minutes}m**.`,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }

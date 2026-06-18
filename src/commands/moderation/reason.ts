@@ -1,6 +1,7 @@
 import {
   ApplicationIntegrationType, ChatInputCommandInteraction, InteractionContextType,
   PermissionFlagsBits, SlashCommandBuilder,
+  MessageFlags,
 } from 'discord.js';
 import * as db from '../../utils/db';
 import { Command } from '../../interfaces/command';
@@ -20,10 +21,10 @@ const Reason: Command = {
     const reason = interaction.options.getString('reason', true);
 
     const modCase = await db.getModCase(interaction.guildId!, caseNum);
-    if (!modCase) { await interaction.reply({ content: `❌ Case #${caseNum} not found.`, ephemeral: true }); return; }
+    if (!modCase) { await interaction.reply({ content: `❌ Case #${caseNum} not found.`, flags: MessageFlags.Ephemeral }); return; }
 
     await db.updateModCaseReason(interaction.guildId!, caseNum, reason);
-    await interaction.reply({ content: `✅ Updated reason for case #${caseNum}.`, ephemeral: true });
+    await interaction.reply({ content: `✅ Updated reason for case #${caseNum}.`, flags: MessageFlags.Ephemeral });
   },
 };
 

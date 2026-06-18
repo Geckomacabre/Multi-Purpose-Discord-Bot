@@ -1,6 +1,7 @@
 import {
   ApplicationIntegrationType, ChatInputCommandInteraction, Colors, EmbedBuilder,
   InteractionContextType, PermissionFlagsBits, SlashCommandBuilder,
+  MessageFlags,
 } from 'discord.js';
 import * as db from '../../utils/db';
 import { Command } from '../../interfaces/command';
@@ -29,7 +30,7 @@ const Modconfig: Command = {
 
   async run(interaction: ChatInputCommandInteraction) {
     const sub = interaction.options.getSubcommand();
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     if (sub === 'modlog') {
       const channel = interaction.options.getChannel('channel');

@@ -1,6 +1,7 @@
 import {
   ApplicationIntegrationType, ChannelType, ChatInputCommandInteraction, Colors,
   EmbedBuilder, InteractionContextType, PermissionFlagsBits, SlashCommandBuilder,
+  MessageFlags,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
 import { getXpConfig, setXpConfig } from '../../utils/db';
@@ -46,7 +47,7 @@ const Levelconfig: Command = {
     if (sub === 'toggle') {
       const enabled = interaction.options.getBoolean('enabled', true);
       await setXpConfig(guildId, { enabled: enabled ? 1 : 0 });
-      await interaction.reply({ content: `XP system **${enabled ? 'enabled' : 'disabled'}**.`, ephemeral: true });
+      await interaction.reply({ content: `XP system **${enabled ? 'enabled' : 'disabled'}**.`, flags: MessageFlags.Ephemeral });
       return;
     }
 
@@ -57,7 +58,7 @@ const Levelconfig: Command = {
         content: channel
           ? `Level-up announcements will be posted in <#${channel.id}>.`
           : 'Level-up announcements will now post in the channel where the user is chatting.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -67,21 +68,21 @@ const Levelconfig: Command = {
       const max = interaction.options.getInteger('max');
       const cooldown = interaction.options.getInteger('cooldown');
       if (min !== null && max !== null && min > max) {
-        await interaction.reply({ content: '❌ Min XP cannot be greater than max XP.', ephemeral: true }); return;
+        await interaction.reply({ content: '❌ Min XP cannot be greater than max XP.', flags: MessageFlags.Ephemeral }); return;
       }
       const fields: Parameters<typeof setXpConfig>[1] = {};
       if (min !== null) fields.xp_min = min;
       if (max !== null) fields.xp_max = max;
       if (cooldown !== null) fields.cooldown_seconds = cooldown;
       await setXpConfig(guildId, fields);
-      await interaction.reply({ content: 'XP settings updated.', ephemeral: true });
+      await interaction.reply({ content: 'XP settings updated.', flags: MessageFlags.Ephemeral });
       return;
     }
 
     if (sub === 'message') {
       const text = interaction.options.getString('text', true);
       await setXpConfig(guildId, { level_up_message: text });
-      await interaction.reply({ content: `Level-up message set to:\n> ${text}`, ephemeral: true });
+      await interaction.reply({ content: `Level-up message set to:\n> ${text}`, flags: MessageFlags.Ephemeral });
       return;
     }
 
@@ -97,7 +98,7 @@ const Levelconfig: Command = {
           { name: 'Announce Channel', value: cfg.level_up_channel_id ? `<#${cfg.level_up_channel_id}>` : 'Message channel', inline: true },
           { name: 'Level-up Message', value: cfg.level_up_message },
         );
-      await interaction.reply({ embeds: [embed], ephemeral: true });
+      await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
       return;
     }
   },

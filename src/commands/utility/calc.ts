@@ -1,4 +1,6 @@
-import { ApplicationIntegrationType, ChatInputCommandInteraction, InteractionContextType, SlashCommandBuilder } from 'discord.js';
+import { ApplicationIntegrationType, ChatInputCommandInteraction, InteractionContextType, SlashCommandBuilder,
+  MessageFlags,
+} from 'discord.js';
 import { Command } from '../../interfaces/command';
 
 function safeEval(expr: string): number {
@@ -25,7 +27,7 @@ const Calc: Command = {
       if (!isFinite(result)) throw new Error('Result is not finite');
       await interaction.reply(`🧮 \`${expr}\` = **${result}**`);
     } catch {
-      await interaction.reply({ content: '❌ Invalid expression.', ephemeral: true });
+      await interaction.reply({ content: '❌ Invalid expression.', flags: MessageFlags.Ephemeral });
     }
   },
 };

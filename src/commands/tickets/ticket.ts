@@ -2,6 +2,7 @@ import {
   ActionRowBuilder, ApplicationIntegrationType, ButtonBuilder, ButtonStyle,
   CategoryChannel, ChatInputCommandInteraction, Colors, EmbedBuilder,
   InteractionContextType, OverwriteType, PermissionFlagsBits, SlashCommandBuilder, TextChannel,
+  MessageFlags,
 } from 'discord.js';
 import * as db from '../../utils/db';
 import { Command } from '../../interfaces/command';
@@ -34,7 +35,7 @@ const Ticket: Command = {
 
   async run(interaction: ChatInputCommandInteraction) {
     const sub = interaction.options.getSubcommand();
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     if (sub === 'create') {
       const topic = interaction.options.getString('topic') ?? 'No topic specified';

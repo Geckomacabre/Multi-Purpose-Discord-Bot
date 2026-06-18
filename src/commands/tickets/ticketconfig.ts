@@ -1,6 +1,7 @@
 import {
   ApplicationIntegrationType, ChannelType, ChatInputCommandInteraction, Colors, EmbedBuilder,
   InteractionContextType, PermissionFlagsBits, SlashCommandBuilder,
+  MessageFlags,
 } from 'discord.js';
 import * as db from '../../utils/db';
 import { Command } from '../../interfaces/command';
@@ -26,7 +27,7 @@ const Ticketconfig: Command = {
 
   async run(interaction: ChatInputCommandInteraction) {
     const sub = interaction.options.getSubcommand();
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     if (sub === 'set') {
       const category = interaction.options.getChannel('category');
