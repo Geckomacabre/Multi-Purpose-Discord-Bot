@@ -1,0 +1,6 @@
+services:
+  bot:
+    build: .
+    volumes:
+      - ./src:/app/src
+    command: ['bun', 'run', 'dev']
