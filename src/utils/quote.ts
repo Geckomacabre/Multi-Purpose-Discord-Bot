@@ -12,22 +12,26 @@ function ensureFonts() {
   fontsRegistered = true;
 }
 
-function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, maxLines = 6): string[] {
   const lines: string[] = [];
   for (const paragraph of text.split('\n')) {
-    if (!paragraph.trim()) { lines.push(''); continue; }
+    if (!paragraph.trim()) continue;
     const words = paragraph.split(' ');
     let line = '';
     for (const word of words) {
       const test = line ? `${line} ${word}` : word;
       if (ctx.measureText(test).width > maxWidth && line) {
         lines.push(line);
+        if (lines.length >= maxLines) return lines;
         line = word;
       } else {
         line = test;
       }
     }
-    if (line) lines.push(line);
+    if (line) {
+      lines.push(line);
+      if (lines.length >= maxLines) return lines;
+    }
   }
   return lines;
 }
@@ -35,90 +39,83 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
 export async function generateQuote(opts: {
   text: string;
   authorName: string;
+  authorUsername: string;
   authorAvatarUrl: string | null;
-  guildName?: string;
 }): Promise<Buffer> {
   ensureFonts();
 
-  const { text, authorName, authorAvatarUrl, guildName } = opts;
-  const WIDTH = 820;
-  const PADDING = 64;
-  const FONT_SIZE = 26;
-  const LINE_HEIGHT = FONT_SIZE * 1.55;
-  const AVATAR_SIZE = 52;
+  const { text, authorName, authorUsername, authorAvatarUrl } = opts;
 
-  // Measure wrapped lines
-  const probe = createCanvas(WIDTH, 100).getContext('2d');
-  probe.font = `${FONT_SIZE}px Ubuntu`;
-  const displayText = text.length > 800 ? text.slice(0, 797) + '…' : text;
-  const lines = wrapText(probe, displayText, WIDTH - PADDING * 2);
+  const W = 750;
+  const H = 375;
+  const BG = '#0e0e0e';
+  const LEFT_W = Math.round(W * 0.44); // avatar column
+  const TEXT_X = LEFT_W + 36;
+  const TEXT_MAX_W = W - TEXT_X - 36;
+  const FONT_SIZE = 30;
+  const LINE_H = FONT_SIZE * 1.45;
 
-  const textBlockHeight = lines.length * LINE_HEIGHT;
-  const HEIGHT = Math.max(260, PADDING + 60 + textBlockHeight + PADDING + 20 + AVATAR_SIZE + PADDING);
-
-  const canvas = createCanvas(WIDTH, HEIGHT);
+  const canvas = createCanvas(W, H);
   const ctx = canvas.getContext('2d');
 
   // Background
-  const bg = ctx.createLinearGradient(0, 0, WIDTH, HEIGHT);
-  bg.addColorStop(0, '#1a1a2e');
-  bg.addColorStop(1, '#0f3460');
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+  ctx.fillStyle = BG;
+  ctx.fillRect(0, 0, W, H);
 
-  // Accent left bar
-  ctx.fillStyle = '#e94560';
-  ctx.fillRect(0, 0, 6, HEIGHT);
-
-  // Decorative opening quote mark
-  ctx.font = `bold 110px Ubuntu`;
-  ctx.fillStyle = 'rgba(233, 69, 96, 0.25)';
-  ctx.fillText('“', PADDING - 8, PADDING + 68);
-
-  // Quote text
-  ctx.font = `${FONT_SIZE}px Ubuntu`;
-  ctx.fillStyle = '#f0f0f0';
-  let y = PADDING + 72;
-  for (const line of lines) {
-    ctx.fillText(line, PADDING, y);
-    y += LINE_HEIGHT;
-  }
-
-  // Divider
-  const divY = HEIGHT - PADDING - AVATAR_SIZE - 16;
-  ctx.strokeStyle = 'rgba(255,255,255,0.15)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(PADDING, divY);
-  ctx.lineTo(WIDTH - PADDING, divY);
-  ctx.stroke();
-
-  // Avatar (circular)
-  const avX = PADDING;
-  const avY = divY + 14;
+  // Avatar — clipped to left column
   if (authorAvatarUrl) {
     try {
-      const img = await loadImage(authorAvatarUrl + '?size=64');
+      const img = await loadImage(authorAvatarUrl.replace(/\?.*$/, '') + '?size=256');
+      const scale = Math.max(LEFT_W / img.width, H / img.height);
+      const sw = img.width * scale;
+      const sh = img.height * scale;
+      const sx = (LEFT_W - sw) / 2;
+      const sy = (H - sh) / 2;
+
       ctx.save();
       ctx.beginPath();
-      ctx.arc(avX + AVATAR_SIZE / 2, avY + AVATAR_SIZE / 2, AVATAR_SIZE / 2, 0, Math.PI * 2);
+      ctx.rect(0, 0, LEFT_W, H);
       ctx.clip();
-      ctx.drawImage(img, avX, avY, AVATAR_SIZE, AVATAR_SIZE);
+      ctx.drawImage(img, sx, sy, sw, sh);
       ctx.restore();
+
+      // Fade avatar into background on right edge
+      const fade = ctx.createLinearGradient(LEFT_W - 90, 0, LEFT_W + 10, 0);
+      fade.addColorStop(0, 'rgba(14,14,14,0)');
+      fade.addColorStop(1, BG);
+      ctx.fillStyle = fade;
+      ctx.fillRect(LEFT_W - 90, 0, 100, H);
     } catch { /* avatar unavailable */ }
   }
 
-  const textX = avX + (authorAvatarUrl ? AVATAR_SIZE + 14 : 0);
-
-  ctx.font = `bold 18px Ubuntu`;
+  // Quote text
+  ctx.font = `bold ${FONT_SIZE}px Ubuntu`;
   ctx.fillStyle = '#ffffff';
-  ctx.fillText(`— ${authorName}`, textX, avY + 22);
-
-  if (guildName) {
-    ctx.font = `14px Ubuntu`;
-    ctx.fillStyle = 'rgba(255,255,255,0.55)';
-    ctx.fillText(guildName, textX, avY + 42);
+  const lines = wrapText(ctx, text.length > 300 ? text.slice(0, 297) + '…' : text, TEXT_MAX_W);
+  const blockH = lines.length * LINE_H;
+  let textY = (H - blockH - 70) / 2 + FONT_SIZE;
+  for (const line of lines) {
+    ctx.fillText(line, TEXT_X, textY);
+    textY += LINE_H;
   }
+
+  // Author name
+  textY += 10;
+  ctx.font = `italic 18px Ubuntu`;
+  ctx.fillStyle = '#dddddd';
+  ctx.fillText(`- ${authorName}`, TEXT_X, textY);
+
+  // Username handle
+  textY += 24;
+  ctx.font = `14px Ubuntu`;
+  ctx.fillStyle = '#777777';
+  ctx.fillText(`@${authorUsername}`, TEXT_X, textY);
+
+  // Watermark
+  ctx.font = `11px Ubuntu`;
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  const watermark = 'Make it a Quote';
+  ctx.fillText(watermark, W - ctx.measureText(watermark).width - 14, H - 12);
 
   return Buffer.from(canvas.toBuffer('image/png'));
 }

@@ -15,6 +15,19 @@ export const onInteraction = async (interaction: Interaction) => {
     return;
   }
 
+  if (interaction.isButton()) {
+    if (interaction.customId.startsWith('remove_quote:')) {
+      const ownerId = interaction.customId.split(':')[1];
+      if (interaction.user.id !== ownerId) {
+        await interaction.reply({ content: '❌ Only the person who created this quote can remove it.', flags: MessageFlags.Ephemeral });
+        return;
+      }
+      await interaction.message.delete().catch(() => {});
+      await interaction.reply({ content: '✅ Quote removed.', flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    return;
+  }
+
   if (interaction.isMessageContextMenuCommand()) {
     const command = commands.get(interaction.commandName);
     if (command?.runMessage) {
