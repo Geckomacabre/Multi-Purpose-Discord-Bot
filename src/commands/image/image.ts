@@ -9,12 +9,23 @@ import { getImageBuffer, imageReply } from '../../utils/image/index.js';
 import type { NativeResult } from '../../utils/image/native.js';
 import * as fx from '../../utils/image/effects.js';
 import { processImage } from '../../utils/image/native.js';
-import os from 'os';
-import path from 'path';
-import fs from 'fs';
 
 const img = (s: any) =>
   s.addAttachmentOption((o: any) => o.setName('image').setDescription('Image to process'));
+
+const FONTS = ['futura', 'impact', 'helvetica', 'arial', 'roboto', 'noto', 'times', 'comic sans ms', 'ubuntu'] as const;
+const fontChoices = FONTS.map(f => ({ name: f, value: f }));
+
+const UNCANNY_PHASES = [
+  'baby','canny','canny2','canny3','canny4','canny5','canny6','canny7','canny8',
+  'goated','nerd','normal','uncanny','uncanny2','uncanny3','uncanny4','uncanny5',
+  'uncanny6','uncanny7','uncanny8','uncle','young',
+];
+const phaseChoices = UNCANNY_PHASES.map(p => ({ name: p, value: p }));
+
+const REDDIT_SUBS = ['me_irl','dankmemes','hmmm','gaming','wholesome','chonkers','memes','funny','lies'];
+
+function randomFrom<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length)]; }
 
 const Image: Command = {
   data: (new SlashCommandBuilder()
@@ -32,8 +43,8 @@ const Image: Command = {
       .addSubcommand(s => img(s.setName('sepia').setDescription('Apply sepia tone')))
       .addSubcommand(s => img(s
         .setName('hue')
-        .setDescription('Shift the hue of an image')
-        .addIntegerOption((o: any) => o.setName('degrees').setDescription('Hue shift 0–359 (default 180)').setMinValue(0).setMaxValue(359))
+        .setDescription('Hue shift an image')
+        .addIntegerOption((o: any) => o.setName('shift').setDescription('Amount to shift hue by').setRequired(true).setMinValue(-180).setMaxValue(180))
       ))
       .addSubcommand(s => img(s.setName('invert').setDescription('Invert image colors')))
       .addSubcommand(s => img(s.setName('deepfry').setDescription('Deep-fry an image')))
@@ -58,11 +69,7 @@ const Image: Command = {
       .addSubcommand(s => img(s
         .setName('rotate')
         .setDescription('Rotate an image')
-        .addIntegerOption((o: any) => o.setName('degrees').setDescription('Degrees (default 90)').addChoices(
-          { name: '90°', value: 90 },
-          { name: '180°', value: 180 },
-          { name: '270°', value: 270 },
-        ))
+        .addIntegerOption((o: any) => o.setName('angle').setDescription('Rotation angle (1–360)').setRequired(true).setMinValue(1).setMaxValue(360))
       ))
       .addSubcommand(s => img(s.setName('crop').setDescription('Crop transparent/white borders')))
       .addSubcommand(s => img(s.setName('circle').setDescription('Apply circular crop')))
@@ -105,6 +112,7 @@ const Image: Command = {
       .addSubcommand(s => img(s.setName('speed').setDescription('Speed up a GIF')))
       .addSubcommand(s => img(s.setName('slow').setDescription('Slow down a GIF')))
       .addSubcommand(s => img(s.setName('reverse').setDescription('Reverse a GIF')))
+      .addSubcommand(s => img(s.setName('soos').setDescription('Loop an image sequence backwards (boomerang)')))
     )
     // ── text ────────────────────────────────────────────────────
     .addSubcommandGroup(g => g
@@ -112,18 +120,21 @@ const Image: Command = {
       .setDescription('Add text to images')
       .addSubcommand(s => img(s
         .setName('caption')
-        .setDescription('Add a white caption bar above an image')
+        .setDescription('Add a caption bar above an image')
         .addStringOption((o: any) => o.setName('text').setDescription('Caption text').setRequired(true))
+        .addStringOption((o: any) => o.setName('font').setDescription('Font to use').addChoices(...fontChoices))
       ))
       .addSubcommand(s => img(s
         .setName('caption2')
         .setDescription('Add a dark caption bar below an image')
         .addStringOption((o: any) => o.setName('text').setDescription('Caption text').setRequired(true))
+        .addStringOption((o: any) => o.setName('font').setDescription('Font to use').addChoices(...fontChoices))
       ))
       .addSubcommand(s => img(s
         .setName('snapchat')
         .setDescription('Add a Snapchat-style caption bar')
         .addStringOption((o: any) => o.setName('text').setDescription('Text to display').setRequired(true))
+        .addNumberOption((o: any) => o.setName('position').setDescription('Caption position (0.0=top, 1.0=bottom, default 0.565)').setMinValue(0).setMaxValue(1))
       ))
       .addSubcommand(s => img(s
         .setName('whisper')
@@ -133,22 +144,27 @@ const Image: Command = {
       .addSubcommand(s => img(s.setName('speechbubble').setDescription('Add a speech bubble overlay')))
       .addSubcommand(s => img(s
         .setName('uncanny')
-        .setDescription('Side-by-side comparison meme')
-        .addStringOption((o: any) => o.setName('left').setDescription('Left panel label').setRequired(true))
-        .addStringOption((o: any) => o.setName('right').setDescription('Right panel label').setRequired(true))
+        .setDescription('Mr. Incredible Becomes Uncanny meme (separate left/right text with a comma)')
+        .addStringOption((o: any) => o.setName('text').setDescription('Left text, right text').setRequired(true))
+        .addStringOption((o: any) => o.setName('phase').setDescription('Which uncanny image to use').addChoices(...phaseChoices))
       ))
-      .addSubcommand(s => img(s.setName('uncaption').setDescription('Remove a caption bar from an image')))
+      .addSubcommand(s => img(s
+        .setName('uncaption')
+        .setDescription('Remove a caption bar from an image')
+        .addNumberOption((o: any) => o.setName('tolerance').setDescription('Detection tolerance (0.0=strict, 1.0=loose, default 0.95)').setMinValue(0).setMaxValue(1))
+      ))
       .addSubcommand(s => img(s
         .setName('meme')
-        .setDescription('Add Impact meme text to an image')
-        .addStringOption((o: any) => o.setName('top').setDescription('Top text'))
-        .addStringOption((o: any) => o.setName('bottom').setDescription('Bottom text'))
+        .setDescription('Add Impact meme text (separate top/bottom with a comma)')
+        .addStringOption((o: any) => o.setName('text').setDescription('Top text, bottom text').setRequired(true))
+        .addBooleanOption((o: any) => o.setName('case').setDescription('Preserve text case (default: UPPERCASE)'))
+        .addStringOption((o: any) => o.setName('font').setDescription('Font to use').addChoices(...fontChoices))
       ))
       .addSubcommand(s => img(s
         .setName('motivate')
-        .setDescription('Create a motivational poster')
-        .addStringOption((o: any) => o.setName('top').setDescription('Title text').setRequired(true))
-        .addStringOption((o: any) => o.setName('bottom').setDescription('Subtitle text'))
+        .setDescription('Create a motivational poster (separate title/subtitle with a comma)')
+        .addStringOption((o: any) => o.setName('text').setDescription('Title text, subtitle text').setRequired(true))
+        .addStringOption((o: any) => o.setName('font').setDescription('Font to use').addChoices(...fontChoices))
       ))
     )
     // ── meme ────────────────────────────────────────────────────
@@ -162,18 +178,18 @@ const Image: Command = {
       )
       .addSubcommand(s => s
         .setName('homebrew')
-        .setDescription('Wii Homebrew Channel meme')
+        .setDescription('Wii Homebrew Channel edit')
         .addStringOption((o: any) => o.setName('text').setDescription('App name').setRequired(true))
       )
       .addSubcommand(s => img(s
         .setName('spotify')
-        .setDescription('Fake Spotify now playing card')
-        .addStringOption((o: any) => o.setName('song').setDescription('Song name').setRequired(true))
+        .setDescription('Fake Spotify "This is" header')
+        .addStringOption((o: any) => o.setName('text').setDescription('Artist/album name').setRequired(true))
       ))
       .addSubcommand(s => img(s
         .setName('reddit')
-        .setDescription('Fake Reddit post')
-        .addStringOption((o: any) => o.setName('title').setDescription('Post title').setRequired(true))
+        .setDescription('Add a Reddit watermark to an image')
+        .addStringOption((o: any) => o.setName('text').setDescription('Subreddit name (random if omitted)'))
       ))
       .addSubcommand(s => img(s.setName('gamexplain').setDescription('Gamexplain-style logo overlay')))
       .addSubcommand(s => img(s.setName('scott').setDescription('Scott the Woz style overlay')))
@@ -186,25 +202,28 @@ const Image: Command = {
         .setName('flag')
         .setDescription('Overlay a flag on an image')
         .addStringOption((o: any) => o.setName('type').setDescription('Flag type').setRequired(true).addChoices(
-          { name: 'Rainbow', value: 'rainbowflag.png' },
-          { name: 'Trans', value: 'transflag.png' },
-          { name: 'Pirate', value: 'pirateflag.png' },
+          { name: 'Rainbow 🏳️‍🌈',  value: 'assets/images/rainbowflag.png' },
+          { name: 'Trans 🏳️‍⚧️',    value: 'assets/images/transflag.png' },
+          { name: 'Pirate 🏴‍☠️',    value: 'assets/images/pirateflag.png' },
+          { name: 'Checkered 🏁',  value: 'assets/images/checkeredflag.png' },
         ))
       ))
       .addSubcommand(s => img(s
         .setName('brand')
         .setDescription('Add a brand watermark to an image')
         .addStringOption((o: any) => o.setName('brand').setDescription('Brand watermark').setRequired(true).addChoices(
-          { name: '9GAG', value: '9gag.png' },
-          { name: 'MemeCenter', value: 'memecenter.png' },
-          { name: 'DeviantArt', value: 'deviantart.png' },
-          { name: 'Hypercam', value: 'hypercam.png' },
-          { name: 'iFunny', value: 'ifunny.png' },
-          { name: 'KineMaster', value: 'kinemaster.png' },
-          { name: 'AVS4YOU', value: 'avs4you.png' },
-          { name: 'Reddit', value: 'reddit2.png' },
-          { name: 'Bandicam', value: 'bandicam.png' },
-          { name: 'Shutterstock', value: 'shutterstock.png' },
+          { name: '9GAG',          value: 'assets/images/9gag.png' },
+          { name: 'MemeCenter',    value: 'assets/images/memecenter.png' },
+          { name: 'DeviantArt',    value: 'assets/images/deviantart.png' },
+          { name: 'Hypercam',      value: 'assets/images/hypercam.png' },
+          { name: 'iFunny',        value: 'assets/images/ifunny.png' },
+          { name: 'KineMaster',    value: 'assets/images/kinemaster.png' },
+          { name: 'AVS4YOU',       value: 'assets/images/avs4you.png' },
+          { name: 'Reddit',        value: 'assets/images/reddit2.png' },
+          { name: 'Bandicam',      value: 'assets/images/bandicam.png' },
+          { name: 'Shutterstock',  value: 'assets/images/shutterstock.png' },
+          { name: 'Funky Mode',    value: 'assets/images/funky.png' },
+          { name: 'PowerDirector', value: 'assets/images/powerdirector.png' },
         ))
       ))
     )
@@ -223,7 +242,7 @@ const Image: Command = {
           case 'sharpen':   return fx.sharpen(b);
           case 'grayscale': return fx.grayscale(b);
           case 'sepia':     return fx.sepia(b);
-          case 'hue':       return fx.hue(b, interaction.options.getInteger('degrees') ?? 180);
+          case 'hue':       return fx.hue(b, interaction.options.getInteger('shift', true));
           case 'invert':    return fx.invert(b);
           case 'deepfry':   return fx.deepfry(b);
           case 'jpeg':      return fx.jpeg(b, interaction.options.getInteger('quality') ?? 1);
@@ -235,7 +254,7 @@ const Image: Command = {
         switch (sub) {
           case 'flip':    return fx.flip(b);
           case 'flop':    return fx.flop(b);
-          case 'rotate':  return fx.rotate(b, interaction.options.getInteger('degrees') ?? 90);
+          case 'rotate':  return fx.rotate(b, interaction.options.getInteger('angle', true));
           case 'crop':    return fx.crop(b);
           case 'circle':  return fx.circle(b);
           case 'tile':    return fx.tile(b);
@@ -274,38 +293,45 @@ const Image: Command = {
           case 'speed':    return fx.speed(b);
           case 'slow':     return fx.slow(b);
           case 'reverse':  return fx.reverse(b);
+          case 'soos':     return fx.soos(b);
         }
       } else if (group === 'text') {
         const b = await getImageBuffer(interaction);
+        const font = interaction.options.getString('font') ?? undefined;
         switch (sub) {
-          case 'caption':      return fx.caption(b, interaction.options.getString('text', true));
-          case 'caption2':     return fx.caption2(b, interaction.options.getString('text', true));
-          case 'snapchat':     return fx.snapchat(b, interaction.options.getString('text', true));
+          case 'caption':      return fx.caption(b, interaction.options.getString('text', true), font);
+          case 'caption2':     return fx.caption2(b, interaction.options.getString('text', true), false, font);
+          case 'snapchat': {
+            const pos = interaction.options.getNumber('position') ?? 0.565;
+            return fx.snapchat(b, interaction.options.getString('text', true), pos);
+          }
           case 'whisper':      return fx.whisper(b, interaction.options.getString('text', true));
           case 'speechbubble': return fx.speechbubble(b);
-          case 'uncaption':    return fx.uncaption(b);
+          case 'uncaption':    return fx.uncaption(b, interaction.options.getNumber('tolerance') ?? 0.95);
           case 'uncanny': {
-            const left = interaction.options.getString('left', true);
-            const right = interaction.options.getString('right', true);
-            const tmpPath = path.join(os.tmpdir(), `uncanny_${Date.now()}.png`);
-            fs.writeFileSync(tmpPath, b);
-            try {
-              return await processImage('uncanny', { caption: left, caption2: right, path: tmpPath }, b);
-            } finally {
-              fs.unlink(tmpPath, () => {});
-            }
+            const raw = interaction.options.getString('text', true);
+            const [cap1, cap2 = ''] = raw.split(/(?<!\\),/).map(s => s.trim());
+            const phase = interaction.options.getString('phase') ?? randomFrom(UNCANNY_PHASES);
+            return processImage('uncanny', {
+              caption: cap1,
+              caption2: cap2,
+              path: `assets/images/uncanny/${phase}.png`,
+              ...(font ? { font } : {}),
+            }, b);
           }
           case 'meme': {
-            const top = interaction.options.getString('top') ?? '';
-            const bottom = interaction.options.getString('bottom') ?? '';
-            if (!top && !bottom) throw new Error('Provide at least one of top or bottom text.');
-            return fx.meme(b, top, bottom);
+            const raw = interaction.options.getString('text', true);
+            const preserveCase = interaction.options.getBoolean('case') ?? false;
+            const [rawTop = '', rawBottom = ''] = raw.split(/(?<!\\),/).map(s => s.trim());
+            const top    = preserveCase ? rawTop    : rawTop.toUpperCase();
+            const bottom = preserveCase ? rawBottom : rawBottom.toUpperCase();
+            return fx.meme(b, top, bottom, font);
           }
-          case 'motivate': return fx.motivate(
-            b,
-            interaction.options.getString('top', true),
-            interaction.options.getString('bottom') ?? '',
-          );
+          case 'motivate': {
+            const raw = interaction.options.getString('text', true);
+            const [top = '', bottom = ''] = raw.split(/(?<!\\),/).map(s => s.trim());
+            return fx.motivate(b, top, bottom, font);
+          }
         }
       } else if (group === 'meme') {
         switch (sub) {
@@ -313,11 +339,12 @@ const Image: Command = {
           case 'homebrew': return fx.homebrew(interaction.options.getString('text', true));
           case 'spotify': {
             const b = await getImageBuffer(interaction);
-            return fx.spotify(b, interaction.options.getString('song', true));
+            return fx.spotify(b, interaction.options.getString('text', true));
           }
           case 'reddit': {
             const b = await getImageBuffer(interaction);
-            return fx.reddit(b, interaction.options.getString('title', true));
+            const title = interaction.options.getString('text')?.trim() || randomFrom(REDDIT_SUBS);
+            return fx.reddit(b, title);
           }
           case 'gamexplain': return fx.gamexplain(await getImageBuffer(interaction));
           case 'scott':      return fx.scott(await getImageBuffer(interaction));

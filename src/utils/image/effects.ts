@@ -20,8 +20,9 @@ export const crop       = (buf: Buffer) => processImage('crop',      {},        
 export const tile       = (buf: Buffer) => processImage('tile',      {},                 buf, imgType(buf));
 export const bounce     = (buf: Buffer) => processImage('bounce',    {},                 buf, imgType(buf));
 export const reverse    = (buf: Buffer) => processImage('reverse',   {},                 buf, imgType(buf));
+export const soos       = (buf: Buffer) => processImage('reverse',   { soos: true },     buf, imgType(buf));
 export const makeGif    = (buf: Buffer) => processImage('togif',     {},                 buf, imgType(buf));
-export const uncaption  = (buf: Buffer) => processImage('uncaption', {},                 buf, imgType(buf));
+export const uncaption  = (buf: Buffer, tolerance = 0.95) => processImage('uncaption', { tolerance }, buf, imgType(buf));
 export const gamexplain = (buf: Buffer) => processImage('gamexplain',{},                 buf, imgType(buf));
 export const scott      = (buf: Buffer) => processImage('scott',     {},                 buf, imgType(buf));
 export const globe      = (buf: Buffer) => processImage('globe',     {},                 buf, imgType(buf));
@@ -38,7 +39,7 @@ export const stretch   = (buf: Buffer) => processImage('resize', { stretch: true
 export const pixelate  = (buf: Buffer, amount = 16) => processImage('resize', { stretch: false, wide: false, amount }, buf, imgType(buf));
 export const jpeg      = (buf: Buffer, quality = 1) => processImage('jpeg',   { quality },             buf, imgType(buf));
 export const magik     = (buf: Buffer) => processImage('magik',  {},                                   buf, imgType(buf));
-export const rotate    = (buf: Buffer, degrees = 90) => processImage('rotate', { degrees },             buf, imgType(buf));
+export const rotate    = (buf: Buffer, angle = 90) => processImage('spin', { angle },                  buf, imgType(buf));
 
 // Animated speed/freeze effects
 export const speed   = (buf: Buffer) => processImage('speed',  { slow: false  }, buf, imgType(buf));
