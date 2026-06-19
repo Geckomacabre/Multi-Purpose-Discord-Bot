@@ -476,7 +476,7 @@ Full-featured music player. Supports YouTube, Spotify, SoundCloud, Apple Music, 
 
 ### Image Editing
 
-55 image manipulation commands ported from [esmBot](https://github.com/esmBot/esmBot). All commands accept an optional `image` attachment; if none is provided, the most recent image in the channel is used.
+67 image manipulation effects ported from [esmBot](https://github.com/esmBot/esmBot), consolidated under a single `/image` command with subcommand groups. All subcommands accept an optional `image` attachment; if none is provided, the most recent image in the channel is used.
 
 Uses esmBot's native C++ image processing addon (libvips). The TypeScript layer is thin — all pixel work runs in compiled C++.
 
@@ -493,88 +493,96 @@ bun run build:native
 The `install` script attempts to build automatically. If it fails (Windows dev machine, missing deps), the bot will start but image commands will return an error message prompting you to build the addon.
 
 **Optional features:**
-- `WITH_MAGICK=ON` — enables `/magik` (content-aware scale); requires `libmagick++-dev`
+- `WITH_MAGICK=ON` — enables `/image distort magik` (content-aware scale); requires `libmagick++-dev`
 - `WITH_ZXING=ON` (default on Linux) — enables `/qr` (QR code generation via native ZXing); requires `libzxing-dev`
 
-#### Filters & Adjustments
-| Command | Description |
+#### `/image filter` — Color & filter effects
+| Subcommand | Description |
 |---|---|
-| `/blur` | Gaussian blur. |
-| `/sharpen` | Sharpen edges. |
-| `/grayscale` | Convert to grayscale. |
-| `/sepia` | Apply a sepia tone. |
-| `/invert` | Invert colors. |
-| `/hue [degrees]` | Shift hue (default 180°). |
-| `/deepfry` | Apply the deep-fried meme effect. |
-| `/jpeg` | Re-encode as extremely low-quality JPEG. |
-| `/vignette` | Add a dark vignette border. |
-| `/pixelate [amount]` | Pixelate the image. |
+| `blur` | Gaussian blur. |
+| `sharpen` | Sharpen edges. |
+| `grayscale` | Convert to grayscale. |
+| `sepia` | Apply a sepia tone. |
+| `invert` | Invert colors. |
+| `hue [degrees]` | Shift hue (default 180°). |
+| `deepfry` | Apply the deep-fried meme effect. |
+| `jpeg [quality]` | Re-encode as extremely low-quality JPEG. |
+| `vignette` | Add a dark vignette border. |
+| `pixelate [amount]` | Pixelate the image. |
 
-#### Transforms
-| Command | Description |
+#### `/image transform` — Geometric transforms
+| Subcommand | Description |
 |---|---|
-| `/flip` | Flip vertically. |
-| `/flop` | Flip horizontally. |
-| `/rotate [90\|180\|270]` | Rotate by 90, 180, or 270 degrees. |
-| `/crop` | Crop to a square. |
-| `/circle` | Crop to a circle. |
-| `/wide` | Stretch horizontally to 2.5× width. |
-| `/squish` | Compress vertically to 40% height. |
-| `/stretch` | Stretch to 512×512. |
-| `/tile` | Tile 2×2. |
-| `/wall` | Tile 4×4. |
+| `flip` | Flip vertically. |
+| `flop` | Flip horizontally. |
+| `rotate [90\|180\|270]` | Rotate by 90, 180, or 270 degrees. |
+| `crop` | Crop to a square. |
+| `circle` | Crop to a circle. |
+| `wide` | Stretch horizontally to 2.5× width. |
+| `squish` | Compress vertically to 40% height. |
+| `stretch` | Stretch to 512×512. |
+| `tile` | Tile 2×2. |
+| `wall` | Tile 4×4. |
 
-#### Distortion
-| Command | Description |
+#### `/image mirror` — Mirror & reflection
+| Subcommand | Description |
 |---|---|
-| `/swirl` | Swirl distortion (polar coordinate math). |
-| `/explode` | Outward pixel displacement. |
-| `/implode` | Inward pixel displacement. |
-| `/magik` | Content-aware scale distortion. |
-| `/globe` | Map onto a sphere. |
-| `/haah` | Mirror left half. |
-| `/woow` | Mirror right half. |
-| `/hooh` | Mirror top half. |
-| `/waaw` | Mirror bottom half. |
+| `haah` | Mirror left half onto right. |
+| `hooh` | Mirror right half onto left. |
+| `waaw` | Mirror top half onto bottom. |
+| `woow` | Mirror bottom half onto top. |
 
-#### Animation
-| Command | Description |
+#### `/image distort` — Distortion effects
+| Subcommand | Description |
 |---|---|
-| `/spin` | Make the image spin (30 frames). |
-| `/bounce` | Make the image bounce (15 frames). |
-| `/slide` | Slide in from the left. |
-| `/reverse` | Reverse a GIF. |
-| `/speed [multiplier]` | Speed up a GIF. |
-| `/slow` | Slow down a GIF by 50%. |
-| `/freeze` | Freeze a GIF on its last frame. |
-| `/unfreeze` | Turn a static image into a ping-pong GIF. |
-| `/fade` | Fade to black. |
-| `/gif` | Convert a static image into a GIF. |
+| `swirl` | Swirl distortion. |
+| `explode` | Outward pixel displacement. |
+| `implode` | Inward pixel displacement. |
+| `magik` | Content-aware scale distortion. |
+| `globe` | Map onto a sphere. |
+| `gif` | Convert a static image into a GIF. |
 
-#### Meme / Text Overlay
-| Command | Description |
+#### `/image animate` — Animation effects
+| Subcommand | Description |
 |---|---|
-| `/caption <text>` | Add a white caption bar above the image. |
-| `/caption2 <text>` | Add a black caption bar below the image. |
-| `/meme [top] [bottom]` | Impact-font top/bottom meme text. |
-| `/motivate <title> [subtitle]` | Motivational poster format. |
-| `/snapchat <text>` | Semi-transparent Snapchat-style text bar. |
-| `/whisper <text>` | Whisper-style caption overlay. |
-| `/speechbubble` | Add a speech bubble to the top. |
-| `/uncanny <text>` | Split image with text in the middle (uncanny meme). |
-| `/uncaption` | Attempt to remove a white caption bar. |
-| `/sonic <text>` | Sonic speech bubble meme. |
-| `/homebrew <text>` | Wii Homebrew Channel meme. |
-| `/spotify <song> <artist>` | Fake Spotify now-playing card. |
-| `/redditpost <title>` | Fake Reddit post template. |
-| `/gamexplain <text>` | Gamexplain-style thumbnail. |
-| `/scott` | Apply the Scott the Woz face-swap effect. |
+| `spin` | Make the image spin (30 frames). |
+| `bounce` | Make the image bounce (15 frames). |
+| `slide` | Slide in from the left. |
+| `fade` | Fade to black. |
+| `reverse` | Reverse a GIF. |
+| `speed` | Speed up a GIF. |
+| `slow` | Slow down a GIF by 50%. |
+| `freeze` | Freeze a GIF on its last frame. |
+| `unfreeze` | Turn a static image into a ping-pong GIF. |
 
-#### Watermarks
-`/watermark`, `/9gag`, `/ifunny`, `/hypercam`, `/kinemaster`, `/bandicam`, `/avs4you`, `/memecenter`, `/deviantart`
+#### `/image text` — Text overlay
+| Subcommand | Description |
+|---|---|
+| `caption <text>` | Add a white caption bar above the image. |
+| `caption2 <text>` | Add a dark caption bar below the image. |
+| `meme [top] [bottom]` | Impact-font top/bottom meme text. |
+| `motivate <title> [subtitle]` | Motivational poster format. |
+| `snapchat <text>` | Semi-transparent Snapchat-style text bar. |
+| `whisper <text>` | Whisper-style caption overlay. |
+| `speechbubble` | Add a speech bubble overlay. |
+| `uncanny <left> <right>` | Side-by-side comparison meme. |
+| `uncaption` | Attempt to remove a white caption bar. |
 
-#### Flags
-`/flag` (rainbow), `/transflag`, `/pirateflag`
+#### `/image meme` — Meme generators
+| Subcommand | Description |
+|---|---|
+| `sonic <text>` | Sonic speech bubble meme. |
+| `homebrew <text>` | Wii Homebrew Channel meme. |
+| `spotify <song>` | Fake Spotify now-playing card. |
+| `reddit <title>` | Fake Reddit post template. |
+| `gamexplain` | Gamexplain-style logo overlay. |
+| `scott` | Apply the Scott the Woz style overlay. |
+
+#### `/image overlay` — Flag & watermark overlays
+| Subcommand | Description |
+|---|---|
+| `flag <rainbow\|trans\|pirate>` | Overlay a flag on an image. |
+| `brand <name>` | Add a brand watermark (9GAG, MemeCenter, DeviantArt, Hypercam, iFunny, KineMaster, AVS4YOU, Reddit, Bandicam, Shutterstock). |
 
 ---
 
