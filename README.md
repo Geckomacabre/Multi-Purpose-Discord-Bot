@@ -33,6 +33,11 @@ CLIENT_ID=your_application_id
 GUILD_ID=your_server_id
 NODE_ENV=development   # or production
 
+# Web Dashboard — required to enable the dashboard
+DISCORD_CLIENT_SECRET=   # OAuth2 client secret from Discord Developer Portal
+WEB_PORT=3000            # Port the dashboard listens on
+WEB_URL=http://localhost:3000  # Public-facing URL (used for OAuth redirect)
+
 # Optional — enables specific features
 TWITCH_CLIENT_ID=        # Twitch live alerts (/twitch)
 TWITCH_CLIENT_SECRET=    # Twitch live alerts (/twitch)
@@ -438,14 +443,27 @@ TMCBot uses a local SQLite file (`db.sqlite`) managed automatically on startup. 
 
 ---
 
+### Web Dashboard
+
+A YAGPDB-style dark-themed web panel for managing all bot settings without slash commands. Starts automatically with the bot when `DISCORD_CLIENT_SECRET` is set.
+
+**Setup:**
+1. Go to [Discord Developer Portal](https://discord.com/developers/applications) → your app → **OAuth2 → Redirects**
+2. Add `http://localhost:3000/auth/callback` (or `WEB_URL/auth/callback` for production)
+3. Add `DISCORD_CLIENT_SECRET`, `WEB_PORT`, and `WEB_URL` to your `.env`
+4. Visit `http://localhost:3000` and log in with Discord
+
+**Config pages:** Economy · Leveling & Level Roles · Welcome · Starboard · AutoMod · Logging · Reaction Roles · Giveaways · Topic Rotation · Birthdays · Timezones · Stat Channels
+
+---
+
 ## Not Included
 
 The following YAGPDB features were intentionally not ported:
 
 | Feature | Reason |
 |---|---|
-| Web Dashboard | TMCBot uses slash commands for all configuration instead |
-| Verification (reCAPTCHA) | Requires a web server to receive reCAPTCHA callbacks |
+| Verification (reCAPTCHA) | Requires external reCAPTCHA callback handling |
 | Personalizer | Bot avatar/name changes per guild are heavily rate-limited by Discord |
 | Premium system | Not relevant for a self-hosted bot |
 | Safe Browsing (Google) | Covered by the built-in AntiPhishing module |
