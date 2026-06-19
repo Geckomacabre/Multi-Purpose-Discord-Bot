@@ -1,6 +1,6 @@
 import { ApplicationIntegrationType, AttachmentBuilder, ChatInputCommandInteraction, InteractionContextType, SlashCommandBuilder } from 'discord.js';
 import { Command } from '../../interfaces/command';
-import QRCode from 'qrcode';
+import { qrCreate } from '../../utils/image/effects.js';
 
 const QR: Command = {
   data: new SlashCommandBuilder()
@@ -12,8 +12,8 @@ const QR: Command = {
   async run(interaction: ChatInputCommandInteraction) {
     await interaction.deferReply();
     const text = interaction.options.getString('text', true);
-    const buffer = await QRCode.toBuffer(text, { width: 400, margin: 2 });
-    await interaction.editReply({ files: [new AttachmentBuilder(buffer, { name: 'qr.png' })] });
+    const result = await qrCreate(text);
+    await interaction.editReply({ files: [new AttachmentBuilder(result.data, { name: `qr.${result.type}` })] });
   },
 };
 export default QR;
