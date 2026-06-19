@@ -83,6 +83,7 @@ export const homebrew = (caption: string) => processImage('homebrew', { caption 
 
 // QR code (requires WITH_ZXING=ON at build time)
 export const qrCreate = (text: string) => processImage('qrCreate', { text });
+export const qrRead   = (buf: Buffer)  => processImage('qrread',   {},        buf, imgType(buf));
 
 // Text + image
 export const spotify  = (buf: Buffer, caption: string) => processImage('spotify',   { caption }, buf, imgType(buf));
