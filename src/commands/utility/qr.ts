@@ -1,7 +1,7 @@
 import {
   ApplicationIntegrationType, AttachmentBuilder, ChatInputCommandInteraction,
-  ContainerBuilder, FileBuilder, InteractionContextType, MessageFlags,
-  SlashCommandBuilder, TextDisplayBuilder,
+  ContainerBuilder, InteractionContextType, MediaGalleryBuilder, MediaGalleryItemBuilder,
+  MessageFlags, SlashCommandBuilder, TextDisplayBuilder,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
 import { qrCreate, qrRead } from '../../utils/image/effects.js';
@@ -31,7 +31,7 @@ const QR: Command = {
       const name = `qr.${result.type}`;
       const container = new ContainerBuilder()
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(`QR code for: \`${text.slice(0, 100)}${text.length > 100 ? '…' : ''}\``))
-        .addFileComponents(new FileBuilder().setURL(`attachment://${name}`));
+        .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(`attachment://${name}`)));
       await interaction.editReply({
         flags: IS_CV2,
         files: [new AttachmentBuilder(result.data, { name })],

@@ -1,4 +1,4 @@
-import { ContainerBuilder, TextDisplayBuilder, FileBuilder, AttachmentBuilder, MessageFlags } from 'discord.js';
+import { AttachmentBuilder, ContainerBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder, MessageFlags, TextDisplayBuilder } from 'discord.js';
 
 export const IS_CV2 = MessageFlags.IsComponentsV2;
 
@@ -12,6 +12,6 @@ export function cv2File(buffer: Buffer, ext: string, caption?: string) {
   const name = `result.${ext}`;
   const c = new ContainerBuilder();
   if (caption) c.addTextDisplayComponents(new TextDisplayBuilder().setContent(caption));
-  c.addFileComponents(new FileBuilder().setURL(`attachment://${name}`));
+  c.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(`attachment://${name}`)));
   return { flags: IS_CV2, files: [new AttachmentBuilder(buffer, { name })], components: [c] };
 }
