@@ -437,6 +437,145 @@ Advanced bulk message deletion with multiple filters. Works on messages less tha
 
 ---
 
+### Tags
+
+Community text snippets. Anyone can create a tag; the owner (or a mod) can edit/delete it.
+
+| Command | Description |
+|---|---|
+| `/tag create <name> <content>` | Create a new tag. |
+| `/tag get <name>` | Display a tag. |
+| `/tag edit <name> <content>` | Edit your tag. |
+| `/tag delete <name>` | Delete your tag (Manage Guild can delete any tag). |
+| `/tag info <name>` | Show tag metadata (owner, uses, creation date). |
+| `/tag list` | List all tags in the server. |
+
+---
+
+### Music
+
+Full-featured music player. Supports YouTube, Spotify, SoundCloud, Apple Music, and more via `discord-player`.
+
+**Requires:** `ffmpeg` installed and available on your system PATH.
+
+| Command | Description |
+|---|---|
+| `/music play <query>` | Play a song or add it to the queue. Accepts names, URLs, or playlists. |
+| `/music skip` | Skip the current track. |
+| `/music stop` | Stop playback and clear the queue. |
+| `/music pause` | Pause or resume playback. |
+| `/music queue [page]` | Show the current queue. |
+| `/music nowplaying` | Show what's currently playing with a progress bar. |
+| `/music volume <1-200>` | Set the playback volume (persisted per server). |
+| `/music loop <off\|track\|queue\|autoplay>` | Set the loop mode. |
+| `/music shuffle` | Shuffle the queue. |
+| `/music remove <position>` | Remove a track from the queue by position. |
+| `/music seek <time>` | Seek to a position (e.g. `1:30` or `90`). |
+
+---
+
+### Image Editing
+
+55 image manipulation commands ported from [esmBot](https://github.com/esmBot/esmBot). All commands accept an optional `image` attachment; if none is provided, the most recent image in the channel is used.
+
+**Requires:** `sharp` and `@napi-rs/canvas` (installed automatically via `bun install`).
+
+#### Filters & Adjustments
+| Command | Description |
+|---|---|
+| `/blur` | Gaussian blur. |
+| `/sharpen` | Sharpen edges. |
+| `/grayscale` | Convert to grayscale. |
+| `/sepia` | Apply a sepia tone. |
+| `/invert` | Invert colors. |
+| `/hue [degrees]` | Shift hue (default 180°). |
+| `/deepfry` | Apply the deep-fried meme effect. |
+| `/jpeg` | Re-encode as extremely low-quality JPEG. |
+| `/vignette` | Add a dark vignette border. |
+| `/pixelate [amount]` | Pixelate the image. |
+
+#### Transforms
+| Command | Description |
+|---|---|
+| `/flip` | Flip vertically. |
+| `/flop` | Flip horizontally. |
+| `/rotate [90\|180\|270]` | Rotate by 90, 180, or 270 degrees. |
+| `/crop` | Crop to a square. |
+| `/circle` | Crop to a circle. |
+| `/wide` | Stretch horizontally to 2.5× width. |
+| `/squish` | Compress vertically to 40% height. |
+| `/stretch` | Stretch to 512×512. |
+| `/tile` | Tile 2×2. |
+| `/wall` | Tile 4×4. |
+
+#### Distortion
+| Command | Description |
+|---|---|
+| `/swirl` | Swirl distortion (polar coordinate math). |
+| `/explode` | Outward pixel displacement. |
+| `/implode` | Inward pixel displacement. |
+| `/magik` | Content-aware scale distortion. |
+| `/globe` | Map onto a sphere. |
+| `/haah` | Mirror left half. |
+| `/woow` | Mirror right half. |
+| `/hooh` | Mirror top half. |
+| `/waaw` | Mirror bottom half. |
+
+#### Animation
+| Command | Description |
+|---|---|
+| `/spin` | Make the image spin (30 frames). |
+| `/bounce` | Make the image bounce (15 frames). |
+| `/slide` | Slide in from the left. |
+| `/reverse` | Reverse a GIF. |
+| `/speed [multiplier]` | Speed up a GIF. |
+| `/slow` | Slow down a GIF by 50%. |
+| `/freeze` | Freeze a GIF on its last frame. |
+| `/unfreeze` | Turn a static image into a ping-pong GIF. |
+| `/fade` | Fade to black. |
+| `/gif` | Convert a static image into a GIF. |
+
+#### Meme / Text Overlay
+| Command | Description |
+|---|---|
+| `/caption <text>` | Add a white caption bar above the image. |
+| `/caption2 <text>` | Add a black caption bar below the image. |
+| `/meme [top] [bottom]` | Impact-font top/bottom meme text. |
+| `/motivate <title> [subtitle]` | Motivational poster format. |
+| `/snapchat <text>` | Semi-transparent Snapchat-style text bar. |
+| `/whisper <text>` | Whisper-style caption overlay. |
+| `/speechbubble` | Add a speech bubble to the top. |
+| `/uncanny <text>` | Split image with text in the middle (uncanny meme). |
+| `/uncaption` | Attempt to remove a white caption bar. |
+| `/sonic <text>` | Sonic speech bubble meme. |
+| `/homebrew <text>` | Wii Homebrew Channel meme. |
+| `/spotify <song> <artist>` | Fake Spotify now-playing card. |
+| `/redditpost <title>` | Fake Reddit post template. |
+| `/gamexplain <text>` | Gamexplain-style thumbnail. |
+| `/scott` | Apply the Scott the Woz face-swap effect. |
+
+#### Watermarks
+`/watermark`, `/9gag`, `/ifunny`, `/hypercam`, `/kinemaster`, `/bandicam`, `/avs4you`, `/memecenter`, `/deviantart`
+
+#### Flags
+`/flag` (rainbow), `/transflag`, `/pirateflag`
+
+---
+
+### Additional Fun & Utility
+
+| Command | Description |
+|---|---|
+| `/cat` | Random cat picture. |
+| `/dog` | Random dog picture. |
+| `/bird` | Random bird picture. |
+| `/base64 <encode\|decode> <text>` | Encode or decode base64. |
+| `/qr <text>` | Generate a QR code. |
+| `/snowflake <id>` | Decode a Discord snowflake ID into its timestamp and components. |
+| `/emote <emoji>` | Get the full-size image and info for a custom emoji. |
+
+---
+
 ## Database
 
 TMCBot uses a local SQLite file (`db.sqlite`) managed automatically on startup. No external database is required.
