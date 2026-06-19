@@ -1,6 +1,7 @@
-import { ChatInputCommandInteraction, AttachmentBuilder } from 'discord.js';
+import { ChatInputCommandInteraction } from 'discord.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { cv2File } from '../components.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const ASSETS_DIR = path.join(__dirname, '../../assets');
@@ -47,6 +48,6 @@ export async function getImageBuffer(interaction: ChatInputCommandInteraction): 
   throw new Error('No image found. Attach an image or use the command near a recent image.');
 }
 
-export function imageReply(buffer: Buffer, ext: string): { files: AttachmentBuilder[] } {
-  return { files: [new AttachmentBuilder(buffer, { name: `result.${ext}` })] };
+export function imageReply(buffer: Buffer, ext: string) {
+  return cv2File(buffer, ext);
 }

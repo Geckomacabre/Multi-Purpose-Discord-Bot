@@ -1,9 +1,13 @@
 import {
-  ApplicationIntegrationType, ChatInputCommandInteraction, EmbedBuilder,
-  InteractionContextType, PermissionFlagsBits, SlashCommandBuilder, Colors, MessageFlags,
+  ApplicationIntegrationType, ChatInputCommandInteraction, Colors,
+  ContainerBuilder, InteractionContextType, MessageFlags,
+  PermissionFlagsBits, SlashCommandBuilder, TextDisplayBuilder,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
 import * as db from '../../utils/db';
+import { cv2Text } from '../../utils/components.js';
+
+const IS_CV2 = MessageFlags.IsComponentsV2;
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const DAYS_IN_MONTH = [31,29,31,30,31,30,31,31,30,31,30,31];
@@ -28,84 +32,113 @@ const Birthday: Command = {
     .setDescription('Birthday tracker commands')
     .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
     .setContexts([InteractionContextType.Guild])
-    .addSubcommand(s =>
-      s.setName('set').setDescription('Set your birthday')
-        .addIntegerOption(o => o.setName('month').setDescription('Month (1-12)').setRequired(true).setMinValue(1).setMaxValue(12))
-        .addIntegerOption(o => o.setName('day').setDescription('Day').setRequired(true).setMinValue(1).setMaxValue(31)))
-    .addSubcommand(s =>
-      s.setName('remove').setDescription('Remove your birthday from this server'))
-    .addSubcommand(s =>
-      s.setName('view').setDescription('View a user\'s birthday')
-        .addUserOption(o => o.setName('user').setDescription('User to view (defaults to you)')))
-    .addSubcommand(s =>
-      s.setName('list').setDescription('List upcoming birthdays in this server'))
-    .addSubcommand(s =>
-      s.setName('delete').setDescription('Delete a user\'s birthday (Manage Server)')
-        .addUserOption(o => o.setName('user').setDescription('User').setRequired(true))) as any,
+    .addSubcommand(s => s.setName('set').setDescription('Set your birthday')
+      .addIntegerOption(o => o.setName('month').setDescription('Month (1-12)').setRequired(true).setMinValue(1).setMaxValue(12))
+      .addIntegerOption(o => o.setName('day').setDescription('Day').setRequired(true).setMinValue(1).setMaxValue(31)))
+    .addSubcommand(s => s.setName('remove').setDescription('Remove your birthday from this server'))
+    .addSubcommand(s => s.setName('view').setDescription("View a user's birthday")
+      .addUserOption(o => o.setName('user').setDescription('User to view (defaults to you)')))
+    .addSubcommand(s => s.setName('list').setDescription('List upcoming birthdays in this server'))
+    .addSubcommand(s => s.setName('delete').setDescription("Delete a user's birthday (Manage Server)")
+      .addUserOption(o => o.setName('user').setDescription('User').setRequired(true)))
+    .addSubcommandGroup(g => g.setName('config').setDescription('Configure birthday announcements')
+      .addSubcommand(s => s.setName('channel').setDescription('Set the birthday announcement channel')
+        .addChannelOption(o => o.setName('channel').setDescription('Channel for announcements').setRequired(true)))
+      .addSubcommand(s => s.setName('toggle').setDescription('Enable or disable birthday announcements'))
+      .addSubcommand(s => s.setName('view').setDescription('View current birthday settings'))) as any,
 
   async run(interaction: ChatInputCommandInteraction) {
+    const group = interaction.options.getSubcommandGroup(false);
     const sub = interaction.options.getSubcommand();
+
+    if (group === 'config') {
+      if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
+        await interaction.reply({ ...cv2Text('❌ You need **Manage Server** to configure birthday settings.'), flags: IS_CV2 | MessageFlags.Ephemeral });
+        return;
+      }
+      const config = await db.getBirthdayConfig(interaction.guildId!);
+      if (sub === 'channel') {
+        const channel = interaction.options.getChannel('channel', true);
+        await db.setBirthdayConfig(interaction.guildId!, { channel_id: channel.id });
+        await interaction.reply({ ...cv2Text(`✅ Birthday announcements will be sent to <#${channel.id}>.`), flags: IS_CV2 | MessageFlags.Ephemeral });
+      } else if (sub === 'toggle') {
+        const newState = !config.enabled;
+        await db.setBirthdayConfig(interaction.guildId!, { enabled: newState ? 1 : 0 });
+        await interaction.reply({ ...cv2Text(`✅ Birthday announcements are now **${newState ? 'enabled' : 'disabled'}**.`), flags: IS_CV2 | MessageFlags.Ephemeral });
+      } else {
+        const container = new ContainerBuilder()
+          .setAccentColor(Colors.Gold)
+          .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+            `**🎂 Birthday Config**\n**Status:** ${config.enabled ? '✅ Enabled' : '❌ Disabled'}\n**Channel:** ${config.channel_id ? `<#${config.channel_id}>` : 'Not set'}`
+          ));
+        await interaction.reply({ flags: IS_CV2 | MessageFlags.Ephemeral, components: [container] });
+      }
+      return;
+    }
 
     if (sub === 'set') {
       const month = interaction.options.getInteger('month', true);
       const day = interaction.options.getInteger('day', true);
       if (day > DAYS_IN_MONTH[month - 1]) {
-        return interaction.reply({ content: `${MONTHS[month - 1]} only has ${DAYS_IN_MONTH[month - 1]} days.`, flags: MessageFlags.Ephemeral });
+        await interaction.reply({ ...cv2Text(`❌ ${MONTHS[month - 1]} only has ${DAYS_IN_MONTH[month - 1]} days.`), flags: IS_CV2 | MessageFlags.Ephemeral });
+        return;
       }
       await db.setBirthday(interaction.guildId!, interaction.user.id, month, day);
-      return interaction.reply({ content: `✅ Your birthday has been set to **${MONTHS[month - 1]} ${ordinal(day)}**.`, flags: MessageFlags.Ephemeral });
+      await interaction.reply({ ...cv2Text(`✅ Your birthday has been set to **${MONTHS[month - 1]} ${ordinal(day)}**.`), flags: IS_CV2 | MessageFlags.Ephemeral });
+      return;
     }
 
     if (sub === 'remove') {
       await db.removeBirthday(interaction.guildId!, interaction.user.id);
-      return interaction.reply({ content: '✅ Your birthday has been removed.', flags: MessageFlags.Ephemeral });
+      await interaction.reply({ ...cv2Text('✅ Your birthday has been removed.'), flags: IS_CV2 | MessageFlags.Ephemeral });
+      return;
     }
 
     if (sub === 'delete') {
       if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
-        return interaction.reply({ content: 'You need **Manage Server** to delete other users\' birthdays.', flags: MessageFlags.Ephemeral });
+        await interaction.reply({ ...cv2Text('❌ You need **Manage Server** to delete other users\' birthdays.'), flags: IS_CV2 | MessageFlags.Ephemeral });
+        return;
       }
       const user = interaction.options.getUser('user', true);
       await db.removeBirthday(interaction.guildId!, user.id);
-      return interaction.reply({ content: `✅ Removed birthday for ${user.username}.`, flags: MessageFlags.Ephemeral });
+      await interaction.reply({ ...cv2Text(`✅ Removed birthday for **${user.username}**.`), flags: IS_CV2 | MessageFlags.Ephemeral });
+      return;
     }
 
     if (sub === 'view') {
       const user = interaction.options.getUser('user') ?? interaction.user;
       const bday = await db.getBirthday(interaction.guildId!, user.id);
       if (!bday) {
-        return interaction.reply({ content: `${user.id === interaction.user.id ? 'You have' : `${user.username} has`} no birthday set.`, flags: MessageFlags.Ephemeral });
+        await interaction.reply({ ...cv2Text(`${user.id === interaction.user.id ? 'You have' : `**${user.username}** has`} no birthday set.`), flags: IS_CV2 | MessageFlags.Ephemeral });
+        return;
       }
       const days = daysUntilBirthday(bday.month, bday.day);
-      const embed = new EmbedBuilder()
-        .setColor(Colors.Gold)
-        .setTitle(`🎂 ${user.username}'s Birthday`)
-        .setThumbnail(user.displayAvatarURL())
-        .addFields(
-          { name: 'Date', value: `${MONTHS[bday.month - 1]} ${ordinal(bday.day)}`, inline: true },
-          { name: 'Coming up in', value: days === 0 ? '🎉 Today!' : `${days} day${days === 1 ? '' : 's'}`, inline: true },
-        );
-      return interaction.reply({ embeds: [embed] });
+      const container = new ContainerBuilder()
+        .setAccentColor(Colors.Gold)
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+          `**🎂 ${user.username}'s Birthday**\n**Date:** ${MONTHS[bday.month - 1]} ${ordinal(bday.day)}\n**Coming up in:** ${days === 0 ? '🎉 Today!' : `${days} day${days === 1 ? '' : 's'}`}`
+        ));
+      await interaction.reply({ flags: IS_CV2, components: [container] });
+      return;
     }
 
     if (sub === 'list') {
       const birthdays = await db.getBirthdays(interaction.guildId!);
-      if (!birthdays.length) return interaction.reply({ content: 'No birthdays set in this server yet.', flags: MessageFlags.Ephemeral });
-
+      if (!birthdays.length) {
+        await interaction.reply({ ...cv2Text('No birthdays set in this server yet.'), flags: IS_CV2 | MessageFlags.Ephemeral });
+        return;
+      }
       const sorted = birthdays
         .map(b => ({ ...b, days: daysUntilBirthday(b.month, b.day) }))
         .sort((a, b) => a.days - b.days)
         .slice(0, 20);
-
       const lines = sorted.map(b =>
-        `<@${b.user_id}> — ${MONTHS[b.month - 1]} ${ordinal(b.day)} (${b.days === 0 ? '🎉 Today!' : `in ${b.days}d`})`,
+        `<@${b.user_id}> — ${MONTHS[b.month - 1]} ${ordinal(b.day)} (${b.days === 0 ? '🎉 Today!' : `in ${b.days}d`})`
       );
-
-      const embed = new EmbedBuilder()
-        .setColor(Colors.Gold)
-        .setTitle('🎂 Upcoming Birthdays')
-        .setDescription(lines.join('\n'));
-      return interaction.reply({ embeds: [embed] });
+      const container = new ContainerBuilder()
+        .setAccentColor(Colors.Gold)
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`**🎂 Upcoming Birthdays**\n\n${lines.join('\n')}`));
+      await interaction.reply({ flags: IS_CV2, components: [container] });
     }
   },
 };

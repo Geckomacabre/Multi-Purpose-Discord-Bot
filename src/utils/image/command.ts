@@ -4,6 +4,7 @@ import {
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
 import { getImageBuffer, imageReply } from './index.js';
+import { cv2Text } from '../components.js';
 import type { NativeResult } from './native.js';
 
 export const FONTS = ['futura', 'impact', 'helvetica', 'arial', 'roboto', 'noto', 'times', 'comic sans ms', 'ubuntu'] as const;
@@ -39,7 +40,7 @@ export function makeImageCommand(opts: ImageCommandOptions): Command {
         await interaction.editReply(imageReply(result.data, result.type));
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        await interaction.editReply({ content: `Error: ${msg}` });
+        await interaction.editReply(cv2Text(`❌ ${msg}`));
       }
     },
   };
@@ -67,7 +68,7 @@ export function makeNoImageCommand(opts: {
         await interaction.editReply(imageReply(result.data, result.type));
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        await interaction.editReply({ content: `Error: ${msg}` });
+        await interaction.editReply(cv2Text(`❌ ${msg}`));
       }
     },
   };
