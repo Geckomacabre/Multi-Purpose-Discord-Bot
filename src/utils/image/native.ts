@@ -5,8 +5,8 @@ import { fileURLToPath } from 'url';
 const _require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// basePath must be the src/ directory — C++ appends "assets/fonts/" and "assets/images/" to it
-export const ASSETS_DIR = path.resolve(__dirname, '../..') + path.sep;
+// basePath is the project root — C++ appends "assets/fonts/" and "assets/images/" to it
+export const ASSETS_DIR = path.resolve(__dirname, '../../..') + path.sep;
 
 let addon: any = null;
 

@@ -71,7 +71,7 @@ export const watermark = (buf: Buffer, water: string, gravity = 6) =>
 
 // Speechbubble: watermark with speechbubble.png overlaid (flipY so it hangs from top)
 export const speechbubble = (buf: Buffer) =>
-  processImage('watermark', { water: 'assets/images/speechbubble.png', gravity: 1, resize: true, alpha: true, flipY: true }, buf, imgType(buf));
+  processImage('watermark', { water: 'assets/images/speechbubble.png', gravity: 2, resize: true, yscale: 0.2 }, buf, imgType(buf));
 
 // Vignette overlay
 export const vignette = (buf: Buffer) =>
