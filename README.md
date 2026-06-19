@@ -72,24 +72,26 @@ These were part of TMCBot before the YAGPDB port.
 Everything below was ported from [YAGPDB](https://yagpdb.xyz) and re-implemented in TypeScript.
 
 #### Moderation
+All moderation actions are under the `/mod` command.
+
 | Command | Description |
 |---|---|
-| `/ban` | Ban a member. Supports temporary bans (e.g. `1d`, `12h`) that auto-expire. |
-| `/unban` | Unban a user by ID. |
-| `/kick` | Kick a member. |
-| `/timeout` | Timeout a member (Discord native, up to 28 days). |
-| `/removetimeout` | Remove a member's active timeout. |
-| `/warn` | Warn a member. Warnings are stored and DM'd to the user. |
-| `/warnings list` | View all warnings for a user. |
-| `/warnings delete` | Delete a specific warning by ID. |
-| `/warnings clear` | Clear all warnings for a user. |
-| `/reason` | Edit the reason for an existing mod case. |
-| `/case` | View the details of a mod case by number. |
-| `/clean` | Bulk-delete up to 100 messages. Filter by user or bots-only. |
-| `/report` | Report a member to staff. Sends to the modlog channel. |
-| `/modconfig modlog` | Set the channel where mod actions are logged. |
-| `/modconfig dm` | Toggle whether punished users are DM'd. |
-| `/modconfig view` | View current moderation settings. |
+| `/mod ban <user>` | Ban a member. Supports temporary bans (e.g. `1d`, `12h`) that auto-expire. |
+| `/mod unban <user_id>` | Unban a user by ID. |
+| `/mod kick <user>` | Kick a member. |
+| `/mod timeout <user> <duration>` | Timeout a member (Discord native, up to 28 days). |
+| `/mod untimeout <user>` | Remove a member's active timeout. |
+| `/mod warn <user> <reason>` | Warn a member. Warnings are stored and DM'd to the user. |
+| `/mod purge <amount>` | Bulk-delete up to 200 messages. Filter by user, keyword, bots, attachments, or embeds. |
+| `/mod report <user> <reason>` | Report a member to staff. Sends to the modlog channel. |
+| `/mod case <number>` | View the details of a mod case by number. |
+| `/mod reason <case> <reason>` | Edit the reason for an existing mod case. |
+| `/mod warnings list <user>` | View all warnings for a user. |
+| `/mod warnings delete <id>` | Delete a specific warning by ID. |
+| `/mod warnings clear <user>` | Clear all warnings for a user. |
+| `/mod config modlog [channel]` | Set the channel where mod actions are logged. |
+| `/mod config dm <enabled>` | Toggle whether punished users are DM'd. |
+| `/mod config view` | View current moderation settings. |
 
 #### AutoMod
 | Command | Description |
@@ -111,19 +113,25 @@ Everything below was ported from [YAGPDB](https://yagpdb.xyz) and re-implemented
 Logged events: member join/leave, message edit/delete, bans/unbans, nickname changes, role changes.
 
 #### Role Management
+All role management is under the `/roles` command.
+
 | Command | Description |
 |---|---|
-| `/autorole add` | Assign a role automatically to new members (with optional delay). |
-| `/autorole remove` | Remove an autorole by ID. |
-| `/autorole list` | List all autoroles. |
-| `/rolecommands add` | Register a self-assignable role with a name and optional group. |
-| `/rolecommands remove` | Remove a role command by ID. |
-| `/rolecommands list` | List all self-assignable roles. |
-| `/role` | Toggle a self-assignable role on yourself. |
-| `/voiceroles add` | Assign a role when members join a specific voice channel. |
-| `/voiceroles remove` | Remove a voice role binding. |
-| `/voiceroles list` | List all voice role bindings. |
-| `/bulkrole` | Assign or remove a role from many members at once with filters (all, has role, missing role, bots, humans). |
+| `/roles self <name>` | Toggle a self-assignable role on yourself. |
+| `/roles bulk <action> <role> <filter>` | Assign or remove a role from many members at once (all, has role, missing role, bots, humans). |
+| `/roles self-assign add <name> <role>` | Register a self-assignable role with a name and optional group. |
+| `/roles self-assign remove <id>` | Remove a role command by ID. |
+| `/roles self-assign list` | List all self-assignable roles. |
+| `/roles auto add <role>` | Assign a role automatically to new members (with optional delay). |
+| `/roles auto remove <id>` | Remove an autorole by ID. |
+| `/roles auto list` | List all autoroles. |
+| `/roles voice add <channel> <role>` | Assign a role when members join a specific voice channel. |
+| `/roles voice remove <id>` | Remove a voice role binding. |
+| `/roles voice list` | List all voice role bindings. |
+| `/roles reaction add <message_link> <emoji> <role>` | Bind an emoji reaction on a message to a role. |
+| `/roles reaction remove <id>` | Remove a reaction role binding by ID. |
+| `/roles reaction clear <message_link>` | Remove all reaction roles from a message. |
+| `/roles reaction list` | List all active reaction role bindings. |
 
 #### Reputation
 | Command | Description |
@@ -138,10 +146,10 @@ Logged events: member join/leave, message edit/delete, bans/unbans, nickname cha
 |---|---|
 | `/ticket create` | Open a new support ticket channel. |
 | `/ticket close` | Close and delete the current ticket channel. |
-| `/ticket add` | Add a user to the current ticket. |
-| `/ticket remove` | Remove a user from the current ticket. |
-| `/ticketconfig set` | Configure ticket category, log channel, and support role. |
-| `/ticketconfig view` | View current ticket settings. |
+| `/ticket add <user>` | Add a user to the current ticket. |
+| `/ticket remove <user>` | Remove a user from the current ticket. |
+| `/ticket config set` | Configure ticket category, log channel, and support role. |
+| `/ticket config view` | View current ticket settings. |
 
 #### Reminders
 | Command | Description |
@@ -160,22 +168,22 @@ Logged events: member join/leave, message edit/delete, bans/unbans, nickname cha
 | `/cc list` | List all custom commands. |
 
 #### Feed Subscriptions
-All feeds are polled every 5 minutes.
+All feeds are polled every 5 minutes. All commands are under `/feed` and require **Manage Server**.
 
 | Command | Description |
 |---|---|
-| `/twitch add` | Subscribe to Twitch live alerts for a channel. Requires `TWITCH_CLIENT_ID` and `TWITCH_CLIENT_SECRET`. |
-| `/twitch remove` | Remove a Twitch subscription. |
-| `/twitch list` | List Twitch subscriptions. |
-| `/youtube add` | Subscribe to YouTube upload alerts for a channel. Requires `YOUTUBE_API_KEY`. |
-| `/youtube remove` | Remove a YouTube subscription. |
-| `/youtube list` | List YouTube subscriptions. |
-| `/reddit add` | Subscribe to new posts from a subreddit (no API key needed). |
-| `/reddit remove` | Remove a Reddit subscription. |
-| `/reddit list` | List Reddit subscriptions. |
-| `/rss add` | Subscribe to an RSS/Atom feed. |
-| `/rss remove` | Remove an RSS feed. |
-| `/rss list` | List RSS feeds. |
+| `/feed twitch add <username> <channel>` | Subscribe to Twitch live alerts. Requires `TWITCH_CLIENT_ID` and `TWITCH_CLIENT_SECRET`. |
+| `/feed twitch remove <id>` | Remove a Twitch subscription. |
+| `/feed twitch list` | List Twitch subscriptions. |
+| `/feed youtube add <channel_id> <channel>` | Subscribe to YouTube upload alerts. Requires `YOUTUBE_API_KEY`. |
+| `/feed youtube remove <id>` | Remove a YouTube subscription. |
+| `/feed youtube list` | List YouTube subscriptions. |
+| `/feed reddit add <subreddit> <channel>` | Subscribe to new posts from a subreddit (no API key needed). |
+| `/feed reddit remove <id>` | Remove a Reddit subscription. |
+| `/feed reddit list` | List Reddit subscriptions. |
+| `/feed rss add <url> <channel>` | Subscribe to an RSS/Atom feed. |
+| `/feed rss remove <id>` | Remove an RSS feed. |
+| `/feed rss list` | List RSS feeds. |
 
 #### Streaming Announcements
 Powered by Discord presence detection. Requires the **Presence Intent**.
@@ -188,7 +196,10 @@ Powered by Discord presence detection. Requires the **Presence Intent**.
 #### Server Stats
 | Command | Description |
 |---|---|
-| `/stats` | Show server activity for the last N hours (default 24, max 168). Displays total messages, joins, leaves, and current member count. |
+| `/serverstats view [hours]` | Show server activity for the last N hours (default 24, max 168). Displays total messages, joins, leaves, and current member count. |
+| `/serverstats channels add <type>` | Create an auto-updating stat channel. Types: `members`, `humans`, `bots`, `channels`, `roles`. |
+| `/serverstats channels remove <id>` | Delete a stat channel by ID. |
+| `/serverstats channels list` | List all stat channels. |
 
 #### RSVP / Events
 | Command | Description |
@@ -207,39 +218,50 @@ No configuration needed — active automatically. Detects and deletes messages c
 | Command | Description |
 |---|---|
 | `/ping` | Check bot and API latency. |
-| `/avatar` | Get a user's full-size avatar. |
-| `/userinfo` | Display account creation date, join date, roles, and nickname. |
+| `/avatar [user]` | Get a user's full-size avatar. |
+| `/userinfo [user]` | Display account creation date, join date, roles, and nickname. |
 | `/serverinfo` | Display server stats: owner, member count, boost level, verification level. |
-| `/roll` | Roll dice (e.g. `2d6`, `1d20+5`). |
-| `/poll` | Create a reaction poll with up to 5 options. |
-| `/calc` | Evaluate a math expression (supports `+`, `-`, `*`, `/`, `^`, `%`). |
-| `/8ball` | Ask the magic 8-ball a yes/no question. |
-| `/topic` | Get a random conversation topic. |
-| `/catfact` | Get a random cat fact. |
-| `/dogfact` | Get a random dog fact. |
-| `/dadjoke` | Get a random dad joke. |
-| `/advice` | Get a random piece of advice. |
-| `/inspire` | Get an inspirational quote. |
-| `/roast` | Roast a user (all in good fun). |
-| `/wouldyourather` | Get a would-you-rather question with reaction voting. |
+| `/roll [dice]` | Roll dice (e.g. `2d6`, `1d20+5`). |
+| `/poll <question>` | Create a reaction poll with up to 5 options. |
+| `/calc <expression>` | Evaluate a math expression (supports `+`, `-`, `*`, `/`, `^`, `%`). |
 | `/listroles` | List all roles in the server with member counts. |
-| `/viewperms` | View a user's permissions globally or in a specific channel. |
-| `/weather` | Get current weather for a location. Requires `WEATHER_API_KEY`. |
-| `/define` | Look up a word's dictionary definition, part of speech, and example. |
-| `/xkcd` | Get a random or specific xkcd comic. |
+| `/viewperms [user] [channel]` | View a user's permissions globally or in a specific channel. |
+| `/weather <location>` | Get current weather for a location. Requires `WEATHER_API_KEY`. |
+| `/define <word>` | Look up a word's dictionary definition, part of speech, and example. |
 
-#### Fun
+#### Random
+Fun/random commands consolidated under `/random`.
+
 | Command | Description |
 |---|---|
-| `/cah create` | Start a Cards Against Humanity game in the current channel. |
-| `/cah join` | Join the current CAH game. |
-| `/cah start` | Start the game (host only, minimum 3 players). |
-| `/cah hand` | View your current hand (private). |
-| `/cah play` | Play a card from your hand. |
-| `/cah pick` | Card Czar: pick the winning submission. |
-| `/cah end` | End the current game. |
-| `/trivia [category] [difficulty]` | Answer a multiple-choice trivia question with button responses. 10 categories, 3 difficulties, 30-second timer. Powered by OpenTDB (no API key needed). |
-| `/gif <query>` | Search for a GIF using Tenor. Requires `TENOR_API_KEY` in `.env`. |
+| `/random 8ball <question>` | Ask the magic 8-ball a yes/no question. |
+| `/random catfact` | Get a random cat fact. |
+| `/random dogfact` | Get a random dog fact. |
+| `/random dadjoke` | Get a random dad joke. |
+| `/random advice` | Get a random piece of advice. |
+| `/random inspire` | Get an inspirational quote. |
+| `/random topic` | Get a random conversation topic. |
+| `/random wouldyourather` | Get a would-you-rather question. |
+| `/random xkcd [number]` | Get a random or specific xkcd comic. |
+| `/random roast <user>` | Roast a user (all in good fun). |
+
+#### Fun
+Fun commands consolidated under `/fun`.
+
+| Command | Description |
+|---|---|
+| `/fun cat` | Random cat picture. |
+| `/fun dog` | Random dog picture. |
+| `/fun bird` | Random bird picture. |
+| `/fun gif <query>` | Search for a GIF using Tenor. Requires `TENOR_API_KEY` in `.env`. |
+| `/fun trivia` | Answer a multiple-choice trivia question with button responses. Powered by OpenTDB (no API key needed). |
+| `/fun cah create` | Start a Cards Against Humanity game in the current channel. |
+| `/fun cah join` | Join the current CAH game. |
+| `/fun cah start` | Start the game (host only, minimum 3 players). |
+| `/fun cah hand` | View your current hand (private). |
+| `/fun cah play <card>` | Play a card from your hand. |
+| `/fun cah pick <submission>` | Card Czar: pick the winning submission. |
+| `/fun cah end` | End the current game. |
 
 ---
 
@@ -252,38 +274,36 @@ XP is awarded per message sent (15–25 XP by default, 60-second cooldown per us
 Level formula (MEE6-style): `5n² + 50n + 100` XP required per level.
 Coin reward on level-up: `level × 50` coins.
 
+All leveling commands are under `/level`.
+
 | Command | Description |
 |---|---|
-| `/rank [user]` | View your or another user's level, XP progress bar, and total messages. |
-| `/leaderboard` | Show the top users by XP and level. |
-| `/levelconfig toggle` | Enable or disable XP gain for the server. |
-| `/levelconfig channel` | Set the channel for level-up announcements. |
-| `/levelconfig xp` | Set XP per message range and cooldown seconds. |
-| `/levelconfig message` | Customize the level-up announcement. Supports `{user}`, `{username}`, `{level}`. |
-| `/levelconfig view` | View current leveling settings. |
-| `/levelroles add` | Assign a role automatically when users reach a specific level. |
-| `/levelroles remove` | Remove a level role binding by ID. |
-| `/levelroles list` | List all level role bindings. |
+| `/level rank [user]` | View your or another user's level, XP progress bar, and total messages. |
+| `/level leaderboard [limit]` | Show the top users by XP and level. |
+| `/level roles add <level> <role>` | Assign a role automatically when users reach a specific level. |
+| `/level roles remove <id>` | Remove a level role binding by ID. |
+| `/level roles list` | List all level role bindings. |
+| `/level config toggle <enabled>` | Enable or disable XP gain for the server. |
+| `/level config channel [channel]` | Set the channel for level-up announcements. |
+| `/level config xp [min] [max] [cooldown]` | Set XP per message range and cooldown seconds. |
+| `/level config message <text>` | Customize the level-up announcement. Supports `{user}`, `{username}`, `{level}`. |
+| `/level config view` | View current leveling settings. |
 
 #### Economy
 Each server has its own virtual currency. Earn coins through daily rewards, work, leveling up, and gambling.
 
-| Command | Description |
-|---|---|
-| `/balance [user]` | Check your or another user's coin balance and total earned. |
-| `/daily` | Claim a daily coin reward (20-hour cooldown). |
-| `/work` | Work to earn coins with a random job flavor text (1-hour cooldown). |
-| `/pay <user> <amount>` | Transfer coins to another user. |
-| `/baltop` | Show the richest users in the server. |
-
-#### Gambling
-All gambling commands bet against your coin balance.
+All economy commands are under `/economy`.
 
 | Command | Description |
 |---|---|
-| `/gamble flip <bet>` | Bet on a coin flip — win doubles your bet (50/50). |
-| `/gamble roll <bet>` | Roll 1–100 against the bot — higher roll wins; ties refund your bet. |
-| `/gamble slots <bet>` | Spin the slot machine — match 3 symbols to win. Payouts: 🍒×3=1.5× \| 🍋×3=2× \| 🔔×3=3× \| 💎×3=5× \| 7️⃣×3=10×. |
+| `/economy balance [user]` | Check your or another user's coin balance and total earned. |
+| `/economy daily` | Claim a daily coin reward (20-hour cooldown). |
+| `/economy work` | Work to earn coins with a random job flavor text (1-hour cooldown). |
+| `/economy pay <user> <amount>` | Transfer coins to another user. |
+| `/economy leaderboard [limit]` | Show the richest users in the server. |
+| `/economy gamble flip <bet>` | Bet on a coin flip — win doubles your bet (50/50). |
+| `/economy gamble roll <bet>` | Roll 1–100 against the bot — higher roll wins; ties refund your bet. |
+| `/economy gamble slots <bet>` | Spin the slot machine — match 3 symbols to win. Payouts: 🍒×3=1.5× \| 🍋×3=2× \| 🔔×3=3× \| 💎×3=5× \| 7️⃣×3=10×. |
 
 #### Free Game Tracker
 Polls Epic Games Store, Steam, and GOG every hour for free game promotions. Posts to a configured channel with a claim button, the original price, and how long the freebie lasts. Deduplicates per server so no game is posted twice.
@@ -302,14 +322,14 @@ Supported platforms:
 - **Steam** — featured 100%-off specials (free weekends, permanent giveaways)
 - **GOG** — discounted-to-free games from their catalog
 
-#### Economy Admin
+#### Economy Config (Manage Server required)
 | Command | Description |
 |---|---|
-| `/econconfig currency` | Set the currency name and symbol for this server. |
-| `/econconfig starting` | Set how many coins new users start with. |
-| `/econconfig daily` | Set the daily reward min/max range. |
-| `/econconfig work` | Set the work reward min/max range. |
-| `/econconfig view` | View current economy settings. |
+| `/economy config currency <name> <symbol>` | Set the currency name and symbol for this server. |
+| `/economy config starting <amount>` | Set how many coins new users start with. |
+| `/economy config daily <min> <max>` | Set the daily reward min/max range. |
+| `/economy config work <min> <max>` | Set the work reward min/max range. |
+| `/economy config view` | View current economy settings. |
 
 ---
 
@@ -339,9 +359,9 @@ Members set their birthday once and the bot announces it on the day in a configu
 | `/birthday list` | Show upcoming birthdays in the server, sorted by soonest. |
 | `/birthday remove` | Remove your birthday from this server. |
 | `/birthday delete <user>` | Remove a user's birthday (Manage Server required). |
-| `/birthdayconfig channel <channel>` | Set the birthday announcement channel. |
-| `/birthdayconfig toggle` | Enable or disable birthday announcements. |
-| `/birthdayconfig view` | View current birthday settings. |
+| `/birthday config channel <channel>` | Set the birthday announcement channel. |
+| `/birthday config toggle` | Enable or disable birthday announcements. |
+| `/birthday config view` | View current birthday settings. |
 
 ---
 
@@ -397,25 +417,7 @@ Button-based giveaway system. Users click to enter, winners are picked randomly 
 ---
 
 ### Reaction Roles
-Attach a role to a reaction emoji on any message. Members gain the role by reacting and lose it by removing the reaction.
-
-| Command | Description |
-|---|---|
-| `/reactionroles add <message_link> <emoji> <role>` | Bind an emoji reaction on a message to a role. Paste the message link directly from Discord. |
-| `/reactionroles remove <id>` | Remove a binding by ID. |
-| `/reactionroles clear <message_link>` | Remove all reaction roles from a message. |
-| `/reactionroles list` | List all active reaction role bindings. |
-
----
-
-### Server Stat Channels
-Creates read-only voice channels that display live server statistics, updating every 10 minutes.
-
-| Command | Description |
-|---|---|
-| `/statschannels add <type> [label]` | Create a stat channel. Types: `members`, `humans`, `bots`, `channels`, `roles`. |
-| `/statschannels remove <id>` | Delete a stat channel. |
-| `/statschannels list` | List all stat channels. |
+Attach a role to a reaction emoji on any message. Members gain the role by reacting and lose it by removing the reaction. See [Role Management](#role-management) — use `/roles reaction` commands.
 
 ---
 
@@ -425,15 +427,6 @@ Translate text between 16 languages instantly. No API key required.
 | Command | Description |
 |---|---|
 | `/translate <text> [to] [from]` | Translate text. Target language defaults to English. Source is auto-detected if not specified. Powered by MyMemory. |
-
----
-
-### Message Purge
-Advanced bulk message deletion with multiple filters. Works on messages less than 14 days old.
-
-| Command | Description |
-|---|---|
-| `/purge <amount> [user] [keyword] [bots] [attachments] [embeds]` | Delete up to 200 messages. Filter by author, content keyword, bots only, has attachment, or has embed. |
 
 ---
 
@@ -476,7 +469,7 @@ Full-featured music player. Supports YouTube, Spotify, SoundCloud, Apple Music, 
 
 ### Image Editing
 
-67 image manipulation effects ported from [esmBot](https://github.com/esmBot/esmBot), consolidated under a single `/image` command with subcommand groups. All subcommands accept an optional `image` attachment; if none is provided, the most recent image in the channel is used.
+57 image manipulation effects ported from [esmBot](https://github.com/esmBot/esmBot), each as a top-level slash command (e.g. `/blur`, `/deepfry`, `/caption`). All commands accept an optional `image` attachment; if none is provided, the most recent image in the channel is used.
 
 Uses esmBot's native C++ image processing addon (libvips). The TypeScript layer is thin — all pixel work runs in compiled C++.
 
@@ -493,106 +486,40 @@ bun run build:native
 The `install` script attempts to build automatically. If it fails (Windows dev machine, missing deps), the bot will start but image commands will return an error message prompting you to build the addon.
 
 **Optional features:**
-- `WITH_MAGICK=ON` — enables `/image distort magik` (content-aware scale); requires `libmagick++-dev`
+- `WITH_MAGICK=ON` — enables `/magik` (content-aware scale); requires `libmagick++-dev`
 - `WITH_ZXING=ON` (default on Linux) — enables `/qr` (QR code generation via native ZXing); requires `libzxing-dev`
 
-#### `/image filter` — Color & filter effects
-| Subcommand | Description |
-|---|---|
-| `blur` | Gaussian blur. |
-| `sharpen` | Sharpen edges. |
-| `grayscale` | Convert to grayscale. |
-| `sepia` | Apply a sepia tone. |
-| `invert` | Invert colors. |
-| `hue [degrees]` | Shift hue (default 180°). |
-| `deepfry` | Apply the deep-fried meme effect. |
-| `jpeg [quality]` | Re-encode as extremely low-quality JPEG. |
-| `vignette` | Add a dark vignette border. |
-| `pixelate [amount]` | Pixelate the image. |
+#### Color & Filter Effects
+`/blur` `/sharpen` `/grayscale` `/sepia` `/invert` `/hue [degrees]` `/deepfry` `/jpeg [quality]` `/vignette` `/pixelate [amount]`
 
-#### `/image transform` — Geometric transforms
-| Subcommand | Description |
-|---|---|
-| `flip` | Flip vertically. |
-| `flop` | Flip horizontally. |
-| `rotate [90\|180\|270]` | Rotate by 90, 180, or 270 degrees. |
-| `crop` | Crop to a square. |
-| `circle` | Crop to a circle. |
-| `wide` | Stretch horizontally to 2.5× width. |
-| `squish` | Compress vertically to 40% height. |
-| `stretch` | Stretch to 512×512. |
-| `tile` | Tile 2×2. |
-| `wall` | Tile 4×4. |
+#### Geometric Transforms
+`/flip` `/flop` `/rotate [90|180|270]` `/crop` `/circle` `/wide` `/squish` `/stretch` `/tile` `/wall`
 
-#### `/image mirror` — Mirror & reflection
-| Subcommand | Description |
-|---|---|
-| `haah` | Mirror left half onto right. |
-| `hooh` | Mirror right half onto left. |
-| `waaw` | Mirror top half onto bottom. |
-| `woow` | Mirror bottom half onto top. |
+#### Mirror & Reflection
+`/haah` `/hooh` `/waaw` `/woow`
 
-#### `/image distort` — Distortion effects
-| Subcommand | Description |
-|---|---|
-| `swirl` | Swirl distortion. |
-| `explode` | Outward pixel displacement. |
-| `implode` | Inward pixel displacement. |
-| `magik` | Content-aware scale distortion. |
-| `globe` | Map onto a sphere. |
-| `gif` | Convert a static image into a GIF. |
+#### Distortion Effects
+`/swirl` `/explode` `/implode` `/magik` `/globe` `/togif`
 
-#### `/image animate` — Animation effects
-| Subcommand | Description |
-|---|---|
-| `spin` | Make the image spin (30 frames). |
-| `bounce` | Make the image bounce (15 frames). |
-| `slide` | Slide in from the left. |
-| `fade` | Fade to black. |
-| `reverse` | Reverse a GIF. |
-| `speed` | Speed up a GIF. |
-| `slow` | Slow down a GIF by 50%. |
-| `freeze` | Freeze a GIF on its last frame. |
-| `unfreeze` | Turn a static image into a ping-pong GIF. |
+#### Animation Effects
+`/spin` `/bounce` `/slide` `/fade` `/reverse` `/speed` `/slow` `/freeze` `/unfreeze`
 
-#### `/image text` — Text overlay
-| Subcommand | Description |
-|---|---|
-| `caption <text>` | Add a white caption bar above the image. |
-| `caption2 <text>` | Add a dark caption bar below the image. |
-| `meme [top] [bottom]` | Impact-font top/bottom meme text. |
-| `motivate <title> [subtitle]` | Motivational poster format. |
-| `snapchat <text>` | Semi-transparent Snapchat-style text bar. |
-| `whisper <text>` | Whisper-style caption overlay. |
-| `speechbubble` | Add a speech bubble overlay. |
-| `uncanny <left> <right>` | Side-by-side comparison meme. |
-| `uncaption` | Attempt to remove a white caption bar. |
+#### Text Overlays
+`/caption <text>` `/caption2 <text>` `/meme [top] [bottom]` `/motivate <title> [subtitle]` `/snapchat <text>` `/whisper <text>` `/speechbubble` `/uncanny <left> <right>` `/uncaption`
 
-#### `/image meme` — Meme generators
-| Subcommand | Description |
-|---|---|
-| `sonic <text>` | Sonic speech bubble meme. |
-| `homebrew <text>` | Wii Homebrew Channel meme. |
-| `spotify <song>` | Fake Spotify now-playing card. |
-| `reddit <title>` | Fake Reddit post template. |
-| `gamexplain` | Gamexplain-style logo overlay. |
-| `scott` | Apply the Scott the Woz style overlay. |
+#### Meme Generators
+`/sonic <text>` `/homebrew <text>` `/spotify <song>` `/redditpost <title>` `/gamexplain` `/scott`
 
-#### `/image overlay` — Flag & watermark overlays
-| Subcommand | Description |
-|---|---|
-| `flag <rainbow\|trans\|pirate>` | Overlay a flag on an image. |
-| `brand <name>` | Add a brand watermark (9GAG, MemeCenter, DeviantArt, Hypercam, iFunny, KineMaster, AVS4YOU, Reddit, Bandicam, Shutterstock). |
+#### Overlays
+`/flag <type>` — overlay a flag (`rainbow`, `trans`, `pirate`, `checkered`)
+`/watermark <brand>` — brand watermark (9gag, bandicam, deviantart, hypercam, ifunny, kinemaster, avs4you, memecenter, powerdirector, shutterstock)
 
 ---
 
-### Additional Fun & Utility
+### Additional Utility
 
 | Command | Description |
 |---|---|
-| `/cat` | Random cat picture. |
-| `/dog` | Random dog picture. |
-| `/bird` | Random bird picture. |
 | `/base64 <encode\|decode> <text>` | Encode or decode base64. |
 | `/qr <text>` | Generate a QR code. |
 | `/snowflake <id>` | Decode a Discord snowflake ID into its timestamp and components. |
