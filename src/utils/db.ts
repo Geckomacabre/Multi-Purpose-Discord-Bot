@@ -1910,6 +1910,16 @@ export async function getGiveawayEntries(id: number): Promise<string[]> {
   return row ? JSON.parse(row.entries as string) : [];
 }
 
+export async function getAllGiveaways(guild_id: string): Promise<IGiveaway[]> {
+  const rows = await db`SELECT * FROM giveaways WHERE guild_id = ${guild_id} ORDER BY ends_at DESC`;
+  return rows as IGiveaway[];
+}
+
+export async function removeLevelRoleByRoleId(guild_id: string, role_id: string): Promise<boolean> {
+  const result = await db`DELETE FROM level_roles WHERE guild_id = ${guild_id} AND role_id = ${role_id} RETURNING id`;
+  return result.length > 0;
+}
+
 // ─── Reaction roles ───────────────────────────────────────────────────────────
 
 export async function getReactionRoles(guild_id: string): Promise<IReactionRole[]> {

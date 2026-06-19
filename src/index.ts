@@ -3,6 +3,7 @@ import Config from './config';
 import { registerEvents } from './events';
 import { registerFeatures } from './features';
 import * as db from './utils/db';
+import { startWebServer } from './web';
 
 process.on('uncaughtException', (err) => {
   console.error(`Unhandled Exception: ${err}`);
@@ -29,5 +30,6 @@ export const Bot = new Client({
 db.initDb();
 registerEvents(Bot);
 registerFeatures(Bot);
+startWebServer();
 
 Bot.login(Config.DISCORD_TOKEN);
