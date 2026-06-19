@@ -15,6 +15,21 @@ export const onInteraction = async (interaction: Interaction) => {
     return;
   }
 
+  if (interaction.isMessageContextMenuCommand()) {
+    const command = commands.get(interaction.commandName);
+    if (command?.runMessage) {
+      try {
+        await command.runMessage(interaction);
+      } catch (err) {
+        logger.error(`Context menu error for ${interaction.commandName}:`, err);
+        if (!interaction.replied && !interaction.deferred) {
+          await interaction.reply({ content: 'There was an error.', flags: MessageFlags.Ephemeral }).catch(() => {});
+        }
+      }
+    }
+    return;
+  }
+
   if (!interaction.isChatInputCommand()) return;
 
   const command = commands.get(interaction.commandName);

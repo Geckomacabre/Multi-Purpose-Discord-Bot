@@ -2,6 +2,7 @@ import { ChatInputCommandInteraction } from 'discord.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { cv2File } from '../components.js';
+import { selectedImages } from '../imageSelection.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const ASSETS_DIR = path.join(__dirname, '../../assets');
@@ -33,6 +34,9 @@ export async function getImageBuffer(interaction: ChatInputCommandInteraction): 
 
   const url = (interaction.options as any).getString?.('url') as string | null;
   if (url) return fetchUrl(url);
+
+  const selected = selectedImages.get(interaction.user.id);
+  if (selected) return fetchUrl(selected);
 
   if (interaction.channel && 'messages' in interaction.channel) {
     const messages = await interaction.channel.messages.fetch({ limit: 20 });
