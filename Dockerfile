@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     openssl \
     libvips-dev \
     libfontconfig1-dev \
+    libzxing-dev \
     cmake \
     build-essential \
     python3 \
