@@ -1,14 +1,9 @@
 import {
-  ApplicationCommandType, ApplicationIntegrationType, AttachmentBuilder,
-  ContainerBuilder, InteractionContextType, MediaGalleryBuilder, MediaGalleryItemBuilder,
-  MessageContextMenuCommandInteraction, MessageFlags,
+  ApplicationCommandType, ApplicationIntegrationType, ContextMenuCommandBuilder,
+  InteractionContextType, MessageContextMenuCommandInteraction, MessageFlags,
 } from 'discord.js';
-import { ContextMenuCommandBuilder } from 'discord.js';
 import { Command } from '../../interfaces/command';
-import { generateQuote } from '../../utils/quote.js';
-import { cv2Text } from '../../utils/components.js';
-
-const IS_CV2 = MessageFlags.IsComponentsV2;
+import { selectedMessages } from '../../utils/messageSelection.js';
 
 const MakeAQuote: Command = {
   data: new ContextMenuCommandBuilder()
@@ -26,8 +21,6 @@ const MakeAQuote: Command = {
       return;
     }
 
-    await interaction.deferReply();
-
     const author = msg.author;
     let avatarUrl: string | null = null;
     if (interaction.inGuild()) {
@@ -37,25 +30,17 @@ const MakeAQuote: Command = {
       avatarUrl = author.displayAvatarURL({ size: 64, extension: 'png' });
     }
 
-    try {
-      const buf = await generateQuote({
-        text,
-        authorName: msg.member?.displayName ?? author.username,
-        authorAvatarUrl: avatarUrl,
-        guildName: interaction.guild?.name,
-      });
+    selectedMessages.set(interaction.user.id, {
+      text,
+      authorName: msg.member?.displayName ?? author.username,
+      authorAvatarUrl: avatarUrl,
+      guildName: interaction.guild?.name,
+    });
 
-      const container = new ContainerBuilder()
-        .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL('attachment://quote.png')));
-      await interaction.editReply({
-        flags: IS_CV2,
-        files: [new AttachmentBuilder(buf, { name: 'quote.png' })],
-        components: [container],
-      });
-    } catch (err) {
-      const msg2 = err instanceof Error ? err.message : String(err);
-      await interaction.editReply(cv2Text(`❌ Failed to generate quote: ${msg2}`));
-    }
+    await interaction.reply({
+      content: '✅ Message selected! Now run `/makeitaquote` to generate the quote image.',
+      flags: MessageFlags.Ephemeral,
+    });
   },
 };
 

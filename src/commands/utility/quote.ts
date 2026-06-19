@@ -5,52 +5,48 @@ import {
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
 import { generateQuote } from '../../utils/quote.js';
+import { selectedMessages } from '../../utils/messageSelection.js';
 import { cv2Text } from '../../utils/components.js';
 
 const IS_CV2 = MessageFlags.IsComponentsV2;
 
-const Quote: Command = {
+async function replyWithQuote(interaction: ChatInputCommandInteraction, opts: {
+  text: string;
+  authorName: string;
+  authorAvatarUrl: string | null;
+  guildName?: string;
+}) {
+  try {
+    const buf = await generateQuote(opts);
+    const container = new ContainerBuilder()
+      .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL('attachment://quote.png')));
+    await interaction.editReply({
+      flags: IS_CV2,
+      files: [new AttachmentBuilder(buf, { name: 'quote.png' })],
+      components: [container],
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    await interaction.editReply(cv2Text(`❌ Failed to generate quote: ${msg}`));
+  }
+}
+
+const MakeItAQuote: Command = {
   data: new SlashCommandBuilder()
-    .setName('quote')
-    .setDescription('Generate a quote image')
+    .setName('makeitaquote')
+    .setDescription('Generate a quote image from the message you selected with "Make it a Quote"')
     .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
-    .setContexts([InteractionContextType.Guild, InteractionContextType.BotDM])
-    .addStringOption(o => o.setName('text').setDescription('The quote text').setRequired(true))
-    .addUserOption(o => o.setName('author').setDescription('Who said it (defaults to you)')) as any,
+    .setContexts([InteractionContextType.Guild, InteractionContextType.BotDM]) as any,
 
   async run(interaction: ChatInputCommandInteraction) {
+    const stored = selectedMessages.get(interaction.user.id);
+    if (!stored) {
+      await interaction.reply(cv2Text('❌ No message selected. Right-click a message → Apps → **Make it a Quote** first.'));
+      return;
+    }
     await interaction.deferReply();
-    const text = interaction.options.getString('text', true);
-    const author = interaction.options.getUser('author') ?? interaction.user;
-
-    let avatarUrl: string | null = null;
-    if (interaction.inGuild()) {
-      const member = await interaction.guild!.members.fetch(author.id).catch(() => null);
-      avatarUrl = member?.displayAvatarURL({ size: 64, extension: 'png' }) ?? author.displayAvatarURL({ size: 64, extension: 'png' });
-    } else {
-      avatarUrl = author.displayAvatarURL({ size: 64, extension: 'png' });
-    }
-
-    try {
-      const buf = await generateQuote({
-        text,
-        authorName: author.displayName ?? author.username,
-        authorAvatarUrl: avatarUrl,
-        guildName: interaction.guild?.name,
-      });
-
-      const container = new ContainerBuilder()
-        .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL('attachment://quote.png')));
-      await interaction.editReply({
-        flags: IS_CV2,
-        files: [new AttachmentBuilder(buf, { name: 'quote.png' })],
-        components: [container],
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      await interaction.editReply(cv2Text(`❌ Failed to generate quote: ${msg}`));
-    }
+    await replyWithQuote(interaction, stored);
   },
 };
 
-export default Quote;
+export default MakeItAQuote;
