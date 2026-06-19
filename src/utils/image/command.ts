@@ -6,6 +6,9 @@ import { Command } from '../../interfaces/command';
 import { getImageBuffer, imageReply } from './index.js';
 import type { NativeResult } from './native.js';
 
+export const FONTS = ['futura', 'impact', 'helvetica', 'arial', 'roboto', 'noto', 'times', 'comic sans ms', 'ubuntu'] as const;
+export const fontChoices = FONTS.map(f => ({ name: f, value: f }));
+
 type EffectFn = (buffer: Buffer, ...args: any[]) => Promise<NativeResult>;
 
 interface ImageCommandOptions {
@@ -21,45 +24,23 @@ export function makeImageCommand(opts: ImageCommandOptions): Command {
     .setName(opts.name)
     .setDescription(opts.description)
     .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
-    .setContexts([InteractionContextType.Guild])
-    .addAttachmentOption(o => o.setName('image').setDescription('Image to process'));
+    .setContexts([InteractionContextType.Guild]);
   if (opts.extraOptions) builder = opts.extraOptions(builder);
+  builder = builder.addAttachmentOption((o: any) => o.setName('image').setDescription('Image to process'));
 
   return {
     data: builder,
     async run(interaction: ChatInputCommandInteraction) {
       await interaction.deferReply();
-      const buf = await getImageBuffer(interaction);
-      const args = opts.getArgs ? opts.getArgs(interaction) : [];
-      const result = await opts.effect(buf, ...args);
-      await interaction.editReply(imageReply(result.data, result.type));
-    },
-  };
-}
-
-export function makeTextImageCommand(opts: {
-  name: string;
-  description: string;
-  effect: (buffer: Buffer, text: string) => Promise<NativeResult>;
-  textOption?: string;
-  textDesc?: string;
-}): Command {
-  const builder: any = new SlashCommandBuilder()
-    .setName(opts.name)
-    .setDescription(opts.description)
-    .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
-    .setContexts([InteractionContextType.Guild])
-    .addStringOption(o => o.setName(opts.textOption ?? 'text').setDescription(opts.textDesc ?? 'Text to add').setRequired(true))
-    .addAttachmentOption(o => o.setName('image').setDescription('Image to process'));
-
-  return {
-    data: builder,
-    async run(interaction: ChatInputCommandInteraction) {
-      await interaction.deferReply();
-      const text = interaction.options.getString(opts.textOption ?? 'text', true);
-      const buf = await getImageBuffer(interaction);
-      const result = await opts.effect(buf, text);
-      await interaction.editReply(imageReply(result.data, result.type));
+      try {
+        const buf = await getImageBuffer(interaction);
+        const args = opts.getArgs ? opts.getArgs(interaction) : [];
+        const result = await opts.effect(buf, ...args);
+        await interaction.editReply(imageReply(result.data, result.type));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        await interaction.editReply({ content: `Error: ${msg}` });
+      }
     },
   };
 }
@@ -81,8 +62,13 @@ export function makeNoImageCommand(opts: {
     data: builder,
     async run(interaction: ChatInputCommandInteraction) {
       await interaction.deferReply();
-      const result = await opts.run(interaction);
-      await interaction.editReply(imageReply(result.data, result.type));
+      try {
+        const result = await opts.run(interaction);
+        await interaction.editReply(imageReply(result.data, result.type));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        await interaction.editReply({ content: `Error: ${msg}` });
+      }
     },
   };
 }
