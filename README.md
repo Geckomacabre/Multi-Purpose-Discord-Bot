@@ -218,7 +218,8 @@ No configuration needed — active automatically. Detects and deletes messages c
 | Command | Description |
 |---|---|
 | `/ping` | Check bot and API latency. |
-| `/avatar [user]` | Get a user's full-size avatar. |
+| `/avatar [user] [server]` | Get a user's full-size avatar. Use `server:true` to show their server-specific avatar. |
+| `/banner [user] [server]` | Get a user's profile banner. Use `server:true` to prefer the server-specific banner. |
 | `/userinfo [user]` | Display account creation date, join date, roles, and nickname. |
 | `/serverinfo` | Display server stats: owner, member count, boost level, verification level. |
 | `/roll [dice]` | Roll dice (e.g. `2d6`, `1d20+5`). |
@@ -487,7 +488,7 @@ The `install` script attempts to build automatically. If it fails (Windows dev m
 
 **Optional features:**
 - `WITH_MAGICK=ON` — enables `/magik` (content-aware scale); requires `libmagick++-dev`
-- `WITH_ZXING=ON` (default on Linux) — enables `/qr` (QR code generation via native ZXing); requires `libzxing-dev`
+- `WITH_ZXING=ON` (default on Linux) — enables `/qr create` and `/qr read` (QR code generation and decoding via native ZXing); requires `libzxing-dev`
 
 #### Color & Filter Effects
 `/blur` `/sharpen` `/grayscale` `/sepia` `/invert` `/hue [degrees]` `/deepfry` `/jpeg [quality]` `/vignette` `/pixelate [amount]`
@@ -521,7 +522,8 @@ The `install` script attempts to build automatically. If it fails (Windows dev m
 | Command | Description |
 |---|---|
 | `/base64 <encode\|decode> <text>` | Encode or decode base64. |
-| `/qr <text>` | Generate a QR code. |
+| `/qr create <text>` | Generate a QR code from text or a URL. |
+| `/qr read [image]` | Decode a QR code from an image (attach image or it uses a recent channel image). |
 | `/snowflake <id>` | Decode a Discord snowflake ID into its timestamp and components. |
 | `/emote <emoji>` | Get the full-size image and info for a custom emoji. |
 
