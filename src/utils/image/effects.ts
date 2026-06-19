@@ -1,6 +1,4 @@
-import { processImage, type NativeResult } from './native.js';
-
-export type ImageResult = NativeResult;
+import { processImage } from './native.js';
 
 function imgType(buf: Buffer): string {
   if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) return 'gif';
