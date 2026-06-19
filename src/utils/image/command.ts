@@ -3,15 +3,15 @@ import {
   SlashCommandBuilder, SlashCommandOptionsOnlyBuilder,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
-import { getImageBuffer, getOutputType, imageReply, normalizeImage } from './index';
+import { getImageBuffer, imageReply } from './index.js';
+import type { NativeResult } from './native.js';
 
-type EffectFn = (buffer: Buffer, ...args: any[]) => Promise<Buffer>;
+type EffectFn = (buffer: Buffer, ...args: any[]) => Promise<NativeResult>;
 
 interface ImageCommandOptions {
   name: string;
   description: string;
   effect: EffectFn;
-  forceGif?: boolean;
   extraOptions?: (builder: SlashCommandBuilder) => SlashCommandOptionsOnlyBuilder | SlashCommandBuilder;
   getArgs?: (interaction: ChatInputCommandInteraction) => any[];
 }
@@ -29,12 +29,10 @@ export function makeImageCommand(opts: ImageCommandOptions): Command {
     data: builder,
     async run(interaction: ChatInputCommandInteraction) {
       await interaction.deferReply();
-      const raw = await getImageBuffer(interaction);
-      const buf = await normalizeImage(raw);
+      const buf = await getImageBuffer(interaction);
       const args = opts.getArgs ? opts.getArgs(interaction) : [];
       const result = await opts.effect(buf, ...args);
-      const ext = await getOutputType(buf, opts.forceGif);
-      await interaction.editReply(imageReply(result, ext));
+      await interaction.editReply(imageReply(result.data, result.type));
     },
   };
 }
@@ -42,7 +40,7 @@ export function makeImageCommand(opts: ImageCommandOptions): Command {
 export function makeTextImageCommand(opts: {
   name: string;
   description: string;
-  effect: (buffer: Buffer, text: string) => Promise<Buffer>;
+  effect: (buffer: Buffer, text: string) => Promise<NativeResult>;
   textOption?: string;
   textDesc?: string;
 }): Command {
@@ -59,11 +57,9 @@ export function makeTextImageCommand(opts: {
     async run(interaction: ChatInputCommandInteraction) {
       await interaction.deferReply();
       const text = interaction.options.getString(opts.textOption ?? 'text', true);
-      const raw = await getImageBuffer(interaction);
-      const buf = await normalizeImage(raw);
+      const buf = await getImageBuffer(interaction);
       const result = await opts.effect(buf, text);
-      const ext = await getOutputType(buf);
-      await interaction.editReply(imageReply(result, ext));
+      await interaction.editReply(imageReply(result.data, result.type));
     },
   };
 }
@@ -72,7 +68,7 @@ export function makeNoImageCommand(opts: {
   name: string;
   description: string;
   buildOptions?: (builder: SlashCommandBuilder) => any;
-  run: (interaction: ChatInputCommandInteraction) => Promise<Buffer>;
+  run: (interaction: ChatInputCommandInteraction) => Promise<NativeResult>;
 }): Command {
   let builder: any = new SlashCommandBuilder()
     .setName(opts.name)
@@ -86,7 +82,7 @@ export function makeNoImageCommand(opts: {
     async run(interaction: ChatInputCommandInteraction) {
       await interaction.deferReply();
       const result = await opts.run(interaction);
-      await interaction.editReply(imageReply(result, 'png'));
+      await interaction.editReply(imageReply(result.data, result.type));
     },
   };
 }

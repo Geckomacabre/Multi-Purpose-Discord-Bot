@@ -1,7 +1,7 @@
 import { ApplicationIntegrationType, ChatInputCommandInteraction, InteractionContextType, SlashCommandBuilder } from 'discord.js';
 import { Command } from '../../interfaces/command';
-import { getImageBuffer, getOutputType, imageReply, normalizeImage } from '../../utils/image/index';
-import { meme } from '../../utils/image/effects';
+import { getImageBuffer, imageReply } from '../../utils/image/index.js';
+import { meme } from '../../utils/image/effects.js';
 
 const Meme: Command = {
   data: new SlashCommandBuilder()
@@ -17,11 +17,9 @@ const Meme: Command = {
     const top = interaction.options.getString('top') ?? '';
     const bottom = interaction.options.getString('bottom') ?? '';
     if (!top && !bottom) { await interaction.editReply('Please provide at least top or bottom text.'); return; }
-    const raw = await getImageBuffer(interaction);
-    const buf = await normalizeImage(raw);
+    const buf = await getImageBuffer(interaction);
     const result = await meme(buf, top, bottom);
-    const ext = await getOutputType(buf);
-    await interaction.editReply(imageReply(result, ext));
+    await interaction.editReply(imageReply(result.data, result.type));
   },
 };
 export default Meme;

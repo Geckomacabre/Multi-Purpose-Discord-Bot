@@ -1,10 +1,22 @@
-import { makeNoImageCommand } from '../../utils/image/command';
-import { spotify } from '../../utils/image/effects';
-export default makeNoImageCommand({
-  name: 'spotify',
-  description: 'Create a fake Spotify now playing card',
-  buildOptions: b => b
+import { ApplicationIntegrationType, ChatInputCommandInteraction, InteractionContextType, SlashCommandBuilder } from 'discord.js';
+import { Command } from '../../interfaces/command';
+import { getImageBuffer, imageReply } from '../../utils/image/index.js';
+import { spotify } from '../../utils/image/effects.js';
+
+const Spotify: Command = {
+  data: new SlashCommandBuilder()
+    .setName('spotify')
+    .setDescription('Create a fake Spotify now playing card')
+    .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
+    .setContexts([InteractionContextType.Guild])
     .addStringOption(o => o.setName('song').setDescription('Song name').setRequired(true))
-    .addStringOption(o => o.setName('artist').setDescription('Artist name').setRequired(true)),
-  run: async i => spotify(i.options.getString('song', true), i.options.getString('artist', true)),
-});
+    .addAttachmentOption(o => o.setName('image').setDescription('Album art image')) as any,
+  async run(interaction: ChatInputCommandInteraction) {
+    await interaction.deferReply();
+    const song = interaction.options.getString('song', true);
+    const buf = await getImageBuffer(interaction);
+    const result = await spotify(buf, song);
+    await interaction.editReply(imageReply(result.data, result.type));
+  },
+};
+export default Spotify;

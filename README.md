@@ -478,7 +478,23 @@ Full-featured music player. Supports YouTube, Spotify, SoundCloud, Apple Music, 
 
 55 image manipulation commands ported from [esmBot](https://github.com/esmBot/esmBot). All commands accept an optional `image` attachment; if none is provided, the most recent image in the channel is used.
 
-**Requires:** `sharp` and `@napi-rs/canvas` (installed automatically via `bun install`).
+Uses esmBot's native C++ image processing addon (libvips). The TypeScript layer is thin — all pixel work runs in compiled C++.
+
+**Build Requirements (Linux/production):**
+
+```bash
+# Ubuntu/Debian
+apt install libvips-dev libfontconfig1-dev cmake build-essential
+
+# Then compile the native addon
+bun run build:native
+```
+
+The `install` script attempts to build automatically. If it fails (Windows dev machine, missing deps), the bot will start but image commands will return an error message prompting you to build the addon.
+
+**Optional features:**
+- `WITH_MAGICK=ON` — enables `/magik` (content-aware scale); requires `libmagick++-dev`
+- `WITH_ZXING=ON` (default on Linux) — enables `/qr` (QR code generation via native ZXing); requires `libzxing-dev`
 
 #### Filters & Adjustments
 | Command | Description |

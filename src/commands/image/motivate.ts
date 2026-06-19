@@ -1,7 +1,7 @@
 import { ApplicationIntegrationType, ChatInputCommandInteraction, InteractionContextType, SlashCommandBuilder } from 'discord.js';
 import { Command } from '../../interfaces/command';
-import { getImageBuffer, getOutputType, imageReply, normalizeImage } from '../../utils/image/index';
-import { motivate } from '../../utils/image/effects';
+import { getImageBuffer, imageReply } from '../../utils/image/index.js';
+import { motivate } from '../../utils/image/effects.js';
 
 const Motivate: Command = {
   data: new SlashCommandBuilder()
@@ -16,11 +16,9 @@ const Motivate: Command = {
     await interaction.deferReply();
     const top = interaction.options.getString('top', true);
     const bottom = interaction.options.getString('bottom') ?? '';
-    const raw = await getImageBuffer(interaction);
-    const buf = await normalizeImage(raw);
+    const buf = await getImageBuffer(interaction);
     const result = await motivate(buf, top, bottom);
-    const ext = await getOutputType(buf);
-    await interaction.editReply(imageReply(result, ext));
+    await interaction.editReply(imageReply(result.data, result.type));
   },
 };
 export default Motivate;
