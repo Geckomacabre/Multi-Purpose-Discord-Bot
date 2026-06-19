@@ -5,7 +5,7 @@ import {
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
 import { qrCreate, qrRead } from '../../utils/image/effects.js';
-import { getRecentImage } from '../../utils/image/index.js';
+import { getImageBuffer } from '../../utils/image/index.js';
 import { cv2Text } from '../../utils/components.js';
 
 const IS_CV2 = MessageFlags.IsComponentsV2;
@@ -19,7 +19,7 @@ const QR: Command = {
     .addSubcommand(s => s.setName('create').setDescription('Generate a QR code from text or a URL')
       .addStringOption(o => o.setName('text').setDescription('Text or URL to encode').setRequired(true)))
     .addSubcommand(s => s.setName('read').setDescription('Read and decode a QR code from an image')
-      .addAttachmentOption(o => o.setName('image').setDescription('Image containing a QR code'))) as any,
+      .addAttachmentOption(o => o.setName('image').setDescription('Image containing a QR code (or omit to use recent channel image)'))) as any,
 
   async run(interaction: ChatInputCommandInteraction) {
     const sub = interaction.options.getSubcommand();
@@ -41,20 +41,12 @@ const QR: Command = {
     }
 
     if (sub === 'read') {
-      const attachment = interaction.options.getAttachment('image');
       let buf: Buffer;
-
-      if (attachment) {
-        const res = await fetch(attachment.url);
-        buf = Buffer.from(await res.arrayBuffer());
-      } else {
-        const recent = await getRecentImage(interaction);
-        if (!recent) {
-          await interaction.editReply(cv2Text('❌ No image found. Attach an image or make sure there\'s a recent one in this channel.'));
-          return;
-        }
-        const res = await fetch(recent);
-        buf = Buffer.from(await res.arrayBuffer());
+      try {
+        buf = await getImageBuffer(interaction);
+      } catch (e: any) {
+        await interaction.editReply(cv2Text(`❌ ${e.message}`));
+        return;
       }
 
       const result = await qrRead(buf);
