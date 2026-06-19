@@ -27,7 +27,9 @@ export function makeImageCommand(opts: ImageCommandOptions): Command {
     .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
     .setContexts([InteractionContextType.Guild]);
   if (opts.extraOptions) builder = opts.extraOptions(builder);
-  builder = builder.addAttachmentOption((o: any) => o.setName('image').setDescription('Image to process'));
+  builder = builder
+    .addAttachmentOption((o: any) => o.setName('image').setDescription('Image to process (upload)'))
+    .addStringOption((o: any) => o.setName('url').setDescription('Image URL (right-click any image → Copy Link)'));
 
   return {
     data: builder,

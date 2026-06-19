@@ -18,34 +18,36 @@ export function sniffType(buf: Buffer): string {
   return 'png';
 }
 
+async function fetchUrl(url: string): Promise<Buffer> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Failed to fetch image (${res.status}).`);
+  return Buffer.from(await res.arrayBuffer());
+}
+
 export async function getImageBuffer(interaction: ChatInputCommandInteraction): Promise<Buffer> {
   const attachment = interaction.options.getAttachment('image');
   if (attachment) {
     if (!IMAGE_MIME.has(attachment.contentType ?? '')) throw new Error('Attachment must be an image.');
-    const res = await fetch(attachment.url);
-    return Buffer.from(await res.arrayBuffer());
+    return fetchUrl(attachment.url);
   }
+
+  const url = (interaction.options as any).getString?.('url') as string | null;
+  if (url) return fetchUrl(url);
 
   if (interaction.channel && 'messages' in interaction.channel) {
     const messages = await interaction.channel.messages.fetch({ limit: 20 });
     for (const [, msg] of messages) {
       for (const att of msg.attachments.values()) {
-        if (IMAGE_MIME.has(att.contentType ?? '')) {
-          const res = await fetch(att.url);
-          return Buffer.from(await res.arrayBuffer());
-        }
+        if (IMAGE_MIME.has(att.contentType ?? '')) return fetchUrl(att.url);
       }
       for (const embed of msg.embeds) {
         const imgUrl = embed.image?.url ?? embed.thumbnail?.url;
-        if (imgUrl) {
-          const res = await fetch(imgUrl);
-          return Buffer.from(await res.arrayBuffer());
-        }
+        if (imgUrl) return fetchUrl(imgUrl);
       }
     }
   }
 
-  throw new Error('No image found. Attach an image or use the command near a recent image.');
+  throw new Error('No image found. Attach an image, paste a URL, or run the command near a recent image.');
 }
 
 export function imageReply(buffer: Buffer, ext: string) {
