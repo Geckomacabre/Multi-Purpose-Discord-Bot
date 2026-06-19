@@ -733,6 +733,23 @@ export async function initDb() {
     message_id TEXT NOT NULL
   )`;
 
+  await db`CREATE TABLE IF NOT EXISTS tags (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id   TEXT NOT NULL,
+    name       TEXT NOT NULL,
+    content    TEXT NOT NULL,
+    owner_id   TEXT NOT NULL,
+    uses       INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    UNIQUE (guild_id, name)
+  )`;
+
+  await db`CREATE TABLE IF NOT EXISTS music_config (
+    guild_id    TEXT PRIMARY KEY,
+    volume      INTEGER NOT NULL DEFAULT 100,
+    dj_role_id  TEXT
+  )`;
+
   await db`CREATE TABLE IF NOT EXISTS welcome_config (
     guild_id   TEXT PRIMARY KEY,
     channel_id TEXT,
@@ -823,6 +840,7 @@ export async function removeGuild(guild_id: string) {
     'timezone_user', 'timezone_message',
     'welcome_config', 'stat_channels', 'giveaways', 'reaction_roles',
     'topic_channels', 'topics', 'starboard_config', 'starboard_posts',
+    'tags', 'music_config',
   ]) {
     await db`DELETE FROM ${db(table)} WHERE guild_id = ${guild_id}`.catch(() => {});
   }
@@ -2071,4 +2089,63 @@ export async function createStarboardPost(guild_id: string, source_message_id: s
 
 export async function updateStarboardPostStars(guild_id: string, source_message_id: string, stars: number) {
   await db`UPDATE starboard_posts SET stars = ${stars} WHERE guild_id = ${guild_id} AND source_message_id = ${source_message_id}`;
+}
+
+// ─── Tags ─────────────────────────────────────────────────────────────────────
+
+export type ITag = {
+  id: number;
+  guild_id: string;
+  name: string;
+  content: string;
+  owner_id: string;
+  uses: number;
+  created_at: number;
+};
+
+export async function getTag(guild_id: string, name: string): Promise<ITag | null> {
+  const [row] = await db`SELECT * FROM tags WHERE guild_id = ${guild_id} AND name = ${name.toLowerCase()}`;
+  return (row as ITag) || null;
+}
+
+export async function createTag(guild_id: string, name: string, content: string, owner_id: string): Promise<ITag | null> {
+  await ensureConfig(guild_id);
+  const [row] = await db`
+    INSERT INTO tags (guild_id, name, content, owner_id) VALUES (${guild_id}, ${name.toLowerCase()}, ${content}, ${owner_id})
+    ON CONFLICT DO NOTHING RETURNING *`;
+  return (row as ITag) || null;
+}
+
+export async function editTag(guild_id: string, name: string, content: string, editor_id: string): Promise<boolean> {
+  const result = await db`
+    UPDATE tags SET content = ${content}
+    WHERE guild_id = ${guild_id} AND name = ${name.toLowerCase()} AND owner_id = ${editor_id}`;
+  return result.count > 0;
+}
+
+export async function deleteTag(guild_id: string, name: string, requester_id: string, is_mod = false): Promise<boolean> {
+  const clause = is_mod
+    ? await db`DELETE FROM tags WHERE guild_id = ${guild_id} AND name = ${name.toLowerCase()}`
+    : await db`DELETE FROM tags WHERE guild_id = ${guild_id} AND name = ${name.toLowerCase()} AND owner_id = ${requester_id}`;
+  return clause.count > 0;
+}
+
+export async function incrementTagUses(guild_id: string, name: string) {
+  await db`UPDATE tags SET uses = uses + 1 WHERE guild_id = ${guild_id} AND name = ${name.toLowerCase()}`;
+}
+
+export async function listTags(guild_id: string): Promise<ITag[]> {
+  const rows = await db`SELECT * FROM tags WHERE guild_id = ${guild_id} ORDER BY name ASC`;
+  return rows as ITag[];
+}
+
+export async function getMusicConfig(guild_id: string): Promise<{ volume: number; dj_role_id: string | null }> {
+  const [row] = await db`SELECT * FROM music_config WHERE guild_id = ${guild_id}`;
+  return (row as any) ?? { volume: 100, dj_role_id: null };
+}
+
+export async function setMusicVolume(guild_id: string, volume: number) {
+  await ensureConfig(guild_id);
+  await db`INSERT INTO music_config (guild_id, volume) VALUES (${guild_id}, ${volume})
+    ON CONFLICT(guild_id) DO UPDATE SET volume = ${volume}`;
 }
