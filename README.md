@@ -64,12 +64,14 @@ These were part of TMCBot before the YAGPDB port.
 
 | Feature | Description |
 |---|---|
-| **Counting** | Sequential number counting game per channel. Tracks high scores, punishes wrong numbers with a random count setback, catches edits/deletes, and responds to natural language queries like "what is the count". Configured with `/counting`. |
+| **Counting** | Sequential number counting game per channel. Tracks high scores, punishes wrong numbers with a random count setback, catches edits/deletes, and responds to natural language queries like "what is the count". Configured with `/config counting`. |
 
 ---
 
 ### Added Features
 Everything below was ported from [YAGPDB](https://yagpdb.xyz) and re-implemented in TypeScript.
+
+> **Server configuration** for many features (automod, logging, streaming, welcome, starboard, topic rotation, timezones, free-game tracker, stat channels, and counting) is grouped under a single **`/config`** command with subcommand groups — e.g. `/config automod add`, `/config logs channel`. This keeps the global slash-command count under Discord's 100-command limit. `/config` requires **Manage Server**.
 
 #### Moderation
 All moderation actions are under the `/mod` command.
@@ -96,19 +98,19 @@ All moderation actions are under the `/mod` command.
 #### AutoMod
 | Command | Description |
 |---|---|
-| `/automod add` | Create an automod rule. Trigger types: `spam`, `caps`, `links`, `words`, `mentions`, `regex`. Actions: `delete`, `warn`, `timeout`, `kick`, `ban`. |
-| `/automod list` | List all rules with their ID, status, and config. |
-| `/automod delete` | Delete a rule by ID. |
-| `/automod toggle` | Enable or disable a rule. |
+| `/config automod add` | Create an automod rule. Trigger types: `spam`, `caps`, `links`, `words`, `mentions`, `regex`. Actions: `delete`, `warn`, `timeout`, `kick`, `ban`. |
+| `/config automod list` | List all rules with their ID, status, and config. |
+| `/config automod delete` | Delete a rule by ID. |
+| `/config automod toggle` | Enable or disable a rule. |
 
 #### Logging
 | Command | Description |
 |---|---|
-| `/logs channel` | Set the channel for server logs. |
-| `/logs toggle` | Enable or disable logging entirely. |
-| `/logs events` | Choose which events to log: joins, leaves, edits, deletes, bans, nicknames, roles. |
-| `/logs ignore` | Toggle ignoring a channel from message logs. |
-| `/logs view` | View current log settings. |
+| `/config logs channel` | Set the channel for server logs. |
+| `/config logs toggle` | Enable or disable logging entirely. |
+| `/config logs events` | Choose which events to log: joins, leaves, edits, deletes, bans, nicknames, roles. |
+| `/config logs ignore` | Toggle ignoring a channel from message logs. |
+| `/config logs view` | View current log settings. |
 
 Logged events: member join/leave, message edit/delete, bans/unbans, nickname changes, role changes.
 
@@ -159,13 +161,7 @@ All role management is under the `/roles` command.
 | `/reminder delete` | Delete a reminder by ID. |
 
 #### Custom Commands
-| Command | Description |
-|---|---|
-| `/cc create` | Create a custom command with trigger types: `command`, `startswith`, `contains`, `exact`, `regex`. Response supports `{user}`, `{username}`, `{server}`, `{channel}`, `{membercount}`. |
-| `/cc edit` | Update a custom command's response. |
-| `/cc delete` | Delete a custom command. |
-| `/cc toggle` | Enable or disable a command. |
-| `/cc list` | List all custom commands. |
+Custom commands are managed entirely through the [Web Dashboard](#web-dashboard) — there are no `/cc` slash commands. Supported trigger types: `command`, `startswith`, `contains`, `exact`, `regex`. Responses support `{user}`, `{username}`, `{server}`, `{channel}`, `{membercount}`.
 
 #### Feed Subscriptions
 All feeds are polled every 5 minutes. All commands are under `/feed` and require **Manage Server**.
@@ -190,16 +186,16 @@ Powered by Discord presence detection. Requires the **Presence Intent**.
 
 | Command | Description |
 |---|---|
-| `/streaming set` | Configure the announcement channel, a role to assign while streaming, and a custom message template (`{username}`, `{game}`, `{url}`). |
-| `/streaming view` | View current streaming settings. |
+| `/config streaming set` | Configure the announcement channel, a role to assign while streaming, and a custom message template (`{username}`, `{game}`, `{url}`). |
+| `/config streaming view` | View current streaming settings. |
 
 #### Server Stats
 | Command | Description |
 |---|---|
-| `/serverstats view [hours]` | Show server activity for the last N hours (default 24, max 168). Displays total messages, joins, leaves, and current member count. |
-| `/serverstats channels add <type>` | Create an auto-updating stat channel. Types: `members`, `humans`, `bots`, `channels`, `roles`. |
-| `/serverstats channels remove <id>` | Delete a stat channel by ID. |
-| `/serverstats channels list` | List all stat channels. |
+| `/config serverstats view [hours]` | Show server activity for the last N hours (default 24, max 168). Displays total messages, joins, leaves, and current member count. |
+| `/config serverstats channels add <type>` | Create an auto-updating stat channel. Types: `members`, `humans`, `bots`, `channels`, `roles`. |
+| `/config serverstats channels remove <id>` | Delete a stat channel by ID. |
+| `/config serverstats channels list` | List all stat channels. |
 
 #### RSVP / Events
 | Command | Description |
@@ -311,12 +307,12 @@ Polls Epic Games Store, Steam, and GOG every hour for free game promotions. Post
 
 | Command | Description |
 |---|---|
-| `/freegames setup <channel>` | Enable the tracker and set the announcement channel. Optionally set a role to ping. |
-| `/freegames platforms` | Toggle which platforms to track (Epic, Steam, GOG). |
-| `/freegames ping [role]` | Set or clear the role pinged for new free game alerts. |
-| `/freegames disable` | Disable the tracker for this server. |
-| `/freegames view` | View current tracker settings. |
-| `/freegames check` | Manually trigger a check and post any new free games immediately. |
+| `/config freegames setup <channel>` | Enable the tracker and set the announcement channel. Optionally set a role to ping. |
+| `/config freegames platforms` | Toggle which platforms to track (Epic, Steam, GOG). |
+| `/config freegames ping [role]` | Set or clear the role pinged for new free game alerts. |
+| `/config freegames disable` | Disable the tracker for this server. |
+| `/config freegames view` | View current tracker settings. |
+| `/config freegames check` | Manually trigger a check and post any new free games immediately. |
 
 Supported platforms:
 - **Epic Games Store** — weekly free games via their official promotions API
@@ -341,12 +337,12 @@ Supports template variables: `{user}`, `{username}`, `{server}`, `{membercount}`
 
 | Command | Description |
 |---|---|
-| `/welcome channel <channel>` | Set the channel where welcome messages are posted. |
-| `/welcome message <text>` | Set the welcome message template. |
-| `/welcome dm <text>` | Set a DM sent to new members (`none` to disable). |
-| `/welcome toggle` | Enable or disable the welcome system. |
-| `/welcome test` | Preview the welcome message as if you just joined. |
-| `/welcome view` | View current welcome settings. |
+| `/config welcome channel <channel>` | Set the channel where welcome messages are posted. |
+| `/config welcome message <text>` | Set the welcome message template. |
+| `/config welcome dm <text>` | Set a DM sent to new members (`none` to disable). |
+| `/config welcome toggle` | Enable or disable the welcome system. |
+| `/config welcome test` | Preview the welcome message as if you just joined. |
+| `/config welcome view` | View current welcome settings. |
 
 ---
 
@@ -371,10 +367,10 @@ Members register their IANA timezone so others can see what time it is for them.
 
 | Command | Description |
 |---|---|
-| `/timezone set <timezone>` | Set your timezone (e.g. `America/New_York`, `Europe/London`). |
-| `/timezone view [user]` | See the current local time for a user. |
-| `/timezone list` | List timezones of all members who have set one. |
-| `/timezone remove` | Remove your timezone. |
+| `/config timezone set <timezone>` | Set your timezone (e.g. `America/New_York`, `Europe/London`). |
+| `/config timezone view [user]` | See the current local time for a user. |
+| `/config timezone list` | List timezones of all members who have set one. |
+| `/config timezone remove` | Remove your timezone. |
 
 ---
 
@@ -383,11 +379,11 @@ Messages that receive enough of a configured reaction are automatically reposted
 
 | Command | Description |
 |---|---|
-| `/starboard channel <channel>` | Set the starboard channel. |
-| `/starboard threshold <count>` | Set the minimum reaction count needed (default: 3). |
-| `/starboard emoji <emoji>` | Set which reaction to watch (default: ⭐). |
-| `/starboard toggle` | Enable or disable the starboard. |
-| `/starboard view` | View current starboard settings. |
+| `/config starboard channel <channel>` | Set the starboard channel. |
+| `/config starboard threshold <count>` | Set the minimum reaction count needed (default: 3). |
+| `/config starboard emoji <emoji>` | Set which reaction to watch (default: ⭐). |
+| `/config starboard toggle` | Enable or disable the starboard. |
+| `/config starboard view` | View current starboard settings. |
 
 ---
 
@@ -396,12 +392,12 @@ Automatically posts a discussion prompt to a channel on a configurable schedule.
 
 | Command | Description |
 |---|---|
-| `/topics setup <channel> <interval> [mode]` | Set up rotation for a channel. Interval examples: `6h`, `1d`, `12h`. Mode: `sequential` or `random`. |
-| `/topics add <channel> <topic>` | Add a discussion topic to a channel's queue. |
-| `/topics delete <id>` | Remove a topic by ID. |
-| `/topics list <channel>` | List all topics and current settings for a channel. |
-| `/topics post <channel>` | Manually post the next topic immediately. |
-| `/topics remove <channel>` | Stop topic rotation for a channel. |
+| `/config topics setup <channel> <interval> [mode]` | Set up rotation for a channel. Interval examples: `6h`, `1d`, `12h`. Mode: `sequential` or `random`. |
+| `/config topics add <channel> <topic>` | Add a discussion topic to a channel's queue. |
+| `/config topics delete <id>` | Remove a topic by ID. |
+| `/config topics list <channel>` | List all topics and current settings for a channel. |
+| `/config topics post <channel>` | Manually post the next topic immediately. |
+| `/config topics remove <channel>` | Stop topic rotation for a channel. |
 
 ---
 
@@ -470,7 +466,7 @@ Full-featured music player. Supports YouTube, Spotify, SoundCloud, Apple Music, 
 
 ### Image Editing
 
-57 image manipulation effects ported from [esmBot](https://github.com/esmBot/esmBot), each as a top-level slash command (e.g. `/blur`, `/deepfry`, `/caption`). All commands accept an optional `image` attachment; if none is provided, the most recent image in the channel is used.
+57 image manipulation effects ported from [esmBot](https://github.com/esmBot/esmBot), all under a single **`/image`** command. Pick an effect with the autocompleting `effect` option (e.g. `/image effect:blur`, `/image effect:deepfry`). Provide an `image` attachment or a `url`; if neither is given, the most recent image in the channel is used. Effects needing extra input use the `text`, `number`, `font`, or `choice` options (the autocomplete hints which).
 
 Uses esmBot's native C++ image processing addon (libvips). The TypeScript layer is thin — all pixel work runs in compiled C++.
 
@@ -487,33 +483,35 @@ bun run build:native
 The `install` script attempts to build automatically. If it fails (Windows dev machine, missing deps), the bot will start but image commands will return an error message prompting you to build the addon.
 
 **Optional features:**
-- `WITH_MAGICK=ON` — enables `/magik` (content-aware scale); requires `libmagick++-dev`
+- `WITH_MAGICK=ON` — enables the `magik` effect (content-aware scale); requires `libmagick++-dev`
 - `WITH_ZXING=ON` (default on Linux) — enables `/qr create` and `/qr read` (QR code generation and decoding via native ZXing); requires `libzxing-dev`
 
+All effects below are values for the `effect` option, e.g. `/image effect:blur`. `[number]` effects take the `number` option; `<text>` effects take `text`; `flag`/`watermark`/`uncanny` take `choice`.
+
 #### Color & Filter Effects
-`/blur` `/sharpen` `/grayscale` `/sepia` `/invert` `/hue [degrees]` `/deepfry` `/jpeg [quality]` `/vignette` `/pixelate [amount]`
+`blur` `sharpen` `grayscale` `sepia` `invert` `hue [number]` `deepfry` `jpeg [number]` `vignette` `pixelate [number]`
 
 #### Geometric Transforms
-`/flip` `/flop` `/rotate [90|180|270]` `/crop` `/circle` `/wide` `/squish` `/stretch` `/tile` `/wall`
+`flip` `flop` `rotate [number]` `crop` `circle` `wide` `squish` `stretch` `tile` `wall`
 
 #### Mirror & Reflection
-`/haah` `/hooh` `/waaw` `/woow`
+`haah` `hooh` `waaw` `woow`
 
 #### Distortion Effects
-`/swirl` `/explode` `/implode` `/magik` `/globe` `/togif`
+`swirl` `explode` `implode` `magik` `globe` `togif`
 
 #### Animation Effects
-`/spin` `/bounce` `/slide` `/fade` `/reverse` `/speed` `/slow` `/freeze` `/unfreeze`
+`spin` `bounce` `slide` `fade` `reverse` `speed` `slow` `freeze` `unfreeze`
 
 #### Text Overlays
-`/caption <text>` `/caption2 <text>` `/meme [top] [bottom]` `/motivate <title> [subtitle]` `/snapchat <text>` `/whisper <text>` `/speechbubble` `/uncanny <left> <right>` `/uncaption`
+`caption <text>` `caption2 <text>` `meme <text: "top, bottom">` `motivate <text: "top, bottom">` `snapchat <text>` `whisper <text>` `speechbubble` `uncanny <text: "left, right">` `uncaption`
 
 #### Meme Generators
-`/sonic <text>` `/homebrew <text>` `/spotify <song>` `/redditpost <title>` `/gamexplain` `/scott`
+`sonic <text>` `homebrew <text>` `spotify <text: song>` `reddit <text: title>` `gamexplain` `scott`
 
 #### Overlays
-`/flag <type>` — overlay a flag (`rainbow`, `trans`, `pirate`, `checkered`)
-`/watermark <brand>` — brand watermark (9gag, bandicam, deviantart, hypercam, ifunny, kinemaster, avs4you, memecenter, powerdirector, shutterstock)
+`flag` — overlay a flag (`choice`: rainbow, trans, pirate, checkered)
+`watermark` — brand watermark (`choice`: 9gag, bandicam, deviantart, hypercam, ifunny, kinemaster, avs4you, memecenter, powerdirector, shutterstock)
 
 ---
 
@@ -526,6 +524,17 @@ The `install` script attempts to build automatically. If it fails (Windows dev m
 | `/qr read [image]` | Decode a QR code from an image (attach image or it uses a recent channel image). |
 | `/snowflake <id>` | Decode a Discord snowflake ID into its timestamp and components. |
 | `/emote <emoji>` | Get the full-size image and info for a custom emoji. |
+
+---
+
+### Context Menus
+
+Right-click (or long-press) a message → **Apps**:
+
+| Menu | Description |
+|---|---|
+| **Make it a Quote** | Turn the selected message into a stylized black-and-white quote card (grayscale avatar, diagonal top-right fade, M PLUS font). Resolves mentions and renders `**bold**`/`*italic*`. Includes a "Remove my Quote" button. |
+| **Select Image** | Pick an image from the selected message to use with the next `/image` command — handy when the target image isn't the most recent one in the channel. |
 
 ---
 

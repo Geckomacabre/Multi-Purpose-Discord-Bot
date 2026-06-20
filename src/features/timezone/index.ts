@@ -44,7 +44,7 @@ const timezoneModule: EventModule = {
 
       if (
         interaction.type === InteractionType.ApplicationCommandAutocomplete &&
-        interaction.commandName === 'timezone'
+        (interaction.commandName === 'timezone' || (interaction.commandName === 'config' && interaction.options.getSubcommandGroup() === 'timezone'))
       ) {
         const focused = interaction.options.getFocused(true);
         if (focused?.type !== ApplicationCommandOptionType.String) return;
