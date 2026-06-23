@@ -60,17 +60,50 @@ async function getChannel(bot: Client, id: string): Promise<TextChannel | null> 
 
 // ─── RSS ──────────────────────────────────────────────────────────────────────
 
-function parseRssItems(xml: string): { id: string; title: string; link: string; published: string }[] {
-  const items: { id: string; title: string; link: string; published: string }[] = [];
+function decodeEntities(str: string): string {
+  return str
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&nbsp;/g, ' ')
+    .replace(/&ndash;/g, '–').replace(/&mdash;/g, '—')
+    .replace(/&lsquo;/g, '‘').replace(/&rsquo;/g, '’')
+    .replace(/&ldquo;/g, '“').replace(/&rdquo;/g, '”');
+}
+
+function extractCdata(raw: string): string {
+  return raw.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/, '$1').trim();
+}
+
+function extractImage(block: string): string | null {
+  // media:content url="..."
+  let m = /<media:content[^>]+url="([^"]+)"/.exec(block);
+  if (m) return m[1]!;
+  // media:thumbnail url="..."
+  m = /<media:thumbnail[^>]+url="([^"]+)"/.exec(block);
+  if (m) return m[1]!;
+  // enclosure type="image/..."
+  m = /<enclosure[^>]+type="image\/[^"]*"[^>]+url="([^"]+)"/.exec(block)
+    ?? /<enclosure[^>]+url="([^"]+)"[^>]+type="image\/[^"]*"/.exec(block);
+  if (m) return m[1]!;
+  // <img src="..."> inside description/content (skip tracking pixels)
+  const imgM = /<img[^>]+src="([^"]+)"/.exec(block);
+  if (imgM && imgM[1] && imgM[1].startsWith('http') && !imgM[1].includes('pixel') && !imgM[1].includes('track')) return imgM[1];
+  return null;
+}
+
+function parseRssItems(xml: string): { id: string; title: string; link: string; published: string; image: string | null }[] {
+  const items: { id: string; title: string; link: string; published: string; image: string | null }[] = [];
   const itemRe = /<item>([\s\S]*?)<\/item>|<entry>([\s\S]*?)<\/entry>/g;
   let m: RegExpExecArray | null;
   while ((m = itemRe.exec(xml)) !== null) {
-    const block = m[1] ?? m[2];
-    const title = (/<title[^>]*>([\s\S]*?)<\/title>/.exec(block)?.[1] ?? '').replace(/<!\[CDATA\[([\s\S]*?)\]\]>/, '$1').trim();
-    const link = (/<link[^>]*href="([^"]+)"/.exec(block)?.[1] ?? /<link[^>]*>([\s\S]*?)<\/link>/.exec(block)?.[1] ?? '').trim();
-    const guid = (/<guid[^>]*>([\s\S]*?)<\/guid>/.exec(block)?.[1] ?? /<id>([\s\S]*?)<\/id>/.exec(block)?.[1] ?? link).trim();
+    const block = m[1] ?? m[2] ?? '';
+    const title = decodeEntities(extractCdata(/<title[^>]*>([\s\S]*?)<\/title>/.exec(block)?.[1] ?? ''));
+    const link = (/<link[^>]*href="([^"]+)"/.exec(block)?.[1] ?? extractCdata(/<link[^>]*>([\s\S]*?)<\/link>/.exec(block)?.[1] ?? '')).trim();
+    const guid = extractCdata(/<guid[^>]*>([\s\S]*?)<\/guid>/.exec(block)?.[1] ?? /<id>([\s\S]*?)<\/id>/.exec(block)?.[1] ?? link);
     const published = (/<pubDate>([\s\S]*?)<\/pubDate>/.exec(block)?.[1] ?? /<published>([\s\S]*?)<\/published>/.exec(block)?.[1] ?? '').trim();
-    if (title && link) items.push({ id: guid, title, link, published });
+    const image = extractImage(block);
+    if (title && link) items.push({ id: guid, title, link, published, image });
   }
   return items;
 }
@@ -283,7 +316,7 @@ export async function pollNews(bot: Client) {
       if (!sources) continue;
 
       // Collect all items across every source for this category
-      const allItems: { id: string; title: string; link: string; published: string; source: string }[] = [];
+      const allItems: { id: string; title: string; link: string; published: string; image: string | null; source: string }[] = [];
       for (const { url, source } of sources) {
         try {
           const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
@@ -329,6 +362,7 @@ export async function pollNews(bot: Client) {
           .setColor(color)
           .setAuthor({ name: `${label} • ${item.source}` })
           .setTimestamp(item.published ? new Date(item.published) : new Date());
+        if (item.image) embed.setImage(item.image);
         await ch.send({ embeds: [embed] }).catch(() => {});
         await db.markNewsPosted(guildId, item.link);
       }
