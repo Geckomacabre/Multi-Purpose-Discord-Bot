@@ -10,7 +10,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     cmake \
     build-essential \
     python3 \
+    python3-pip \
     pkg-config \
+    ffmpeg \
+    && pip3 install -q --break-system-packages yt-dlp \
     && rm -rf /var/lib/apt/lists/*
 
 COPY package.json bun.lock ./
