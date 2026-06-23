@@ -55,6 +55,8 @@ const xpModule: EventModule = {
       }
 
       // Announce level-up
+      if (!config.level_up_announce) return;
+
       const announceChannelId = config.level_up_channel_id ?? message.channel.id;
       const channel = bot.channels.cache.get(announceChannelId) as TextChannel | undefined;
       if (!channel) return;

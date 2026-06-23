@@ -74,26 +74,26 @@ Everything below was ported from [YAGPDB](https://yagpdb.xyz) and re-implemented
 > **Server configuration** for many features (automod, logging, streaming, welcome, starboard, topic rotation, timezones, free-game tracker, stat channels, and counting) is grouped under a single **`/config`** command with subcommand groups — e.g. `/config automod add`, `/config logs channel`. This keeps the global slash-command count under Discord's 100-command limit. `/config` requires **Manage Server**.
 
 #### Moderation
-All moderation actions are under the `/mod` command.
+Each moderation action is its own top-level command. Action commands are hidden from members who lack the matching permission (via default member permissions).
 
 | Command | Description |
 |---|---|
-| `/mod ban <user>` | Ban a member. Supports temporary bans (e.g. `1d`, `12h`) that auto-expire. |
-| `/mod unban <user_id>` | Unban a user by ID. |
-| `/mod kick <user>` | Kick a member. |
-| `/mod timeout <user> <duration>` | Timeout a member (Discord native, up to 28 days). |
-| `/mod untimeout <user>` | Remove a member's active timeout. |
-| `/mod warn <user> <reason>` | Warn a member. Warnings are stored and DM'd to the user. |
-| `/mod purge <amount>` | Bulk-delete up to 200 messages. Filter by user, keyword, bots, attachments, or embeds. |
-| `/mod report <user> <reason>` | Report a member to staff. Sends to the modlog channel. |
-| `/mod case <number>` | View the details of a mod case by number. |
-| `/mod reason <case> <reason>` | Edit the reason for an existing mod case. |
-| `/mod warnings list <user>` | View all warnings for a user. |
-| `/mod warnings delete <id>` | Delete a specific warning by ID. |
-| `/mod warnings clear <user>` | Clear all warnings for a user. |
-| `/mod config modlog [channel]` | Set the channel where mod actions are logged. |
-| `/mod config dm <enabled>` | Toggle whether punished users are DM'd. |
-| `/mod config view` | View current moderation settings. |
+| `/ban <user>` | Ban a member. Supports temporary bans (e.g. `1d`, `12h`) that auto-expire. |
+| `/unban <user_id>` | Unban a user by ID. |
+| `/kick <user>` | Kick a member. |
+| `/timeout <user> <duration>` | Timeout a member (Discord native, up to 28 days). |
+| `/untimeout <user>` | Remove a member's active timeout. |
+| `/warn <user> <reason>` | Warn a member. Warnings are stored and DM'd to the user. |
+| `/purge <amount>` | Bulk-delete up to 200 messages. Filter by user, keyword, bots, attachments, or embeds. |
+| `/report <user> <reason>` | Report a member to staff. Sends to the modlog channel. Available to everyone. |
+| `/case <number>` | View the details of a mod case by number. |
+| `/reason <case> <reason>` | Edit the reason for an existing mod case. |
+| `/warnings list <user>` | View all warnings for a user. |
+| `/warnings delete <id>` | Delete a specific warning by ID. |
+| `/warnings clear <user>` | Clear all warnings for a user. |
+| `/modconfig modlog [channel]` | Set the channel where mod actions are logged. |
+| `/modconfig dm <enabled>` | Toggle whether punished users are DM'd. |
+| `/modconfig view` | View current moderation settings. |
 
 #### AutoMod
 | Command | Description |
@@ -227,38 +227,29 @@ No configuration needed — active automatically. Detects and deletes messages c
 | `/define <word>` | Look up a word's dictionary definition, part of speech, and example. |
 
 #### Random
-Fun/random commands consolidated under `/random`.
 
 | Command | Description |
 |---|---|
-| `/random 8ball <question>` | Ask the magic 8-ball a yes/no question. |
-| `/random catfact` | Get a random cat fact. |
-| `/random dogfact` | Get a random dog fact. |
-| `/random dadjoke` | Get a random dad joke. |
-| `/random advice` | Get a random piece of advice. |
-| `/random inspire` | Get an inspirational quote. |
-| `/random topic` | Get a random conversation topic. |
-| `/random wouldyourather` | Get a would-you-rather question. |
-| `/random xkcd [number]` | Get a random or specific xkcd comic. |
-| `/random roast <user>` | Roast a user (all in good fun). |
+| `/8ball <question>` | Ask the magic 8-ball a yes/no question. |
+| `/catfact` | Get a random cat fact. |
+| `/dogfact` | Get a random dog fact. |
+| `/dadjoke` | Get a random dad joke. |
+| `/advice` | Get a random piece of advice. |
+| `/inspire` | Get an inspirational quote. |
+| `/topic` | Get a random conversation topic. |
+| `/wouldyourather` | Get a would-you-rather question. |
+| `/xkcd [number]` | Get a random or specific xkcd comic. |
+| `/roast <user>` | Roast a user (all in good fun). |
 
 #### Fun
-Fun commands consolidated under `/fun`.
 
 | Command | Description |
 |---|---|
-| `/fun cat` | Random cat picture. |
-| `/fun dog` | Random dog picture. |
-| `/fun bird` | Random bird picture. |
-| `/fun gif <query>` | Search for a GIF using Tenor. Requires `TENOR_API_KEY` in `.env`. |
-| `/fun trivia` | Answer a multiple-choice trivia question with button responses. Powered by OpenTDB (no API key needed). |
-| `/fun cah create` | Start a Cards Against Humanity game in the current channel. |
-| `/fun cah join` | Join the current CAH game. |
-| `/fun cah start` | Start the game (host only, minimum 3 players). |
-| `/fun cah hand` | View your current hand (private). |
-| `/fun cah play <card>` | Play a card from your hand. |
-| `/fun cah pick <submission>` | Card Czar: pick the winning submission. |
-| `/fun cah end` | End the current game. |
+| `/cat` | Random cat picture. |
+| `/dog` | Random dog picture. |
+| `/bird` | Random bird picture. |
+| `/gif <query>` | Search for a GIF using Tenor. Requires `TENOR_API_KEY` in `.env`. |
+| `/trivia` | Answer a multiple-choice trivia question with button responses. Powered by OpenTDB (no API key needed). |
 
 ---
 
@@ -284,6 +275,7 @@ All leveling commands are under `/level`.
 | `/level config channel [channel]` | Set the channel for level-up announcements. |
 | `/level config xp [min] [max] [cooldown]` | Set XP per message range and cooldown seconds. |
 | `/level config message <text>` | Customize the level-up announcement. Supports `{user}`, `{username}`, `{level}`. |
+| `/level config announce <enabled>` | Enable or disable level-up announcement messages. |
 | `/level config view` | View current leveling settings. |
 
 #### Economy
@@ -293,14 +285,17 @@ All economy commands are under `/economy`.
 
 | Command | Description |
 |---|---|
-| `/economy balance [user]` | Check your or another user's coin balance and total earned. |
-| `/economy daily` | Claim a daily coin reward (20-hour cooldown). |
-| `/economy work` | Work to earn coins with a random job flavor text (1-hour cooldown). |
-| `/economy pay <user> <amount>` | Transfer coins to another user. |
+| `/balance [user]` | Check your or another user's coin balance and total earned. |
+| `/daily` | Claim a daily coin reward (20-hour cooldown). |
+| `/weekly` | Claim a weekly coin reward (7-day cooldown). |
+| `/monthly` | Claim a monthly coin reward (30-day cooldown). |
+| `/yearly` | Claim a yearly coin reward (365-day cooldown). |
+| `/work` | Work to earn coins with a random job flavor text (1-hour cooldown). |
+| `/pay <user> <amount>` | Transfer coins to another user. |
 | `/economy leaderboard [limit]` | Show the richest users in the server. |
-| `/economy gamble flip <bet>` | Bet on a coin flip — win doubles your bet (50/50). |
-| `/economy gamble roll <bet>` | Roll 1–100 against the bot — higher roll wins; ties refund your bet. |
-| `/economy gamble slots <bet>` | Spin the slot machine — match 3 symbols to win. Payouts: 🍒×3=1.5× \| 🍋×3=2× \| 🔔×3=3× \| 💎×3=5× \| 7️⃣×3=10×. |
+| `/flip <bet>` | Bet on a coin flip — win doubles your bet (50/50). |
+| `/highroll <bet>` | Roll 1–100 against the bot — higher roll wins; ties refund your bet. |
+| `/slots <bet>` | Spin the slot machine — match 3 symbols to win. Payouts: 🍒×3=1.5× \| 🍋×3=2× \| 🔔×3=3× \| 💎×3=5× \| 7️⃣×3=10×. |
 
 #### Free Game Tracker
 Polls Epic Games Store, Steam, and GOG every hour for free game promotions. Posts to a configured channel with a claim button, the original price, and how long the freebie lasts. Deduplicates per server so no game is posted twice.
@@ -325,6 +320,9 @@ Supported platforms:
 | `/economy config currency <name> <symbol>` | Set the currency name and symbol for this server. |
 | `/economy config starting <amount>` | Set how many coins new users start with. |
 | `/economy config daily <min> <max>` | Set the daily reward min/max range. |
+| `/economy config weekly <min> <max>` | Set the weekly reward min/max range. |
+| `/economy config monthly <min> <max>` | Set the monthly reward min/max range. |
+| `/economy config yearly <min> <max>` | Set the yearly reward min/max range. |
 | `/economy config work <min> <max>` | Set the work reward min/max range. |
 | `/economy config view` | View current economy settings. |
 
@@ -504,7 +502,7 @@ All effects below are values for the `effect` option, e.g. `/image effect:blur`.
 `spin` `bounce` `slide` `fade` `reverse` `speed` `slow` `freeze` `unfreeze`
 
 #### Text Overlays
-`caption <text>` `caption2 <text>` `meme <text: "top, bottom">` `motivate <text: "top, bottom">` `snapchat <text>` `whisper <text>` `speechbubble` `uncanny <text: "left, right">` `uncaption`
+`caption <text>` `caption2 <text>` `meme <text: "top, bottom">` `motivate <text: "top, bottom">` `snapchat <text>` `whisper <text>` `uncanny <text: "left, right">` `uncaption`
 
 #### Meme Generators
 `sonic <text>` `homebrew <text>` `spotify <text: song>` `reddit <text: title>` `gamexplain` `scott`
@@ -552,7 +550,8 @@ A YAGPDB-style dark-themed web panel for managing all bot settings without slash
 1. Go to [Discord Developer Portal](https://discord.com/developers/applications) → your app → **OAuth2 → Redirects**
 2. Add `http://localhost:3000/auth/callback` (or `WEB_URL/auth/callback` for production)
 3. Add `DISCORD_CLIENT_SECRET`, `WEB_PORT`, and `WEB_URL` to your `.env`
-4. Visit `http://localhost:3000` and log in with Discord
+4. Ensure port 3000 is exposed (already set in `docker-compose.yaml`)
+5. Visit `http://localhost:3000` and log in with Discord
 
 **Config pages:** Economy · Leveling & Level Roles · Welcome · Starboard · AutoMod · Logging · Reaction Roles · Giveaways · Topic Rotation · Birthdays · Timezones · Stat Channels
 

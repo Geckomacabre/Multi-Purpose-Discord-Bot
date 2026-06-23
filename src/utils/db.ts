@@ -240,6 +240,12 @@ export type IEconomyConfig = {
   starting_balance: number;
   daily_min: number;
   daily_max: number;
+  weekly_min: number;
+  weekly_max: number;
+  monthly_min: number;
+  monthly_max: number;
+  yearly_min: number;
+  yearly_max: number;
   work_min: number;
   work_max: number;
 };
@@ -260,6 +266,7 @@ export type IXpConfig = {
   cooldown_seconds: number;
   level_up_channel_id: string | null;
   level_up_message: string;
+  level_up_announce: number;
 };
 
 export type ILevelRole = {
@@ -648,6 +655,12 @@ export async function initDb() {
     starting_balance INTEGER NOT NULL DEFAULT 0,
     daily_min        INTEGER NOT NULL DEFAULT 100,
     daily_max        INTEGER NOT NULL DEFAULT 500,
+    weekly_min       INTEGER NOT NULL DEFAULT 500,
+    weekly_max       INTEGER NOT NULL DEFAULT 2000,
+    monthly_min      INTEGER NOT NULL DEFAULT 2000,
+    monthly_max      INTEGER NOT NULL DEFAULT 8000,
+    yearly_min       INTEGER NOT NULL DEFAULT 25000,
+    yearly_max       INTEGER NOT NULL DEFAULT 100000,
     work_min         INTEGER NOT NULL DEFAULT 50,
     work_max         INTEGER NOT NULL DEFAULT 200
   )`;
@@ -676,8 +689,18 @@ export async function initDb() {
     xp_max              INTEGER NOT NULL DEFAULT 25,
     cooldown_seconds    INTEGER NOT NULL DEFAULT 60,
     level_up_channel_id TEXT,
-    level_up_message    TEXT NOT NULL DEFAULT 'GG {user}, you just advanced to **level {level}**! 🎉'
+    level_up_message    TEXT NOT NULL DEFAULT 'GG {user}, you just advanced to **level {level}**! 🎉',
+    level_up_announce   INTEGER NOT NULL DEFAULT 1
   )`;
+
+  // Migrations for existing installations
+  try { await db`ALTER TABLE economy_config ADD COLUMN weekly_min INTEGER NOT NULL DEFAULT 500`; } catch {}
+  try { await db`ALTER TABLE economy_config ADD COLUMN weekly_max INTEGER NOT NULL DEFAULT 2000`; } catch {}
+  try { await db`ALTER TABLE economy_config ADD COLUMN monthly_min INTEGER NOT NULL DEFAULT 2000`; } catch {}
+  try { await db`ALTER TABLE economy_config ADD COLUMN monthly_max INTEGER NOT NULL DEFAULT 8000`; } catch {}
+  try { await db`ALTER TABLE economy_config ADD COLUMN yearly_min INTEGER NOT NULL DEFAULT 25000`; } catch {}
+  try { await db`ALTER TABLE economy_config ADD COLUMN yearly_max INTEGER NOT NULL DEFAULT 100000`; } catch {}
+  try { await db`ALTER TABLE xp_config ADD COLUMN level_up_announce INTEGER NOT NULL DEFAULT 1`; } catch {}
 
   await db`CREATE TABLE IF NOT EXISTS level_roles (
     id       INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1545,7 +1568,12 @@ export async function getEconomyConfig(guild_id: string): Promise<IEconomyConfig
   const [row] = await db`SELECT * FROM economy_config WHERE guild_id = ${guild_id}`;
   return (row as IEconomyConfig) || {
     guild_id, currency_name: 'coins', currency_symbol: '🪙',
-    starting_balance: 0, daily_min: 100, daily_max: 500, work_min: 50, work_max: 200,
+    starting_balance: 0,
+    daily_min: 100, daily_max: 500,
+    weekly_min: 500, weekly_max: 2000,
+    monthly_min: 2000, monthly_max: 8000,
+    yearly_min: 25000, yearly_max: 100000,
+    work_min: 50, work_max: 200,
   };
 }
 
@@ -1557,6 +1585,12 @@ export async function setEconomyConfig(guild_id: string, fields: Partial<Omit<IE
   if (fields.starting_balance !== undefined) await db`UPDATE economy_config SET starting_balance = ${fields.starting_balance} WHERE guild_id = ${guild_id}`;
   if (fields.daily_min !== undefined) await db`UPDATE economy_config SET daily_min = ${fields.daily_min} WHERE guild_id = ${guild_id}`;
   if (fields.daily_max !== undefined) await db`UPDATE economy_config SET daily_max = ${fields.daily_max} WHERE guild_id = ${guild_id}`;
+  if (fields.weekly_min !== undefined) await db`UPDATE economy_config SET weekly_min = ${fields.weekly_min} WHERE guild_id = ${guild_id}`;
+  if (fields.weekly_max !== undefined) await db`UPDATE economy_config SET weekly_max = ${fields.weekly_max} WHERE guild_id = ${guild_id}`;
+  if (fields.monthly_min !== undefined) await db`UPDATE economy_config SET monthly_min = ${fields.monthly_min} WHERE guild_id = ${guild_id}`;
+  if (fields.monthly_max !== undefined) await db`UPDATE economy_config SET monthly_max = ${fields.monthly_max} WHERE guild_id = ${guild_id}`;
+  if (fields.yearly_min !== undefined) await db`UPDATE economy_config SET yearly_min = ${fields.yearly_min} WHERE guild_id = ${guild_id}`;
+  if (fields.yearly_max !== undefined) await db`UPDATE economy_config SET yearly_max = ${fields.yearly_max} WHERE guild_id = ${guild_id}`;
   if (fields.work_min !== undefined) await db`UPDATE economy_config SET work_min = ${fields.work_min} WHERE guild_id = ${guild_id}`;
   if (fields.work_max !== undefined) await db`UPDATE economy_config SET work_max = ${fields.work_max} WHERE guild_id = ${guild_id}`;
 }
@@ -1636,6 +1670,7 @@ export async function getXpConfig(guild_id: string): Promise<IXpConfig> {
     guild_id, enabled: 1, xp_min: 15, xp_max: 25, cooldown_seconds: 60,
     level_up_channel_id: null,
     level_up_message: 'GG {user}, you just advanced to **level {level}**! 🎉',
+    level_up_announce: 1,
   };
 }
 
@@ -1648,6 +1683,7 @@ export async function setXpConfig(guild_id: string, fields: Partial<Omit<IXpConf
   if (fields.cooldown_seconds !== undefined) await db`UPDATE xp_config SET cooldown_seconds = ${fields.cooldown_seconds} WHERE guild_id = ${guild_id}`;
   if (fields.level_up_channel_id !== undefined) await db`UPDATE xp_config SET level_up_channel_id = ${fields.level_up_channel_id} WHERE guild_id = ${guild_id}`;
   if (fields.level_up_message !== undefined) await db`UPDATE xp_config SET level_up_message = ${fields.level_up_message} WHERE guild_id = ${guild_id}`;
+  if (fields.level_up_announce !== undefined) await db`UPDATE xp_config SET level_up_announce = ${fields.level_up_announce} WHERE guild_id = ${guild_id}`;
 }
 
 export async function getXpLeaderboard(guild_id: string, limit = 10): Promise<IXp[]> {

@@ -42,6 +42,13 @@ export async function levelingPage(
             ${channelSelect('level_up_channel_id', channels, cfg?.level_up_channel_id)}
           </div>
           <div class="form-group">
+            <label>Level-Up Announcements</label>
+            <select name="level_up_announce">
+              <option value="1" ${cfg?.level_up_announce !== 0 ? 'selected' : ''}>Enabled</option>
+              <option value="0" ${cfg?.level_up_announce === 0 ? 'selected' : ''}>Disabled</option>
+            </select>
+          </div>
+          <div class="form-group">
             <label>Level-Up Message</label>
             <input name="level_up_message" value="${escHtml(cfg?.level_up_message ?? '')}" placeholder="{user} reached level {level}!">
             <div class="text-xs text-gray-500 mt-1">Variables: {user} {level} {username}</div>
@@ -104,6 +111,7 @@ export async function handleLevelingSave(guildId: string, body: any): Promise<vo
     xp_min: Math.max(1, parseInt(body.xp_min ?? '') || 15),
     xp_max: Math.max(1, parseInt(body.xp_max ?? '') || 25),
     level_up_channel_id: body.level_up_channel_id || null,
+    level_up_announce: body.level_up_announce === '1' ? 1 : 0,
     level_up_message: body.level_up_message?.trim() || '{user} leveled up to **{level}**! 🎉',
   });
 }

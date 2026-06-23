@@ -8,6 +8,11 @@ export function cv2Text(content: string, accentColor?: number) {
   return { flags: IS_CV2, components: [c] };
 }
 
+// Ephemeral Components-V2 text — handy for permission/validation errors.
+export function cv2Err(content: string) {
+  return { flags: IS_CV2 | MessageFlags.Ephemeral, components: [new ContainerBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(content))] };
+}
+
 export function cv2File(buffer: Buffer, ext: string, caption?: string) {
   const name = `result.${ext}`;
   const c = new ContainerBuilder();

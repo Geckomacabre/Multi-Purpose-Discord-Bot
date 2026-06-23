@@ -37,6 +37,8 @@ const Level: Command = {
         .addIntegerOption(o => o.setName('cooldown').setDescription('Cooldown between XP awards in seconds (default 60)').setMinValue(5)))
       .addSubcommand(s => s.setName('message').setDescription('Set the level-up announcement message')
         .addStringOption(o => o.setName('text').setDescription('Message text. Use {user}, {username}, {level}').setRequired(true)))
+      .addSubcommand(s => s.setName('announce').setDescription('Enable or disable level-up announcement messages')
+        .addBooleanOption(o => o.setName('enabled').setDescription('Send a message when users level up?').setRequired(true)))
       .addSubcommand(s => s.setName('view').setDescription('View current leveling settings'))) as any,
 
   async run(interaction: ChatInputCommandInteraction) {
@@ -99,12 +101,16 @@ const Level: Command = {
         const text = interaction.options.getString('text', true);
         await setXpConfig(guildId, { level_up_message: text });
         await interaction.reply({ ...cv2Text(`Level-up message set to:\n> ${text}`), flags: IS_CV2 | MessageFlags.Ephemeral });
+      } else if (sub === 'announce') {
+        const enabled = interaction.options.getBoolean('enabled', true);
+        await setXpConfig(guildId, { level_up_announce: enabled ? 1 : 0 });
+        await interaction.reply({ ...cv2Text(`Level-up announcements **${enabled ? 'enabled' : 'disabled'}**.`), flags: IS_CV2 | MessageFlags.Ephemeral });
       } else {
         const cfg = await getXpConfig(guildId);
         const container = new ContainerBuilder()
           .setAccentColor(Colors.Blurple)
           .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-            `**Leveling Config**\n**Status:** ${cfg.enabled ? '✅ Enabled' : '❌ Disabled'}\n**XP per Message:** ${cfg.xp_min}–${cfg.xp_max} XP\n**Cooldown:** ${cfg.cooldown_seconds}s\n**Announce Channel:** ${cfg.level_up_channel_id ? `<#${cfg.level_up_channel_id}>` : 'Message channel'}\n**Level-up Message:** ${cfg.level_up_message}`
+            `**Leveling Config**\n**Status:** ${cfg.enabled ? '✅ Enabled' : '❌ Disabled'}\n**XP per Message:** ${cfg.xp_min}–${cfg.xp_max} XP\n**Cooldown:** ${cfg.cooldown_seconds}s\n**Announce Channel:** ${cfg.level_up_channel_id ? `<#${cfg.level_up_channel_id}>` : 'Message channel'}\n**Announcements:** ${cfg.level_up_announce ? '✅ Enabled' : '❌ Disabled'}\n**Level-up Message:** ${cfg.level_up_message}`
           ));
         await interaction.reply({ flags: IS_CV2 | MessageFlags.Ephemeral, components: [container] });
       }

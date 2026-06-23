@@ -40,7 +40,6 @@ const EFFECTS = [
   { name: 'woow (mirror bottom half)', value: 'woow' },
   { name: 'explode', value: 'explode' },
   { name: 'implode', value: 'implode' },
-  { name: 'speechbubble', value: 'speechbubble' },
   { name: 'vignette', value: 'vignette' },
   { name: 'squish', value: 'squish' },
   { name: 'globe', value: 'globe' },
@@ -184,7 +183,6 @@ const ImageCommand: Command = {
           case 'woow':        result = await fx.woow(buf); break;
           case 'explode':     result = await fx.explode(buf); break;
           case 'implode':     result = await fx.implode(buf); break;
-          case 'speechbubble': result = await fx.speechbubble(buf); break;
           case 'vignette':    result = await fx.vignette(buf); break;
           case 'squish':      result = await fx.squish(buf); break;
           case 'globe':       result = await fx.globe(buf); break;
