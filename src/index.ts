@@ -27,7 +27,7 @@ export const Bot = new Client({
   ],
 });
 
-db.initDb();
+await db.initDb();
 registerEvents(Bot);
 registerFeatures(Bot);
 startWebServer();
