@@ -1,4 +1,4 @@
-import { AuditLogEvent, Colors, EmbedBuilder, TextChannel } from 'discord.js';
+import { AuditLogEvent, Colors, EmbedBuilder, GuildChannel, TextChannel } from 'discord.js';
 import { EventModule } from '../feature';
 import type * as Db from '../../utils/db';
 
@@ -83,6 +83,47 @@ const logsModule: EventModule = {
       }
     },
 
+    userUpdate: async ({ data: [oldUser, newUser], bot, db }) => {
+      const usernameChanged = oldUser.username !== newUser.username;
+      const avatarChanged = oldUser.avatar !== newUser.avatar;
+      if (!usernameChanged && !avatarChanged) return;
+
+      // Log to every guild this user is a member of
+      for (const guild of bot.guilds.cache.values()) {
+        if (!guild.members.cache.has(newUser.id)) continue;
+        const cfg = await db.getLogConfig(guild.id);
+        if (!cfg?.log_member_profile) continue;
+        const ch = await getLogChannel(bot, cfg);
+        if (!ch) continue;
+
+        if (usernameChanged) {
+          const embed = new EmbedBuilder()
+            .setColor(Colors.Yellow)
+            .setTitle('Username Changed')
+            .setThumbnail(newUser.displayAvatarURL())
+            .setDescription(`<@${newUser.id}>`)
+            .addFields(
+              { name: 'Before', value: oldUser.username, inline: true },
+              { name: 'After', value: newUser.username, inline: true }
+            )
+            .setFooter({ text: `ID: ${newUser.id}` })
+            .setTimestamp();
+          await ch.send({ embeds: [embed] }).catch(() => {});
+        }
+
+        if (avatarChanged) {
+          const embed = new EmbedBuilder()
+            .setColor(Colors.Yellow)
+            .setTitle('Avatar Changed')
+            .setDescription(`<@${newUser.id}> **${newUser.username}**`)
+            .setThumbnail(newUser.displayAvatarURL({ size: 256 }))
+            .setFooter({ text: `ID: ${newUser.id}` })
+            .setTimestamp();
+          await ch.send({ embeds: [embed] }).catch(() => {});
+        }
+      }
+    },
+
     messageUpdate: async ({ data: [oldMessage, newMessage], bot, db }) => {
       if (!newMessage.guildId || newMessage.author?.bot) return;
       if (oldMessage.content === newMessage.content) return;
@@ -148,6 +189,116 @@ const logsModule: EventModule = {
         .setTitle('Member Unbanned')
         .setDescription(`<@${ban.user.id}> **${ban.user.tag}**`)
         .setFooter({ text: `ID: ${ban.user.id}` })
+        .setTimestamp();
+      await ch.send({ embeds: [embed] }).catch(() => {});
+    },
+
+    emojiCreate: async ({ data: [emoji], bot, db }) => {
+      const cfg = await db.getLogConfig(emoji.guild.id);
+      if (!cfg?.log_emoji_changes) return;
+      const ch = await getLogChannel(bot, cfg);
+      if (!ch) return;
+      const embed = new EmbedBuilder()
+        .setColor(Colors.Green)
+        .setTitle('Emoji Added')
+        .setDescription(`**:${emoji.name}:** ${emoji.toString()}`)
+        .setThumbnail(emoji.imageURL())
+        .setFooter({ text: `ID: ${emoji.id}` })
+        .setTimestamp();
+      await ch.send({ embeds: [embed] }).catch(() => {});
+    },
+
+    emojiDelete: async ({ data: [emoji], bot, db }) => {
+      const cfg = await db.getLogConfig(emoji.guild.id);
+      if (!cfg?.log_emoji_changes) return;
+      const ch = await getLogChannel(bot, cfg);
+      if (!ch) return;
+      const embed = new EmbedBuilder()
+        .setColor(Colors.Red)
+        .setTitle('Emoji Removed')
+        .setDescription(`**:${emoji.name}:**`)
+        .setThumbnail(emoji.imageURL())
+        .setFooter({ text: `ID: ${emoji.id}` })
+        .setTimestamp();
+      await ch.send({ embeds: [embed] }).catch(() => {});
+    },
+
+    emojiUpdate: async ({ data: [oldEmoji, newEmoji], bot, db }) => {
+      if (oldEmoji.name === newEmoji.name) return;
+      const cfg = await db.getLogConfig(newEmoji.guild.id);
+      if (!cfg?.log_emoji_changes) return;
+      const ch = await getLogChannel(bot, cfg);
+      if (!ch) return;
+      const embed = new EmbedBuilder()
+        .setColor(Colors.Yellow)
+        .setTitle('Emoji Renamed')
+        .setDescription(newEmoji.toString())
+        .addFields(
+          { name: 'Before', value: `:${oldEmoji.name}:`, inline: true },
+          { name: 'After', value: `:${newEmoji.name}:`, inline: true }
+        )
+        .setFooter({ text: `ID: ${newEmoji.id}` })
+        .setTimestamp();
+      await ch.send({ embeds: [embed] }).catch(() => {});
+    },
+
+    guildUpdate: async ({ data: [oldGuild, newGuild], bot, db }) => {
+      const cfg = await db.getLogConfig(newGuild.id);
+      if (!cfg?.log_server_updates) return;
+      const ch = await getLogChannel(bot, cfg);
+      if (!ch) return;
+
+      const fields: { name: string; value: string; inline?: boolean }[] = [];
+      if (oldGuild.name !== newGuild.name)
+        fields.push({ name: 'Name', value: `${oldGuild.name} → ${newGuild.name}` });
+      if (oldGuild.icon !== newGuild.icon)
+        fields.push({ name: 'Icon', value: newGuild.icon ? '[New icon set]' : 'Icon removed' });
+      if (oldGuild.description !== newGuild.description)
+        fields.push({ name: 'Description', value: `${oldGuild.description ?? '*none*'} → ${newGuild.description ?? '*none*'}` });
+      if (oldGuild.verificationLevel !== newGuild.verificationLevel)
+        fields.push({ name: 'Verification Level', value: `${oldGuild.verificationLevel} → ${newGuild.verificationLevel}` });
+      if (oldGuild.banner !== newGuild.banner)
+        fields.push({ name: 'Banner', value: newGuild.banner ? 'Updated' : 'Removed' });
+
+      if (!fields.length) return;
+      const embed = new EmbedBuilder()
+        .setColor(Colors.Blue)
+        .setTitle('Server Updated')
+        .addFields(fields)
+        .setFooter({ text: `Guild: ${newGuild.id}` })
+        .setTimestamp();
+      if (newGuild.icon) embed.setThumbnail(newGuild.iconURL());
+      await ch.send({ embeds: [embed] }).catch(() => {});
+    },
+
+    channelCreate: async ({ data: [channel], bot, db }) => {
+      if (!(channel instanceof GuildChannel)) return;
+      const cfg = await db.getLogConfig(channel.guild.id);
+      if (!cfg?.log_channel_changes) return;
+      const ch = await getLogChannel(bot, cfg);
+      if (!ch) return;
+      const embed = new EmbedBuilder()
+        .setColor(Colors.Green)
+        .setTitle('Channel Created')
+        .setDescription(`<#${channel.id}> **${channel.name}**`)
+        .addFields({ name: 'Type', value: channel.type.toString() })
+        .setFooter({ text: `ID: ${channel.id}` })
+        .setTimestamp();
+      await ch.send({ embeds: [embed] }).catch(() => {});
+    },
+
+    channelDelete: async ({ data: [channel], bot, db }) => {
+      if (!(channel instanceof GuildChannel)) return;
+      const cfg = await db.getLogConfig(channel.guild.id);
+      if (!cfg?.log_channel_changes) return;
+      const ch = await getLogChannel(bot, cfg);
+      if (!ch) return;
+      const embed = new EmbedBuilder()
+        .setColor(Colors.Red)
+        .setTitle('Channel Deleted')
+        .setDescription(`**#${channel.name}**`)
+        .addFields({ name: 'Type', value: channel.type.toString() })
+        .setFooter({ text: `ID: ${channel.id}` })
         .setTimestamp();
       await ch.send({ embeds: [embed] }).catch(() => {});
     },

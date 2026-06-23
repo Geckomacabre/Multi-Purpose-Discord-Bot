@@ -6,11 +6,15 @@ import * as db from '../../utils/db';
 const LOG_FLAGS: Array<{ key: keyof db.ILogConfig; label: string }> = [
   { key: 'log_joins',           label: 'Member Joined' },
   { key: 'log_leaves',          label: 'Member Left' },
-  { key: 'log_message_edits',   label: 'Message Edited' },
-  { key: 'log_message_deletes', label: 'Message Deleted' },
   { key: 'log_bans',            label: 'Member Banned/Unbanned' },
   { key: 'log_nickname_changes',label: 'Nickname Changed' },
-  { key: 'log_role_changes',    label: 'Role Added/Removed' },
+  { key: 'log_role_changes',    label: 'Member Roles Changed' },
+  { key: 'log_member_profile',  label: 'Username / Avatar Changed' },
+  { key: 'log_message_edits',   label: 'Message Edited' },
+  { key: 'log_message_deletes', label: 'Message Deleted' },
+  { key: 'log_emoji_changes',   label: 'Emoji Added / Removed / Renamed' },
+  { key: 'log_channel_changes', label: 'Channel Created / Deleted' },
+  { key: 'log_server_updates',  label: 'Server Settings Changed' },
 ];
 
 export async function logsPage(
