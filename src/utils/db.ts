@@ -58,6 +58,10 @@ export type IAutomodRule = {
 export type ILogConfig = {
   guild_id: string;
   channel_id: string | null;
+  member_log_channel_id: string | null;
+  message_log_channel_id: string | null;
+  voice_log_channel_id: string | null;
+  server_log_channel_id: string | null;
   enabled: number;
   log_joins: number;
   log_leaves: number;
@@ -67,6 +71,7 @@ export type ILogConfig = {
   log_nickname_changes: number;
   log_role_changes: number;
   log_member_profile: number;
+  log_voice_events: number;
   log_emoji_changes: number;
   log_server_updates: number;
   log_channel_changes: number;
@@ -483,6 +488,11 @@ export async function initDb() {
   try { await db`ALTER TABLE log_config ADD COLUMN log_emoji_changes INTEGER NOT NULL DEFAULT 1`; } catch {}
   try { await db`ALTER TABLE log_config ADD COLUMN log_server_updates INTEGER NOT NULL DEFAULT 1`; } catch {}
   try { await db`ALTER TABLE log_config ADD COLUMN log_channel_changes INTEGER NOT NULL DEFAULT 1`; } catch {}
+  try { await db`ALTER TABLE log_config ADD COLUMN member_log_channel_id TEXT`; } catch {}
+  try { await db`ALTER TABLE log_config ADD COLUMN message_log_channel_id TEXT`; } catch {}
+  try { await db`ALTER TABLE log_config ADD COLUMN voice_log_channel_id TEXT`; } catch {}
+  try { await db`ALTER TABLE log_config ADD COLUMN server_log_channel_id TEXT`; } catch {}
+  try { await db`ALTER TABLE log_config ADD COLUMN log_voice_events INTEGER NOT NULL DEFAULT 1`; } catch {}
 
   await db`CREATE TABLE IF NOT EXISTS autoroles (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1196,6 +1206,11 @@ export async function updateLogConfig(guild_id: string, fields: Partial<Omit<ILo
   if (fields.log_emoji_changes !== undefined) await db`UPDATE log_config SET log_emoji_changes = ${fields.log_emoji_changes} WHERE guild_id = ${guild_id}`;
   if (fields.log_server_updates !== undefined) await db`UPDATE log_config SET log_server_updates = ${fields.log_server_updates} WHERE guild_id = ${guild_id}`;
   if (fields.log_channel_changes !== undefined) await db`UPDATE log_config SET log_channel_changes = ${fields.log_channel_changes} WHERE guild_id = ${guild_id}`;
+  if (fields.log_voice_events !== undefined) await db`UPDATE log_config SET log_voice_events = ${fields.log_voice_events} WHERE guild_id = ${guild_id}`;
+  if (fields.member_log_channel_id !== undefined) await db`UPDATE log_config SET member_log_channel_id = ${fields.member_log_channel_id} WHERE guild_id = ${guild_id}`;
+  if (fields.message_log_channel_id !== undefined) await db`UPDATE log_config SET message_log_channel_id = ${fields.message_log_channel_id} WHERE guild_id = ${guild_id}`;
+  if (fields.voice_log_channel_id !== undefined) await db`UPDATE log_config SET voice_log_channel_id = ${fields.voice_log_channel_id} WHERE guild_id = ${guild_id}`;
+  if (fields.server_log_channel_id !== undefined) await db`UPDATE log_config SET server_log_channel_id = ${fields.server_log_channel_id} WHERE guild_id = ${guild_id}`;
   if (fields.ignored_channels !== undefined) await db`UPDATE log_config SET ignored_channels = ${fields.ignored_channels} WHERE guild_id = ${guild_id}`;
 }
 

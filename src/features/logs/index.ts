@@ -1,11 +1,22 @@
-import { AuditLogEvent, Colors, EmbedBuilder, GuildChannel, TextChannel } from 'discord.js';
+import { Colors, EmbedBuilder, GuildChannel, TextChannel } from 'discord.js';
 import { EventModule } from '../feature';
 import type * as Db from '../../utils/db';
 
-async function getLogChannel(bot: any, cfg: Db.ILogConfig | null): Promise<TextChannel | null> {
-  if (!cfg || !cfg.enabled || !cfg.channel_id) return null;
+type LogCategory = 'member' | 'message' | 'voice' | 'server';
+
+function resolveChannelId(cfg: Db.ILogConfig, category: LogCategory): string | null {
+  switch (category) {
+    case 'member':  return cfg.member_log_channel_id || cfg.channel_id || null;
+    case 'message': return cfg.message_log_channel_id || cfg.channel_id || null;
+    case 'voice':   return cfg.voice_log_channel_id || cfg.channel_id || null;
+    case 'server':  return cfg.server_log_channel_id || cfg.channel_id || null;
+  }
+}
+
+async function getLogChannel(bot: any, channelId: string | null): Promise<TextChannel | null> {
+  if (!channelId) return null;
   try {
-    const ch = await bot.channels.fetch(cfg.channel_id);
+    const ch = await bot.channels.fetch(channelId);
     return ch instanceof TextChannel ? ch : null;
   } catch {
     return null;
@@ -18,7 +29,7 @@ const logsModule: EventModule = {
     guildMemberAdd: async ({ data: [member], bot, db }) => {
       const cfg = await db.getLogConfig(member.guild.id);
       if (!cfg?.log_joins) return;
-      const ch = await getLogChannel(bot, cfg);
+      const ch = await getLogChannel(bot, resolveChannelId(cfg, 'member'));
       if (!ch) return;
       const embed = new EmbedBuilder()
         .setColor(Colors.Green)
@@ -34,7 +45,7 @@ const logsModule: EventModule = {
     guildMemberRemove: async ({ data: [member], bot, db }) => {
       const cfg = await db.getLogConfig(member.guild.id);
       if (!cfg?.log_leaves) return;
-      const ch = await getLogChannel(bot, cfg);
+      const ch = await getLogChannel(bot, resolveChannelId(cfg, 'member'));
       if (!ch) return;
       const embed = new EmbedBuilder()
         .setColor(Colors.Red)
@@ -49,7 +60,7 @@ const logsModule: EventModule = {
     guildMemberUpdate: async ({ data: [oldMember, newMember], bot, db }) => {
       const cfg = await db.getLogConfig(newMember.guild.id);
       if (!cfg?.enabled) return;
-      const ch = await getLogChannel(bot, cfg);
+      const ch = await getLogChannel(bot, resolveChannelId(cfg, 'member'));
       if (!ch) return;
 
       if (cfg.log_nickname_changes && oldMember.nickname !== newMember.nickname) {
@@ -88,12 +99,11 @@ const logsModule: EventModule = {
       const avatarChanged = oldUser.avatar !== newUser.avatar;
       if (!usernameChanged && !avatarChanged) return;
 
-      // Log to every guild this user is a member of
       for (const guild of bot.guilds.cache.values()) {
         if (!guild.members.cache.has(newUser.id)) continue;
         const cfg = await db.getLogConfig(guild.id);
         if (!cfg?.log_member_profile) continue;
-        const ch = await getLogChannel(bot, cfg);
+        const ch = await getLogChannel(bot, resolveChannelId(cfg, 'member'));
         if (!ch) continue;
 
         if (usernameChanged) {
@@ -103,7 +113,7 @@ const logsModule: EventModule = {
             .setThumbnail(newUser.displayAvatarURL())
             .setDescription(`<@${newUser.id}>`)
             .addFields(
-              { name: 'Before', value: oldUser.username, inline: true },
+              { name: 'Before', value: oldUser.username ?? '*unknown*', inline: true },
               { name: 'After', value: newUser.username, inline: true }
             )
             .setFooter({ text: `ID: ${newUser.id}` })
@@ -131,7 +141,7 @@ const logsModule: EventModule = {
       if (!cfg?.log_message_edits) return;
       const ignored: string[] = cfg.ignored_channels ? JSON.parse(cfg.ignored_channels) : [];
       if (ignored.includes(newMessage.channelId)) return;
-      const ch = await getLogChannel(bot, cfg);
+      const ch = await getLogChannel(bot, resolveChannelId(cfg, 'message'));
       if (!ch) return;
       const embed = new EmbedBuilder()
         .setColor(Colors.Yellow)
@@ -152,7 +162,7 @@ const logsModule: EventModule = {
       if (!cfg?.log_message_deletes) return;
       const ignored: string[] = cfg.ignored_channels ? JSON.parse(cfg.ignored_channels) : [];
       if (ignored.includes(message.channelId)) return;
-      const ch = await getLogChannel(bot, cfg);
+      const ch = await getLogChannel(bot, resolveChannelId(cfg, 'message'));
       if (!ch) return;
       const embed = new EmbedBuilder()
         .setColor(Colors.Red)
@@ -167,7 +177,7 @@ const logsModule: EventModule = {
     guildBanAdd: async ({ data: [ban], bot, db }) => {
       const cfg = await db.getLogConfig(ban.guild.id);
       if (!cfg?.log_bans) return;
-      const ch = await getLogChannel(bot, cfg);
+      const ch = await getLogChannel(bot, resolveChannelId(cfg, 'member'));
       if (!ch) return;
       const embed = new EmbedBuilder()
         .setColor(Colors.DarkRed)
@@ -182,7 +192,7 @@ const logsModule: EventModule = {
     guildBanRemove: async ({ data: [ban], bot, db }) => {
       const cfg = await db.getLogConfig(ban.guild.id);
       if (!cfg?.log_bans) return;
-      const ch = await getLogChannel(bot, cfg);
+      const ch = await getLogChannel(bot, resolveChannelId(cfg, 'member'));
       if (!ch) return;
       const embed = new EmbedBuilder()
         .setColor(Colors.Green)
@@ -193,10 +203,53 @@ const logsModule: EventModule = {
       await ch.send({ embeds: [embed] }).catch(() => {});
     },
 
+    voiceStateUpdate: async ({ data: [oldState, newState], bot, db }) => {
+      const guildId = newState.guild?.id ?? oldState.guild?.id;
+      if (!guildId) return;
+      const cfg = await db.getLogConfig(guildId);
+      if (!cfg?.log_voice_events) return;
+      const ch = await getLogChannel(bot, resolveChannelId(cfg, 'voice'));
+      if (!ch) return;
+
+      const userId = newState.id;
+      let embed: EmbedBuilder | null = null;
+
+      if (!oldState.channelId && newState.channelId) {
+        embed = new EmbedBuilder()
+          .setColor(Colors.Green)
+          .setTitle('Joined Voice Channel')
+          .setDescription(`<@${userId}> joined <#${newState.channelId}>`)
+          .setFooter({ text: `ID: ${userId}` })
+          .setTimestamp();
+      } else if (oldState.channelId && !newState.channelId) {
+        embed = new EmbedBuilder()
+          .setColor(Colors.Red)
+          .setTitle('Left Voice Channel')
+          .setDescription(`<@${userId}> left <#${oldState.channelId}>`)
+          .setFooter({ text: `ID: ${userId}` })
+          .setTimestamp();
+      } else if (oldState.channelId && newState.channelId && oldState.channelId !== newState.channelId) {
+        const fromId = oldState.channelId;
+        const toId = newState.channelId;
+        embed = new EmbedBuilder()
+          .setColor(Colors.Yellow)
+          .setTitle('Moved Voice Channel')
+          .setDescription(`<@${userId}>`)
+          .addFields(
+            { name: 'From', value: `<#${fromId}>`, inline: true },
+            { name: 'To', value: `<#${toId}>`, inline: true }
+          )
+          .setFooter({ text: `ID: ${userId}` })
+          .setTimestamp();
+      }
+
+      if (embed) await ch.send({ embeds: [embed] }).catch(() => {});
+    },
+
     emojiCreate: async ({ data: [emoji], bot, db }) => {
       const cfg = await db.getLogConfig(emoji.guild.id);
       if (!cfg?.log_emoji_changes) return;
-      const ch = await getLogChannel(bot, cfg);
+      const ch = await getLogChannel(bot, resolveChannelId(cfg, 'server'));
       if (!ch) return;
       const embed = new EmbedBuilder()
         .setColor(Colors.Green)
@@ -211,7 +264,7 @@ const logsModule: EventModule = {
     emojiDelete: async ({ data: [emoji], bot, db }) => {
       const cfg = await db.getLogConfig(emoji.guild.id);
       if (!cfg?.log_emoji_changes) return;
-      const ch = await getLogChannel(bot, cfg);
+      const ch = await getLogChannel(bot, resolveChannelId(cfg, 'server'));
       if (!ch) return;
       const embed = new EmbedBuilder()
         .setColor(Colors.Red)
@@ -227,7 +280,7 @@ const logsModule: EventModule = {
       if (oldEmoji.name === newEmoji.name) return;
       const cfg = await db.getLogConfig(newEmoji.guild.id);
       if (!cfg?.log_emoji_changes) return;
-      const ch = await getLogChannel(bot, cfg);
+      const ch = await getLogChannel(bot, resolveChannelId(cfg, 'server'));
       if (!ch) return;
       const embed = new EmbedBuilder()
         .setColor(Colors.Yellow)
@@ -245,7 +298,7 @@ const logsModule: EventModule = {
     guildUpdate: async ({ data: [oldGuild, newGuild], bot, db }) => {
       const cfg = await db.getLogConfig(newGuild.id);
       if (!cfg?.log_server_updates) return;
-      const ch = await getLogChannel(bot, cfg);
+      const ch = await getLogChannel(bot, resolveChannelId(cfg, 'server'));
       if (!ch) return;
 
       const fields: { name: string; value: string; inline?: boolean }[] = [];
@@ -275,7 +328,7 @@ const logsModule: EventModule = {
       if (!(channel instanceof GuildChannel)) return;
       const cfg = await db.getLogConfig(channel.guild.id);
       if (!cfg?.log_channel_changes) return;
-      const ch = await getLogChannel(bot, cfg);
+      const ch = await getLogChannel(bot, resolveChannelId(cfg, 'server'));
       if (!ch) return;
       const embed = new EmbedBuilder()
         .setColor(Colors.Green)
@@ -291,7 +344,7 @@ const logsModule: EventModule = {
       if (!(channel instanceof GuildChannel)) return;
       const cfg = await db.getLogConfig(channel.guild.id);
       if (!cfg?.log_channel_changes) return;
-      const ch = await getLogChannel(bot, cfg);
+      const ch = await getLogChannel(bot, resolveChannelId(cfg, 'server'));
       if (!ch) return;
       const embed = new EmbedBuilder()
         .setColor(Colors.Red)
