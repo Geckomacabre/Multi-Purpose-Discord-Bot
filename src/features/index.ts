@@ -23,6 +23,7 @@ import { startTopicPoller } from './topics';
 import starboardModule from './starboard';
 import guildActionsModule from './guild-actions';
 import timezoneModule from './timezone';
+import verifyModule from './verify';
 
 const features = [
   countingModule,
@@ -43,6 +44,7 @@ const features = [
   starboardModule,
   guildActionsModule,
   timezoneModule,
+  verifyModule,
 ];
 
 export function registerFeatures(bot: Client) {

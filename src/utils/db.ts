@@ -4,6 +4,14 @@ import { SQL } from 'bun';
 
 export type IConfig = { guild_id: string };
 
+export type IVerifyConfig = {
+  guild_id: string;
+  channel_id: string;
+  message_id: string | null;
+  unverified_role_id: string | null;
+  member_role_id: string;
+};
+
 export type ICounting = {
   guild_id: string;
   channel_id: string;
@@ -850,6 +858,14 @@ export async function initDb() {
   try { await db`ALTER TABLE welcome_config ADD COLUMN ban_image_url TEXT`; } catch {}
   try { await db`ALTER TABLE welcome_config ADD COLUMN ban_enabled INTEGER NOT NULL DEFAULT 1`; } catch {}
 
+  await db`CREATE TABLE IF NOT EXISTS verify_config (
+    guild_id           TEXT PRIMARY KEY,
+    channel_id         TEXT NOT NULL DEFAULT '',
+    message_id         TEXT,
+    unverified_role_id TEXT,
+    member_role_id     TEXT NOT NULL DEFAULT ''
+  )`;
+
   await db`CREATE TABLE IF NOT EXISTS stat_channels (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     guild_id   TEXT NOT NULL,
@@ -1006,7 +1022,7 @@ export async function removeGuild(guild_id: string) {
     'timezone_user', 'timezone_message',
     'welcome_config', 'stat_channels', 'giveaways', 'reaction_roles',
     'topic_channels', 'topics', 'starboard_config', 'starboard_posts',
-    'tags', 'music_config', 'news_config',
+    'tags', 'music_config', 'news_config', 'verify_config',
   ]) {
     await db`DELETE FROM ${db(table)} WHERE guild_id = ${guild_id}`.catch(() => {});
   }
@@ -2045,6 +2061,21 @@ export async function setWelcomeConfig(guild_id: string, fields: Partial<Omit<IW
   if (fields.ban_message !== undefined) await db`UPDATE welcome_config SET ban_message = ${fields.ban_message} WHERE guild_id = ${guild_id}`;
   if (fields.ban_image_url !== undefined) await db`UPDATE welcome_config SET ban_image_url = ${fields.ban_image_url} WHERE guild_id = ${guild_id}`;
   if (fields.ban_enabled !== undefined) await db`UPDATE welcome_config SET ban_enabled = ${fields.ban_enabled} WHERE guild_id = ${guild_id}`;
+}
+
+// ─── Verify config ────────────────────────────────────────────────────────────
+
+export async function getVerifyConfig(guild_id: string): Promise<IVerifyConfig | null> {
+  const [row] = await db`SELECT * FROM verify_config WHERE guild_id = ${guild_id}`;
+  return (row as IVerifyConfig) ?? null;
+}
+
+export async function setVerifyConfig(guild_id: string, fields: Partial<Omit<IVerifyConfig, 'guild_id'>>) {
+  await db`INSERT OR IGNORE INTO verify_config (guild_id, channel_id, member_role_id) VALUES (${guild_id}, '', '')`;
+  if (fields.channel_id !== undefined) await db`UPDATE verify_config SET channel_id = ${fields.channel_id} WHERE guild_id = ${guild_id}`;
+  if (fields.message_id !== undefined) await db`UPDATE verify_config SET message_id = ${fields.message_id} WHERE guild_id = ${guild_id}`;
+  if (fields.unverified_role_id !== undefined) await db`UPDATE verify_config SET unverified_role_id = ${fields.unverified_role_id} WHERE guild_id = ${guild_id}`;
+  if (fields.member_role_id !== undefined) await db`UPDATE verify_config SET member_role_id = ${fields.member_role_id} WHERE guild_id = ${guild_id}`;
 }
 
 // ─── Stat channels ────────────────────────────────────────────────────────────
