@@ -892,6 +892,59 @@ export async function initDb() {
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
   )`;
+
+  await db`CREATE TABLE IF NOT EXISTS news_config (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id   TEXT NOT NULL,
+    category   TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    UNIQUE(guild_id, category)
+  )`;
+
+  await db`CREATE TABLE IF NOT EXISTS news_posted (
+    guild_id  TEXT NOT NULL,
+    item_id   TEXT NOT NULL,
+    posted_at INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (guild_id, item_id)
+  )`;
+}
+
+// ─── News feeds ───────────────────────────────────────────────────────────────
+
+export type INewsConfig = { id: number; guild_id: string; category: string; channel_id: string };
+
+export async function setNewsConfig(guild_id: string, category: string, channel_id: string): Promise<void> {
+  await ensureConfig(guild_id);
+  await db`INSERT INTO news_config (guild_id, category, channel_id) VALUES (${guild_id}, ${category}, ${channel_id})
+    ON CONFLICT(guild_id, category) DO UPDATE SET channel_id = excluded.channel_id`;
+}
+
+export async function removeNewsConfig(guild_id: string, category: string): Promise<boolean> {
+  const result = await db`DELETE FROM news_config WHERE guild_id = ${guild_id} AND category = ${category} RETURNING id`;
+  return result.length > 0;
+}
+
+export async function getNewsConfigs(guild_id: string): Promise<INewsConfig[]> {
+  const rows = await db`SELECT * FROM news_config WHERE guild_id = ${guild_id}`;
+  return rows as INewsConfig[];
+}
+
+export async function getAllNewsConfigs(): Promise<INewsConfig[]> {
+  const rows = await db`SELECT * FROM news_config`;
+  return rows as INewsConfig[];
+}
+
+export async function isNewsPosted(guild_id: string, item_id: string): Promise<boolean> {
+  const [row] = await db`SELECT 1 FROM news_posted WHERE guild_id = ${guild_id} AND item_id = ${item_id}`;
+  return !!row;
+}
+
+export async function markNewsPosted(guild_id: string, item_id: string): Promise<void> {
+  await db`INSERT OR IGNORE INTO news_posted (guild_id, item_id, posted_at) VALUES (${guild_id}, ${item_id}, ${Date.now()})`;
+}
+
+export async function pruneOldNews(cutoffMs: number): Promise<void> {
+  await db`DELETE FROM news_posted WHERE posted_at < ${cutoffMs}`;
 }
 
 // ─── Bot config ───────────────────────────────────────────────────────────────
@@ -925,7 +978,7 @@ export async function removeGuild(guild_id: string) {
     'timezone_user', 'timezone_message',
     'welcome_config', 'stat_channels', 'giveaways', 'reaction_roles',
     'topic_channels', 'topics', 'starboard_config', 'starboard_posts',
-    'tags', 'music_config',
+    'tags', 'music_config', 'news_config',
   ]) {
     await db`DELETE FROM ${db(table)} WHERE guild_id = ${guild_id}`.catch(() => {});
   }

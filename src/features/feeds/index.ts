@@ -3,6 +3,52 @@ import * as db from '../../utils/db';
 import Config from '../../config';
 import logger from '../../utils/logger';
 
+// ─── Curated news sources per category ───────────────────────────────────────
+
+const NEWS_SOURCES: Record<string, { url: string; source: string }[]> = {
+  world: [
+    { url: 'http://feeds.bbci.co.uk/news/world/rss.xml',                        source: 'BBC World News' },
+    { url: 'https://feeds.npr.org/1001/rss.xml',                                 source: 'NPR News' },
+    { url: 'https://rss.nytimes.com/services/xml/rss/nyt/World.xml',             source: 'NY Times World' },
+  ],
+  entertainment: [
+    { url: 'https://variety.com/feed/',                                           source: 'Variety' },
+    { url: 'https://deadline.com/feed/',                                          source: 'Deadline' },
+    { url: 'https://www.hollywoodreporter.com/feed/',                             source: 'Hollywood Reporter' },
+  ],
+  sports: [
+    { url: 'https://www.espn.com/espn/rss/news',                                 source: 'ESPN' },
+    { url: 'http://feeds.bbci.co.uk/sport/rss.xml',                              source: 'BBC Sport' },
+    { url: 'https://sports.yahoo.com/rss/',                                       source: 'Yahoo Sports' },
+  ],
+  politics: [
+    { url: 'https://feeds.npr.org/1014/rss.xml',                                 source: 'NPR Politics' },
+    { url: 'https://thehill.com/rss/syndicator/19109',                           source: 'The Hill' },
+    { url: 'https://www.politico.com/rss/politicopicks.xml',                     source: 'Politico' },
+  ],
+  gaming: [
+    { url: 'https://feeds.ign.com/ign/articles',                                 source: 'IGN' },
+    { url: 'https://kotaku.com/rss',                                              source: 'Kotaku' },
+    { url: 'https://www.polygon.com/rss/index.xml',                              source: 'Polygon' },
+  ],
+};
+
+const CATEGORY_COLORS: Record<string, number> = {
+  world:         0x1565C0,
+  entertainment: 0x6A1B9A,
+  sports:        0x1B5E20,
+  politics:      0xB71C1C,
+  gaming:        0xE65100,
+};
+
+const CATEGORY_LABELS: Record<string, string> = {
+  world:         '🌍 World News',
+  entertainment: '🎬 TV & Movies',
+  sports:        '⚽ Sports',
+  politics:      '🏛️ Politics',
+  gaming:        '🎮 Gaming',
+};
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 async function getChannel(bot: Client, id: string): Promise<TextChannel | null> {
@@ -211,6 +257,82 @@ async function pollReminders(bot: Client) {
       }
     } catch {}
     await db.fireReminder(reminder.id);
+  }
+}
+
+// ─── News poller ──────────────────────────────────────────────────────────────
+
+export async function pollNews(bot: Client) {
+  // Prune posted records older than 7 days to keep the table lean
+  await db.pruneOldNews(Date.now() - 7 * 24 * 60 * 60 * 1000).catch(() => {});
+
+  const configs = await db.getAllNewsConfigs();
+  if (!configs.length) return;
+
+  // Group configs by guild so we make one DB trip per guild
+  const byGuild = new Map<string, typeof configs>();
+  for (const cfg of configs) {
+    const list = byGuild.get(cfg.guild_id) ?? [];
+    list.push(cfg);
+    byGuild.set(cfg.guild_id, list);
+  }
+
+  for (const [guildId, guildConfigs] of byGuild) {
+    for (const cfg of guildConfigs) {
+      const sources = NEWS_SOURCES[cfg.category];
+      if (!sources) continue;
+
+      // Collect all items across every source for this category
+      const allItems: { id: string; title: string; link: string; published: string; source: string }[] = [];
+      for (const { url, source } of sources) {
+        try {
+          const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+          if (!res.ok) continue;
+          const xml = await res.text();
+          const parsed = parseRssItems(xml).map(i => ({ ...i, source }));
+          allItems.push(...parsed);
+        } catch (err) {
+          logger.debug(`[news] fetch error ${url}: ${err}`);
+        }
+      }
+
+      if (!allItems.length) continue;
+
+      // Sort newest first, deduplicate by URL
+      allItems.sort((a, b) => (new Date(b.published).getTime() || 0) - (new Date(a.published).getTime() || 0));
+      const seen = new Set<string>();
+      const deduped = allItems.filter(i => {
+        if (seen.has(i.link)) return false;
+        seen.add(i.link);
+        return true;
+      });
+
+      // Filter to items not yet posted for this guild, cap at 3 per run
+      const toPost: typeof deduped = [];
+      for (const item of deduped) {
+        if (toPost.length >= 3) break;
+        if (await db.isNewsPosted(guildId, item.link)) continue;
+        toPost.push(item);
+      }
+      if (!toPost.length) continue;
+
+      const ch = await getChannel(bot, cfg.channel_id);
+      if (!ch) continue;
+
+      const color = CATEGORY_COLORS[cfg.category] ?? 0x5865F2;
+      const label = CATEGORY_LABELS[cfg.category] ?? cfg.category;
+
+      for (const item of toPost.reverse()) {
+        const embed = new EmbedBuilder()
+          .setTitle(item.title.slice(0, 256))
+          .setURL(item.link)
+          .setColor(color)
+          .setAuthor({ name: `${label} • ${item.source}` })
+          .setTimestamp(item.published ? new Date(item.published) : new Date());
+        await ch.send({ embeds: [embed] }).catch(() => {});
+        await db.markNewsPosted(guildId, item.link);
+      }
+    }
   }
 }
 

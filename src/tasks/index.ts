@@ -1,4 +1,5 @@
 import type { Client } from 'discord.js';
+import { pollNews } from '../features/feeds';
 
 export type CronTask = {
   name: string;
@@ -8,12 +9,11 @@ export type CronTask = {
 
 export function initCronJobs(bot: Client) {
   const tasks: CronTask[] = [
-    // Add scheduled tasks here, e.g.:
-    // {
-    //   name: 'Daily cleanup',
-    //   frequency: '0 0 * * *',
-    //   run: async (bot) => { ... },
-    // },
+    {
+      name: 'Hourly news feed',
+      frequency: '0 * * * *',
+      run: (bot) => pollNews(bot),
+    },
   ];
 
   for (const task of tasks) {
