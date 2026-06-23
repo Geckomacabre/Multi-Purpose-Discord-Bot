@@ -53,7 +53,8 @@ const Roles: Command = {
         .addIntegerOption(o => o.setName('delay').setDescription('Seconds to wait before assigning (0 = instant)').setMinValue(0)))
       .addSubcommand(s => s.setName('remove').setDescription('Remove an autorole by ID')
         .addIntegerOption(o => o.setName('id').setDescription('Autorole ID').setRequired(true)))
-      .addSubcommand(s => s.setName('list').setDescription('List all autoroles')))
+      .addSubcommand(s => s.setName('list').setDescription('List all autoroles'))
+      .addSubcommand(s => s.setName('test').setDescription('Diagnose autorole setup — checks permissions and hierarchy')))
     // ── Voice roles ───────────────────────────────────────────────────────────
     .addSubcommandGroup(g => g.setName('voice').setDescription('Roles assigned when joining a voice channel')
       .addSubcommand(s => s.setName('add').setDescription('Add a voice role binding')
@@ -184,6 +185,35 @@ const Roles: Command = {
         const id = interaction.options.getInteger('id', true);
         const ok = await db.removeAutorole(id, guildId);
         await interaction.editReply(cv2Text(ok ? `✅ Autorole #${id} removed.` : `❌ Autorole #${id} not found.`));
+      } else if (sub === 'test') {
+        const roles = await db.getAutoroles(guildId);
+        const botMember = await guild.members.fetchMe();
+        const botHasManageRoles = botMember.permissions.has(PermissionFlagsBits.ManageRoles);
+        const botHighestPos = botMember.roles.highest.position;
+
+        const lines: string[] = [];
+        lines.push(`**Bot has Manage Roles:** ${botHasManageRoles ? '✅ Yes' : '❌ No — grant this in Server Settings → Roles'}`);
+        lines.push(`**Bot highest role position:** ${botHighestPos}`);
+        lines.push('');
+
+        if (!roles.length) {
+          lines.push('❌ No autoroles configured. Use `/roles auto add` to add one.');
+        } else {
+          lines.push(`**Configured autoroles (${roles.length}):**`);
+          for (const ar of roles) {
+            const role = guild.roles.cache.get(ar.role_id);
+            if (!role) {
+              lines.push(`• <@&${ar.role_id}> — ❌ **Role not found** (deleted from server? Remove with \`/roles auto remove ${ar.id}\`)`);
+              continue;
+            }
+            const canAssign = botHasManageRoles && botHighestPos > role.position;
+            lines.push(`• <@&${role.id}> (pos ${role.position})${ar.wait_seconds ? ` — ${ar.wait_seconds}s delay` : ''} — ${canAssign ? '✅ Bot can assign this' : `❌ Bot cannot assign — bot role (pos ${botHighestPos}) must be above this role (pos ${role.position})`}`);
+          }
+        }
+
+        const container = new ContainerBuilder().setAccentColor(botHasManageRoles ? Colors.Green : Colors.Red)
+          .addTextDisplayComponents(new TextDisplayBuilder().setContent(`**Autorole Diagnostics**\n\n${lines.join('\n')}`));
+        await interaction.editReply({ flags: IS_CV2, components: [container] });
       } else {
         const roles = await db.getAutoroles(guildId);
         if (!roles.length) { await interaction.editReply(cv2Text('No autoroles configured.')); return; }
