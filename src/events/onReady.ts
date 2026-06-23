@@ -3,6 +3,7 @@ import logger from '../utils/logger';
 import Config from '../config';
 import commands from '../handlers/commandHandler';
 import { ownerGuardScan } from './onGuildCreate';
+import { getBotConfig } from '../utils/db';
 
 export const onReady = async (Bot: Client) => {
   const rest = new REST({ version: '10' }).setToken(Config.DISCORD_TOKEN);
@@ -36,10 +37,11 @@ export const onReady = async (Bot: Client) => {
 
     await ownerGuardScan([...Bot.guilds.cache.values()]);
 
-    Bot.user?.setPresence({
-      activities: [{ name: 'Message the TMC Discord Mods', type: ActivityType.Custom }],
-      status: 'online',
-    });
+    const savedPresence = await getBotConfig('presence');
+    if (savedPresence) {
+      const { text, type } = JSON.parse(savedPresence) as { text: string; type: number };
+      Bot.user?.setPresence({ activities: [{ name: text, type }], status: 'online' });
+    }
   } catch (error) {
     console.error('Failed to register commands:', error);
   }

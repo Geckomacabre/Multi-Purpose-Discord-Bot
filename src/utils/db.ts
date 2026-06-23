@@ -887,6 +887,27 @@ export async function initDb() {
     stars               INTEGER NOT NULL DEFAULT 0,
     UNIQUE(guild_id, source_message_id)
   )`;
+
+  await db`CREATE TABLE IF NOT EXISTS bot_config (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  )`;
+}
+
+// ─── Bot config ───────────────────────────────────────────────────────────────
+
+export async function getBotConfig(key: string): Promise<string | null> {
+  const [row] = await db`SELECT value FROM bot_config WHERE key = ${key}`;
+  return row ? (row.value as string) : null;
+}
+
+export async function setBotConfig(key: string, value: string): Promise<void> {
+  await db`INSERT INTO bot_config (key, value) VALUES (${key}, ${value})
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value`;
+}
+
+export async function deleteBotConfig(key: string): Promise<void> {
+  await db`DELETE FROM bot_config WHERE key = ${key}`;
 }
 
 // ─── Guild cleanup ────────────────────────────────────────────────────────────
