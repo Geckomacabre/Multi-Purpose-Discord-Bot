@@ -19,7 +19,7 @@ const Weekly: Command = {
     const guildId = interaction.guildId!;
     const userId = interaction.user.id;
     const cfg = await getEconomyConfig(guildId);
-    const lastUsed = await getEconomyCooldown(guildId, userId, 'weekly');
+    const lastUsed = await getEconomyCooldown(userId, 'weekly');
     const elapsed = Date.now() - lastUsed;
     if (elapsed < WEEKLY_COOLDOWN_MS) {
       const remaining = WEEKLY_COOLDOWN_MS - elapsed;
@@ -30,7 +30,7 @@ const Weekly: Command = {
     }
     const amount = Math.floor(Math.random() * (cfg.weekly_max - cfg.weekly_min + 1)) + cfg.weekly_min;
     const { newBalance } = await adjustBalance(guildId, userId, amount);
-    await setEconomyCooldown(guildId, userId, 'weekly');
+    await setEconomyCooldown(userId, 'weekly');
     const container = new ContainerBuilder()
       .setAccentColor(Colors.Green)
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(

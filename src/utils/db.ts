@@ -231,7 +231,6 @@ export type IScheduledTask = {
 };
 
 export type IEconomy = {
-  guild_id: string;
   user_id: string;
   balance: number;
   total_earned: number;
@@ -653,13 +652,27 @@ export async function initDb() {
     fired      INTEGER NOT NULL DEFAULT 0
   )`;
 
-  await db`CREATE TABLE IF NOT EXISTS economy (
-    guild_id     TEXT NOT NULL,
-    user_id      TEXT NOT NULL,
-    balance      INTEGER NOT NULL DEFAULT 0,
-    total_earned INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (guild_id, user_id)
-  )`;
+  // Migrate economy + cooldowns from per-guild to global (user-only) schema
+  {
+    const economyCols = await db`PRAGMA table_info(economy)` as any[];
+    if (economyCols.length === 0) {
+      await db`CREATE TABLE economy (
+        user_id      TEXT PRIMARY KEY,
+        balance      INTEGER NOT NULL DEFAULT 0,
+        total_earned INTEGER NOT NULL DEFAULT 0
+      )`;
+    } else if (economyCols.some((c: any) => c.name === 'guild_id')) {
+      await db`CREATE TABLE economy_v2 (
+        user_id      TEXT PRIMARY KEY,
+        balance      INTEGER NOT NULL DEFAULT 0,
+        total_earned INTEGER NOT NULL DEFAULT 0
+      )`;
+      await db`INSERT OR IGNORE INTO economy_v2 (user_id, balance, total_earned)
+        SELECT user_id, MAX(balance), SUM(total_earned) FROM economy GROUP BY user_id`;
+      await db`DROP TABLE economy`;
+      await db`ALTER TABLE economy_v2 RENAME TO economy`;
+    }
+  }
 
   await db`CREATE TABLE IF NOT EXISTS economy_config (
     guild_id         TEXT PRIMARY KEY,
@@ -678,13 +691,28 @@ export async function initDb() {
     work_max         INTEGER NOT NULL DEFAULT 200
   )`;
 
-  await db`CREATE TABLE IF NOT EXISTS economy_cooldowns (
-    guild_id  TEXT NOT NULL,
-    user_id   TEXT NOT NULL,
-    type      TEXT NOT NULL,
-    last_used INTEGER NOT NULL,
-    PRIMARY KEY (guild_id, user_id, type)
-  )`;
+  {
+    const cooldownCols = await db`PRAGMA table_info(economy_cooldowns)` as any[];
+    if (cooldownCols.length === 0) {
+      await db`CREATE TABLE economy_cooldowns (
+        user_id   TEXT NOT NULL,
+        type      TEXT NOT NULL,
+        last_used INTEGER NOT NULL,
+        PRIMARY KEY (user_id, type)
+      )`;
+    } else if (cooldownCols.some((c: any) => c.name === 'guild_id')) {
+      await db`CREATE TABLE economy_cooldowns_v2 (
+        user_id   TEXT NOT NULL,
+        type      TEXT NOT NULL,
+        last_used INTEGER NOT NULL,
+        PRIMARY KEY (user_id, type)
+      )`;
+      await db`INSERT OR IGNORE INTO economy_cooldowns_v2 (user_id, type, last_used)
+        SELECT user_id, type, MAX(last_used) FROM economy_cooldowns GROUP BY user_id, type`;
+      await db`DROP TABLE economy_cooldowns`;
+      await db`ALTER TABLE economy_cooldowns_v2 RENAME TO economy_cooldowns`;
+    }
+  }
 
   await db`CREATE TABLE IF NOT EXISTS xp (
     guild_id       TEXT NOT NULL,
@@ -871,7 +899,7 @@ export async function removeGuild(guild_id: string) {
     'rep_config', 'rep_cooldowns', 'ticket_config', 'tickets', 'reminders',
     'custom_commands', 'twitch_feeds', 'youtube_feeds', 'reddit_feeds',
     'rss_feeds', 'serverstats', 'streaming_config', 'rsvp_events',
-    'economy', 'economy_config', 'economy_cooldowns', 'xp', 'xp_config', 'level_roles',
+    'economy_config', 'xp', 'xp_config', 'level_roles',
     'free_game_config', 'free_game_posted', 'birthdays', 'birthday_config',
     'timezone_user', 'timezone_message',
     'welcome_config', 'stat_channels', 'giveaways', 'reaction_roles',
@@ -1613,14 +1641,14 @@ export async function setEconomyConfig(guild_id: string, fields: Partial<Omit<IE
 }
 
 export async function getOrCreateEconomy(guild_id: string, user_id: string): Promise<IEconomy> {
-  const [existing] = await db`SELECT * FROM economy WHERE guild_id = ${guild_id} AND user_id = ${user_id}`;
+  const [existing] = await db`SELECT * FROM economy WHERE user_id = ${user_id}`;
   if (existing) return existing as IEconomy;
   await ensureConfig(guild_id);
   const cfg = await getEconomyConfig(guild_id);
   const [row] = await db`
-    INSERT INTO economy (guild_id, user_id, balance, total_earned)
-    VALUES (${guild_id}, ${user_id}, ${cfg.starting_balance}, ${cfg.starting_balance})
-    ON CONFLICT(guild_id, user_id) DO UPDATE SET guild_id = guild_id
+    INSERT INTO economy (user_id, balance, total_earned)
+    VALUES (${user_id}, ${cfg.starting_balance}, ${cfg.starting_balance})
+    ON CONFLICT(user_id) DO UPDATE SET user_id = user_id
     RETURNING *
   `;
   return row as IEconomy;
@@ -1633,24 +1661,30 @@ export async function adjustBalance(
   const newBalance = eco.balance + delta;
   if (newBalance < 0) return { success: false, newBalance: eco.balance };
   const earned = delta > 0 ? delta : 0;
-  await db`UPDATE economy SET balance = ${newBalance}, total_earned = total_earned + ${earned} WHERE guild_id = ${guild_id} AND user_id = ${user_id}`;
+  await db`UPDATE economy SET balance = ${newBalance}, total_earned = total_earned + ${earned} WHERE user_id = ${user_id}`;
   return { success: true, newBalance };
 }
 
-export async function getEconomyLeaderboard(guild_id: string, limit = 10): Promise<IEconomy[]> {
-  const rows = await db`SELECT * FROM economy WHERE guild_id = ${guild_id} ORDER BY balance DESC LIMIT ${limit}`;
+export async function getEconomyLeaderboard(userIds: string[], limit = 10): Promise<IEconomy[]> {
+  if (!userIds.length) return [];
+  const idsJson = JSON.stringify(userIds);
+  const rows = await db`
+    SELECT e.* FROM economy e
+    INNER JOIN json_each(${idsJson}) j ON e.user_id = j.value
+    ORDER BY e.balance DESC LIMIT ${limit}
+  `;
   return rows as IEconomy[];
 }
 
-export async function getEconomyCooldown(guild_id: string, user_id: string, type: string): Promise<number> {
-  const [row] = await db`SELECT last_used FROM economy_cooldowns WHERE guild_id = ${guild_id} AND user_id = ${user_id} AND type = ${type}`;
+export async function getEconomyCooldown(user_id: string, type: string): Promise<number> {
+  const [row] = await db`SELECT last_used FROM economy_cooldowns WHERE user_id = ${user_id} AND type = ${type}`;
   return row ? (row.last_used as number) : 0;
 }
 
-export async function setEconomyCooldown(guild_id: string, user_id: string, type: string) {
+export async function setEconomyCooldown(user_id: string, type: string) {
   await db`
-    INSERT INTO economy_cooldowns (guild_id, user_id, type, last_used) VALUES (${guild_id}, ${user_id}, ${type}, ${Date.now()})
-    ON CONFLICT(guild_id, user_id, type) DO UPDATE SET last_used = excluded.last_used
+    INSERT INTO economy_cooldowns (user_id, type, last_used) VALUES (${user_id}, ${type}, ${Date.now()})
+    ON CONFLICT(user_id, type) DO UPDATE SET last_used = excluded.last_used
   `;
 }
 

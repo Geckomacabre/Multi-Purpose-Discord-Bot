@@ -19,7 +19,7 @@ const Yearly: Command = {
     const guildId = interaction.guildId!;
     const userId = interaction.user.id;
     const cfg = await getEconomyConfig(guildId);
-    const lastUsed = await getEconomyCooldown(guildId, userId, 'yearly');
+    const lastUsed = await getEconomyCooldown(userId, 'yearly');
     const elapsed = Date.now() - lastUsed;
     if (elapsed < YEARLY_COOLDOWN_MS) {
       const remaining = YEARLY_COOLDOWN_MS - elapsed;
@@ -29,7 +29,7 @@ const Yearly: Command = {
     }
     const amount = Math.floor(Math.random() * (cfg.yearly_max - cfg.yearly_min + 1)) + cfg.yearly_min;
     const { newBalance } = await adjustBalance(guildId, userId, amount);
-    await setEconomyCooldown(guildId, userId, 'yearly');
+    await setEconomyCooldown(userId, 'yearly');
     const container = new ContainerBuilder()
       .setAccentColor(Colors.Gold)
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(

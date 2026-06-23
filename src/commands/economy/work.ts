@@ -32,7 +32,7 @@ const Work: Command = {
     const guildId = interaction.guildId!;
     const userId = interaction.user.id;
     const cfg = await getEconomyConfig(guildId);
-    const lastUsed = await getEconomyCooldown(guildId, userId, 'work');
+    const lastUsed = await getEconomyCooldown(userId, 'work');
     const elapsed = Date.now() - lastUsed;
     if (elapsed < WORK_COOLDOWN_MS) {
       const remaining = WORK_COOLDOWN_MS - elapsed;
@@ -44,7 +44,7 @@ const Work: Command = {
     const amount = Math.floor(Math.random() * (cfg.work_max - cfg.work_min + 1)) + cfg.work_min;
     const job = pick(WORK_JOBS);
     const { newBalance } = await adjustBalance(guildId, userId, amount);
-    await setEconomyCooldown(guildId, userId, 'work');
+    await setEconomyCooldown(userId, 'work');
     const container = new ContainerBuilder()
       .setAccentColor(Colors.Blue)
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(

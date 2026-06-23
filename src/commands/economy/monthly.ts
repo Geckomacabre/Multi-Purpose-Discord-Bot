@@ -19,7 +19,7 @@ const Monthly: Command = {
     const guildId = interaction.guildId!;
     const userId = interaction.user.id;
     const cfg = await getEconomyConfig(guildId);
-    const lastUsed = await getEconomyCooldown(guildId, userId, 'monthly');
+    const lastUsed = await getEconomyCooldown(userId, 'monthly');
     const elapsed = Date.now() - lastUsed;
     if (elapsed < MONTHLY_COOLDOWN_MS) {
       const remaining = MONTHLY_COOLDOWN_MS - elapsed;
@@ -30,7 +30,7 @@ const Monthly: Command = {
     }
     const amount = Math.floor(Math.random() * (cfg.monthly_max - cfg.monthly_min + 1)) + cfg.monthly_min;
     const { newBalance } = await adjustBalance(guildId, userId, amount);
-    await setEconomyCooldown(guildId, userId, 'monthly');
+    await setEconomyCooldown(userId, 'monthly');
     const container = new ContainerBuilder()
       .setAccentColor(Colors.Green)
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(

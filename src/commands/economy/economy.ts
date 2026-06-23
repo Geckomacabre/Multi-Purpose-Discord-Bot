@@ -102,7 +102,10 @@ const Economy: Command = {
     if (sub === 'leaderboard') {
       await interaction.deferReply();
       const limit = interaction.options.getInteger('limit') ?? 10;
-      const [rows, cfg] = await Promise.all([getEconomyLeaderboard(guildId, limit), getEconomyConfig(guildId)]);
+      let members = interaction.guild!.members.cache;
+      if (members.size <= 1) members = await interaction.guild!.members.fetch();
+      const memberIds = [...members.keys()];
+      const [rows, cfg] = await Promise.all([getEconomyLeaderboard(memberIds, limit), getEconomyConfig(guildId)]);
       if (!rows.length) { await interaction.editReply(cv2Text('No economy data yet. Start earning with `/daily` and `/work`!')); return; }
       const medals = ['🥇', '🥈', '🥉'];
       const lines = rows.map((row, i) => `${medals[i] ?? `**${i + 1}.**`} <@${row.user_id}> — ${cfg.currency_symbol} **${row.balance.toLocaleString()}**`);
