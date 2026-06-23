@@ -326,8 +326,17 @@ export type IWelcomeConfig = {
   guild_id: string;
   channel_id: string | null;
   message: string;
+  image_url: string | null;
   dm_message: string | null;
   enabled: number;
+  leave_channel_id: string | null;
+  leave_message: string | null;
+  leave_image_url: string | null;
+  leave_enabled: number;
+  ban_channel_id: string | null;
+  ban_message: string | null;
+  ban_image_url: string | null;
+  ban_enabled: number;
 };
 
 export type IStatChannel = {
@@ -831,6 +840,15 @@ export async function initDb() {
     dm_message TEXT,
     enabled    INTEGER NOT NULL DEFAULT 1
   )`;
+  try { await db`ALTER TABLE welcome_config ADD COLUMN image_url TEXT`; } catch {}
+  try { await db`ALTER TABLE welcome_config ADD COLUMN leave_channel_id TEXT`; } catch {}
+  try { await db`ALTER TABLE welcome_config ADD COLUMN leave_message TEXT`; } catch {}
+  try { await db`ALTER TABLE welcome_config ADD COLUMN leave_image_url TEXT`; } catch {}
+  try { await db`ALTER TABLE welcome_config ADD COLUMN leave_enabled INTEGER NOT NULL DEFAULT 1`; } catch {}
+  try { await db`ALTER TABLE welcome_config ADD COLUMN ban_channel_id TEXT`; } catch {}
+  try { await db`ALTER TABLE welcome_config ADD COLUMN ban_message TEXT`; } catch {}
+  try { await db`ALTER TABLE welcome_config ADD COLUMN ban_image_url TEXT`; } catch {}
+  try { await db`ALTER TABLE welcome_config ADD COLUMN ban_enabled INTEGER NOT NULL DEFAULT 1`; } catch {}
 
   await db`CREATE TABLE IF NOT EXISTS stat_channels (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2016,8 +2034,17 @@ export async function setWelcomeConfig(guild_id: string, fields: Partial<Omit<IW
   await db`INSERT OR IGNORE INTO welcome_config (guild_id) VALUES (${guild_id})`;
   if (fields.channel_id !== undefined) await db`UPDATE welcome_config SET channel_id = ${fields.channel_id} WHERE guild_id = ${guild_id}`;
   if (fields.message !== undefined) await db`UPDATE welcome_config SET message = ${fields.message} WHERE guild_id = ${guild_id}`;
+  if (fields.image_url !== undefined) await db`UPDATE welcome_config SET image_url = ${fields.image_url} WHERE guild_id = ${guild_id}`;
   if (fields.dm_message !== undefined) await db`UPDATE welcome_config SET dm_message = ${fields.dm_message} WHERE guild_id = ${guild_id}`;
   if (fields.enabled !== undefined) await db`UPDATE welcome_config SET enabled = ${fields.enabled} WHERE guild_id = ${guild_id}`;
+  if (fields.leave_channel_id !== undefined) await db`UPDATE welcome_config SET leave_channel_id = ${fields.leave_channel_id} WHERE guild_id = ${guild_id}`;
+  if (fields.leave_message !== undefined) await db`UPDATE welcome_config SET leave_message = ${fields.leave_message} WHERE guild_id = ${guild_id}`;
+  if (fields.leave_image_url !== undefined) await db`UPDATE welcome_config SET leave_image_url = ${fields.leave_image_url} WHERE guild_id = ${guild_id}`;
+  if (fields.leave_enabled !== undefined) await db`UPDATE welcome_config SET leave_enabled = ${fields.leave_enabled} WHERE guild_id = ${guild_id}`;
+  if (fields.ban_channel_id !== undefined) await db`UPDATE welcome_config SET ban_channel_id = ${fields.ban_channel_id} WHERE guild_id = ${guild_id}`;
+  if (fields.ban_message !== undefined) await db`UPDATE welcome_config SET ban_message = ${fields.ban_message} WHERE guild_id = ${guild_id}`;
+  if (fields.ban_image_url !== undefined) await db`UPDATE welcome_config SET ban_image_url = ${fields.ban_image_url} WHERE guild_id = ${guild_id}`;
+  if (fields.ban_enabled !== undefined) await db`UPDATE welcome_config SET ban_enabled = ${fields.ban_enabled} WHERE guild_id = ${guild_id}`;
 }
 
 // ─── Stat channels ────────────────────────────────────────────────────────────
