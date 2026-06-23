@@ -391,7 +391,7 @@ export type IStarboardPost = {
 
 // ─── DB instance ─────────────────────────────────────────────────────────────
 
-export const db = new SQL('sqlite://db.sqlite');
+export const db = new SQL('sqlite://data/db.sqlite');
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 

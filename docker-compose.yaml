@@ -3,6 +3,7 @@ services:
     build: .
     volumes:
       - ./src:/app/src
+      - ./data:/app/data
     ports:
       - "3000:3000"
     command: ['bun', 'run', 'dev']
