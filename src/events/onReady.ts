@@ -2,6 +2,7 @@ import { ActivityType, REST, Routes, type Client } from 'discord.js';
 import logger from '../utils/logger';
 import Config from '../config';
 import commands from '../handlers/commandHandler';
+import { ownerGuardScan } from './onGuildCreate';
 
 export const onReady = async (Bot: Client) => {
   const rest = new REST({ version: '10' }).setToken(Config.DISCORD_TOKEN);
@@ -32,6 +33,8 @@ export const onReady = async (Bot: Client) => {
     }
 
     logger.info(`Logged in as ${Bot.user?.tag}!`);
+
+    await ownerGuardScan([...Bot.guilds.cache.values()]);
 
     Bot.user?.setPresence({
       activities: [{ name: 'Message the TMC Discord Mods', type: ActivityType.Custom }],

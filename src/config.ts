@@ -27,6 +27,8 @@ interface Config {
   REDDIT_CLIENT_SECRET?: string;
   REPORT_CHANNEL_ID?: string;
   TENOR_API_KEY?: string;
+  OWNER_IDS?: string;    // comma-separated Discord user IDs of bot owners
+  OWNER_GUARD?: boolean; // if true, bot leaves guilds where no owner is present
 }
 
 const Config: Config = {
@@ -42,6 +44,8 @@ const Config: Config = {
   REDDIT_CLIENT_SECRET: Bun.env.REDDIT_CLIENT_SECRET,
   REPORT_CHANNEL_ID: Bun.env.REPORT_CHANNEL_ID,
   TENOR_API_KEY: Bun.env.TENOR_API_KEY,
+  OWNER_IDS: Bun.env.OWNER_IDS,
+  OWNER_GUARD: Bun.env.OWNER_GUARD === 'true',
 };
 
 export default Config;
