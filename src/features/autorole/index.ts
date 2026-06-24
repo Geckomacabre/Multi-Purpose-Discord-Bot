@@ -6,6 +6,7 @@ const autoroleModule: EventModule = {
   handlers: {
     guildMemberAdd: async ({ data: [member], db }) => {
       const roles = await db.getAutoroles(member.guild.id);
+      logger.debug(`[autorole] guildMemberAdd fired for ${member.user.tag} in ${member.guild.name} — ${roles.length} autorole(s) configured`);
       if (!roles.length) return;
       logger.info(`[autorole] ${roles.length} autorole(s) to apply to ${member.user.tag} in ${member.guild.name}`);
       for (const ar of roles) {

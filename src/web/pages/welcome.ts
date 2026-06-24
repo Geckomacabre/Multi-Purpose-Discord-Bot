@@ -36,7 +36,8 @@ export async function welcomePage(
         </div>
         <div class="form-group">
           <label>GIF / Image URL <span class="text-gray-500">(optional — shown as embed image)</span></label>
-          <input type="text" name="image_url" value="${escHtml(cfg?.image_url ?? '')}" placeholder="https://media.tenor.com/...gif">
+          <input type="text" name="image_url" value="${escHtml(cfg?.image_url ?? '')}" placeholder="https://tenor.com/view/... or direct .gif URL">
+          <div class="text-xs text-gray-500 mt-1">Any image or GIF URL — Tenor/Giphy share links work fine.</div>
         </div>
         <div class="form-group">
           <label>DM Message <span class="text-gray-500">(optional — sent directly to new member)</span></label>
@@ -68,7 +69,8 @@ export async function welcomePage(
         </div>
         <div class="form-group">
           <label>GIF / Image URL <span class="text-gray-500">(optional)</span></label>
-          <input type="text" name="leave_image_url" value="${escHtml(cfg?.leave_image_url ?? '')}" placeholder="https://media.tenor.com/...gif">
+          <input type="text" name="leave_image_url" value="${escHtml(cfg?.leave_image_url ?? '')}" placeholder="https://tenor.com/view/... or direct .gif URL">
+          <div class="text-xs text-gray-500 mt-1">Any image or GIF URL — Tenor/Giphy share links work fine.</div>
         </div>
       </div>
 
@@ -96,7 +98,8 @@ export async function welcomePage(
         </div>
         <div class="form-group">
           <label>GIF / Image URL <span class="text-gray-500">(optional)</span></label>
-          <input type="text" name="ban_image_url" value="${escHtml(cfg?.ban_image_url ?? '')}" placeholder="https://media.tenor.com/...gif">
+          <input type="text" name="ban_image_url" value="${escHtml(cfg?.ban_image_url ?? '')}" placeholder="https://tenor.com/view/... or direct .gif URL">
+          <div class="text-xs text-gray-500 mt-1">Any image or GIF URL — Tenor/Giphy share links work fine.</div>
         </div>
       </div>
 
@@ -109,18 +112,18 @@ export async function welcomePage(
 
 export async function handleWelcomeSave(guildId: string, body: any): Promise<void> {
   await db.setWelcomeConfig(guildId, {
-    enabled:        body.enabled === '1' ? 1 : 0,
-    channel_id:     body.channel_id || null,
-    message:        body.message?.trim() || 'Welcome {user} to **{server}**!',
-    image_url:      body.image_url?.trim() || null,
-    dm_message:     body.dm_message?.trim() || null,
-    leave_enabled:  body.leave_enabled === '1' ? 1 : 0,
+    enabled:          body.enabled === '1' ? 1 : 0,
+    channel_id:       body.channel_id || null,
+    message:          body.message?.trim() || 'Welcome {user} to **{server}**!',
+    image_url:        body.image_url?.trim() || null,
+    dm_message:       body.dm_message?.trim() || null,
+    leave_enabled:    body.leave_enabled === '1' ? 1 : 0,
     leave_channel_id: body.leave_channel_id || null,
-    leave_message:  body.leave_message?.trim() || null,
-    leave_image_url: body.leave_image_url?.trim() || null,
-    ban_enabled:    body.ban_enabled === '1' ? 1 : 0,
-    ban_channel_id: body.ban_channel_id || null,
-    ban_message:    body.ban_message?.trim() || null,
-    ban_image_url:  body.ban_image_url?.trim() || null,
+    leave_message:    body.leave_message?.trim() || null,
+    leave_image_url:  body.leave_image_url?.trim() || null,
+    ban_enabled:      body.ban_enabled === '1' ? 1 : 0,
+    ban_channel_id:   body.ban_channel_id || null,
+    ban_message:      body.ban_message?.trim() || null,
+    ban_image_url:    body.ban_image_url?.trim() || null,
   });
 }
