@@ -1,7 +1,7 @@
 import {
   ActionRowBuilder, ApplicationIntegrationType, ButtonBuilder, ButtonStyle,
   ChannelType, ContainerBuilder, ChatInputCommandInteraction, Colors,
-  InteractionContextType, MessageFlags, PermissionFlagsBits,
+  EmbedBuilder, InteractionContextType, MessageFlags, PermissionFlagsBits,
   SlashCommandBuilder, TextChannel, TextDisplayBuilder,
 } from 'discord.js';
 import * as db from '../../utils/db';
@@ -23,6 +23,10 @@ const Ticket: Command = {
       .addUserOption(o => o.setName('user').setDescription('User to add').setRequired(true)))
     .addSubcommand(sub => sub.setName('remove').setDescription('Remove a user from this ticket')
       .addUserOption(o => o.setName('user').setDescription('User to remove').setRequired(true)))
+    .addSubcommand(sub => sub.setName('panel').setDescription('Post a ticket panel with an Open Ticket button')
+      .addChannelOption(o => o.setName('channel').setDescription('Channel to post the panel in').setRequired(true))
+      .addStringOption(o => o.setName('title').setDescription('Panel title').setRequired(false))
+      .addStringOption(o => o.setName('description').setDescription('Panel description').setRequired(false)))
     .addSubcommandGroup(g => g.setName('config').setDescription('Configure the ticket system')
       .addSubcommand(sub => sub.setName('set').setDescription('Set ticket system settings')
         .addChannelOption(o => o.setName('category').setDescription('Category for ticket channels').addChannelTypes(ChannelType.GuildCategory))
@@ -55,6 +59,33 @@ const Ticket: Command = {
             `**Ticket Config**\n**Category:** ${cfg.category_id ? `<#${cfg.category_id}>` : 'Not set'}\n**Log Channel:** ${cfg.log_channel_id ? `<#${cfg.log_channel_id}>` : 'Not set'}\n**Support Role:** ${cfg.support_role_id ? `<@&${cfg.support_role_id}>` : 'Not set'}\n**Next Ticket #:** ${cfg.next_ticket_num}`
           ));
         await interaction.editReply({ flags: IS_CV2, components: [container] });
+      }
+      return;
+    }
+
+    if (sub === 'panel') {
+      if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
+        await interaction.reply({ content: '❌ You need **Manage Server** to post a ticket panel.', flags: MessageFlags.Ephemeral });
+        return;
+      }
+      const channel = interaction.options.getChannel('channel', true) as TextChannel;
+      const title = interaction.options.getString('title') ?? '🎫 Support Tickets';
+      const description = interaction.options.getString('description') ?? 'Click the button below to open a support ticket. Our team will be with you shortly.';
+      const embed = new EmbedBuilder()
+        .setTitle(title)
+        .setDescription(description)
+        .setColor(Colors.Blurple);
+      const button = new ButtonBuilder()
+        .setCustomId('ticket:open')
+        .setLabel('Open a Ticket')
+        .setStyle(ButtonStyle.Primary)
+        .setEmoji('🎫');
+      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(button);
+      try {
+        await channel.send({ embeds: [embed], components: [row] });
+        await interaction.reply({ content: `✅ Ticket panel posted in <#${channel.id}>.`, flags: MessageFlags.Ephemeral });
+      } catch {
+        await interaction.reply({ content: '❌ Could not post in that channel. Check my permissions.', flags: MessageFlags.Ephemeral });
       }
       return;
     }
