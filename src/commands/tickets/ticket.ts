@@ -29,11 +29,8 @@ const Ticket: Command = {
       .addChannelOption(o => o.setName('channel').setDescription('Channel to post the panel in').setRequired(true))
       .addStringOption(o => o.setName('title').setDescription('Panel title'))
       .addStringOption(o => o.setName('description').setDescription('Panel description')))
-    .addSubcommand(sub => sub.setName('redirect').setDescription('Post a "wrong channel" redirect panel with links to support channels')
-      .addChannelOption(o => o.setName('channel').setDescription('Channel to post this in').setRequired(true))
-      .addChannelOption(o => o.setName('link1').setDescription('First support channel').setRequired(true))
-      .addChannelOption(o => o.setName('link2').setDescription('Second support channel'))
-      .addChannelOption(o => o.setName('link3').setDescription('Third support channel')))
+    .addSubcommand(sub => sub.setName('redirect').setDescription('Post a "wrong channel" redirect panel')
+      .addChannelOption(o => o.setName('channel').setDescription('Channel to post this in').setRequired(true)))
     .addSubcommandGroup(g => g.setName('config').setDescription('Configure the ticket system')
       .addSubcommand(sub => sub.setName('set').setDescription('Set ticket system settings')
         .addChannelOption(o => o.setName('category').setDescription('Category for ticket channels').addChannelTypes(ChannelType.GuildCategory))
@@ -106,12 +103,11 @@ const Ticket: Command = {
       const postChannel = interaction.options.getChannel('channel', true) as TextChannel;
       const guildId = interaction.guildId!;
 
-      const toLabel = (name: string) =>
-        name.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-      const links = [1, 2, 3]
-        .map(i => interaction.options.getChannel(`link${i}`))
-        .filter(Boolean)
-        .map(ch => ({ ch, label: toLabel(ch!.name) }));
+      const REDIRECT_CHANNELS = [
+        { id: '1171282431018545242', label: 'Admin Support' },
+        { id: '1520475113764421804', label: 'Bug Reports' },
+        { id: '1474066766849245270', label: 'AI Support' },
+      ];
 
       const embed = new EmbedBuilder()
         .setColor(Colors.Blurple)
@@ -123,11 +119,11 @@ const Ticket: Command = {
         .setFooter({ text: `Sent by ${interaction.guild!.members.me!.displayName}`, iconURL: interaction.client.user.displayAvatarURL() });
 
       const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-        links.map(({ ch, label }) =>
+        REDIRECT_CHANNELS.map(({ id, label }) =>
           new ButtonBuilder()
             .setLabel(label)
             .setStyle(ButtonStyle.Link)
-            .setURL(`https://discord.com/channels/${guildId}/${ch.id}`)
+            .setURL(`https://discord.com/channels/${guildId}/${id}`)
         )
       );
 
