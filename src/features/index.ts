@@ -24,6 +24,7 @@ import starboardModule from './starboard';
 import guildActionsModule from './guild-actions';
 import timezoneModule from './timezone';
 import verifyModule from './verify';
+import spamDetectModule from './spamdetect';
 
 const features = [
   countingModule,
@@ -45,6 +46,7 @@ const features = [
   guildActionsModule,
   timezoneModule,
   verifyModule,
+  spamDetectModule,
 ];
 
 export function registerFeatures(bot: Client) {
