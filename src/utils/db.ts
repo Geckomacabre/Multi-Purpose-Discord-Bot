@@ -1409,10 +1409,24 @@ export async function getTicketByChannel(channel_id: string): Promise<ITicket | 
   return (row as ITicket) || null;
 }
 
+export async function getTicketByChannelAny(channel_id: string): Promise<ITicket | null> {
+  const [row] = await db`SELECT * FROM tickets WHERE channel_id = ${channel_id}`;
+  return (row as ITicket) || null;
+}
+
 export async function closeTicket(channel_id: string): Promise<ITicket | null> {
   const [row] = await db`
     UPDATE tickets SET status = 'closed', closed_at = ${Date.now()}
     WHERE channel_id = ${channel_id} AND status = 'open'
+    RETURNING *
+  `;
+  return (row as ITicket) || null;
+}
+
+export async function reopenTicket(channel_id: string): Promise<ITicket | null> {
+  const [row] = await db`
+    UPDATE tickets SET status = 'open', closed_at = NULL
+    WHERE channel_id = ${channel_id} AND status = 'closed'
     RETURNING *
   `;
   return (row as ITicket) || null;

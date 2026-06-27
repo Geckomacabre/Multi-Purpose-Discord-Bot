@@ -7,6 +7,7 @@ import {
 import * as db from '../../utils/db';
 import { Command } from '../../interfaces/command';
 import { cv2Text } from '../../utils/components.js';
+import { archiveTicket } from '../../utils/tickets.js';
 
 const IS_CV2 = MessageFlags.IsComponentsV2;
 
@@ -19,6 +20,8 @@ const Ticket: Command = {
     .addSubcommand(sub => sub.setName('create').setDescription('Open a new support ticket')
       .addStringOption(o => o.setName('topic').setDescription('Brief description of your issue')))
     .addSubcommand(sub => sub.setName('close').setDescription('Close this ticket'))
+    .addSubcommand(sub => sub.setName('reopen').setDescription('Reopen a closed ticket'))
+    .addSubcommand(sub => sub.setName('delete').setDescription('Permanently delete this ticket channel'))
     .addSubcommand(sub => sub.setName('add').setDescription('Add a user to this ticket')
       .addUserOption(o => o.setName('user').setDescription('User to add').setRequired(true)))
     .addSubcommand(sub => sub.setName('remove').setDescription('Remove a user from this ticket')
@@ -124,8 +127,27 @@ const Ticket: Command = {
       const ticket = await db.getTicketByChannel(interaction.channelId);
       if (!ticket) { await interaction.editReply(cv2Text('This channel is not an open ticket.')); return; }
       await db.closeTicket(interaction.channelId);
-      await interaction.editReply(cv2Text('Ticket closed. This channel will be deleted in 5 seconds.'));
-      setTimeout(() => interaction.channel?.delete().catch(() => {}), 5000);
+      await interaction.editReply(cv2Text('✅ Ticket closed. Generating transcript...'));
+      const cfg = await db.getTicketConfig(ticket.guild_id);
+      await archiveTicket(interaction.channel as TextChannel, ticket, cfg, interaction.client);
+
+    } else if (sub === 'reopen') {
+      const ticket = await db.getTicketByChannelAny(interaction.channelId);
+      if (!ticket || ticket.status !== 'closed') { await interaction.editReply(cv2Text('This channel is not a closed ticket.')); return; }
+      await db.reopenTicket(interaction.channelId);
+      await (interaction.channel as TextChannel).permissionOverwrites.create(ticket.user_id, { ViewChannel: true, SendMessages: true }).catch(() => {});
+      await (interaction.channel as TextChannel).setName(`ticket-${ticket.ticket_num}`).catch(() => {});
+      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId(`ticket:close:${interaction.channelId}`).setLabel('Close Ticket').setStyle(ButtonStyle.Danger)
+      );
+      await interaction.channel?.send({ content: `🔓 Ticket reopened by <@${interaction.user.id}>. <@${ticket.user_id}>`, components: [row] }).catch(() => {});
+      await interaction.editReply(cv2Text('✅ Ticket reopened.'));
+
+    } else if (sub === 'delete') {
+      const ticket = await db.getTicketByChannelAny(interaction.channelId);
+      if (!ticket) { await interaction.editReply(cv2Text('No ticket record found for this channel.')); return; }
+      await interaction.editReply(cv2Text('🗑️ Deleting channel in 3 seconds...'));
+      setTimeout(() => interaction.channel?.delete().catch(() => {}), 3000);
 
     } else if (sub === 'add') {
       const user = interaction.options.getUser('user', true);

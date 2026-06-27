@@ -1,10 +1,12 @@
 import {
   ActionRowBuilder, ButtonBuilder, ButtonInteraction, ButtonStyle,
   ContainerBuilder, MessageFlags, ModalBuilder, ModalSubmitInteraction,
-  PermissionFlagsBits, TextChannel, TextDisplayBuilder, TextInputBuilder, TextInputStyle,
+  PermissionFlagsBits, TextChannel, TextDisplayBuilder,
+  TextInputBuilder, TextInputStyle,
 } from 'discord.js';
 import { EventModule } from '../feature';
 import { cv2Text } from '../../utils/components.js';
+import { archiveTicket } from '../../utils/tickets.js';
 
 const IS_CV2 = MessageFlags.IsComponentsV2;
 
@@ -12,7 +14,7 @@ async function createTicketChannel(
   interaction: ButtonInteraction | ModalSubmitInteraction,
   topic: string,
   db: any,
-) {
+): Promise<TextChannel> {
   const guildId = interaction.guildId!;
   const cfg = await db.getTicketConfig(guildId);
 
@@ -28,14 +30,10 @@ async function createTicketChannel(
   const cfgNow = await db.getTicketConfig(guildId);
   const ticketNum = cfgNow?.next_ticket_num ?? 1;
 
-  const channelOptions: any = {
-    name: `ticket-${ticketNum}`,
-    permissionOverwrites: permOverwrites,
-    topic: `Ticket by ${interaction.user.tag} — ${topic}`,
-  };
-  if (cfg?.category_id) channelOptions.parent = cfg.category_id;
+  const opts: any = { name: `ticket-${ticketNum}`, permissionOverwrites: permOverwrites, topic: `Ticket by ${interaction.user.tag} — ${topic}` };
+  if (cfg?.category_id) opts.parent = cfg.category_id;
 
-  const channel = await interaction.guild!.channels.create(channelOptions) as TextChannel;
+  const channel = await interaction.guild!.channels.create(opts) as TextChannel;
   const ticket = await db.createTicket(guildId, channel.id, interaction.user.id, topic);
 
   const container = new ContainerBuilder()
@@ -51,18 +49,19 @@ async function createTicketChannel(
     flags: IS_CV2,
     components: [container, row],
   });
-
   return channel;
 }
 
 const ticketsModule: EventModule = {
   name: 'tickets',
   handlers: {
-    interactionCreate: async ({ data: [interaction], db }) => {
-      // ── Button: open ticket panel ────────────────────────────────────────
+    interactionCreate: async ({ data: [interaction], db, bot }) => {
+
+      // ── Button interactions ──────────────────────────────────────────────
       if ((interaction as any).isButton()) {
         const btn = interaction as ButtonInteraction;
 
+        // Panel button → show modal
         if (btn.customId === 'ticket:open') {
           const modal = new ModalBuilder()
             .setCustomId('ticket:modal')
@@ -82,19 +81,47 @@ const ticketsModule: EventModule = {
           return;
         }
 
-        // ── Button: close ticket ───────────────────────────────────────────
+        // Close button
         if (btn.customId.startsWith('ticket:close:')) {
           const channelId = btn.customId.split(':')[2];
           if (btn.channelId !== channelId) return;
           await btn.deferReply({ flags: MessageFlags.Ephemeral });
           const ticket = await db.getTicketByChannel(channelId);
-          if (!ticket) {
-            await btn.editReply('This channel is not an open ticket.');
-            return;
-          }
+          if (!ticket) { await btn.editReply('This channel is not an open ticket.'); return; }
           await db.closeTicket(channelId);
-          await btn.editReply('Ticket closed. This channel will be deleted in 5 seconds.');
-          setTimeout(() => btn.channel?.delete().catch(() => {}), 5000);
+          await btn.editReply('✅ Ticket closed. Generating transcript...');
+          const cfg = await db.getTicketConfig(ticket.guild_id);
+          await archiveTicket(btn.channel as TextChannel, ticket, cfg, bot);
+          return;
+        }
+
+        // Reopen button
+        if (btn.customId.startsWith('ticket:reopen:')) {
+          const channelId = btn.customId.split(':')[2];
+          if (btn.channelId !== channelId) return;
+          await btn.deferReply({ flags: MessageFlags.Ephemeral });
+          const ticket = await db.getTicketByChannelAny(channelId);
+          if (!ticket || ticket.status !== 'closed') { await btn.editReply('This ticket is not closed.'); return; }
+          await db.reopenTicket(channelId);
+          await (btn.channel as TextChannel).permissionOverwrites.create(ticket.user_id, { ViewChannel: true, SendMessages: true }).catch(() => {});
+          await (btn.channel as TextChannel).setName(`ticket-${ticket.ticket_num}`).catch(() => {});
+          const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setCustomId(`ticket:close:${channelId}`).setLabel('Close Ticket').setStyle(ButtonStyle.Danger)
+          );
+          await btn.channel?.send({ content: `🔓 Ticket reopened by <@${btn.user.id}>. <@${ticket.user_id}>`, components: [row] }).catch(() => {});
+          await btn.editReply('✅ Ticket reopened.');
+          return;
+        }
+
+        // Delete button
+        if (btn.customId.startsWith('ticket:delete:')) {
+          const channelId = btn.customId.split(':')[2];
+          if (btn.channelId !== channelId) return;
+          await btn.deferReply({ flags: MessageFlags.Ephemeral });
+          const ticket = await db.getTicketByChannelAny(channelId);
+          if (!ticket) { await btn.editReply('No ticket record found for this channel.'); return; }
+          await btn.editReply('🗑️ Deleting channel in 3 seconds...');
+          setTimeout(() => btn.channel?.delete().catch(() => {}), 3000);
           return;
         }
       }
@@ -103,14 +130,12 @@ const ticketsModule: EventModule = {
       if ((interaction as any).isModalSubmit()) {
         const modal = interaction as ModalSubmitInteraction;
         if (modal.customId !== 'ticket:modal') return;
-
         await modal.deferReply({ flags: MessageFlags.Ephemeral });
         const topic = modal.fields.getTextInputValue('topic') || 'No topic specified';
-
         try {
           const channel = await createTicketChannel(modal as any, topic, db);
           await modal.editReply(cv2Text(`✅ Your ticket has been created: <#${channel.id}>`));
-        } catch (err) {
+        } catch {
           await modal.editReply(cv2Text('❌ Could not create ticket. Make sure the bot has permission to create channels.'));
         }
       }
