@@ -146,7 +146,9 @@ async function updateExistingTimezoneMessage(bot: Client, db: typeof import('../
       const channel = await bot.channels.fetch(guild.channel_id);
       if (!channel || !channel.isTextBased()) continue;
 
-      const message = await (channel as any).messages.fetch(guild.message_id);
+      if (!guild.message_id || guild.message_id === '0') continue;
+      const message = await (channel as any).messages.fetch(guild.message_id).catch(() => null);
+      if (!message) continue;
 
       await message.edit({
         ...newContent,
