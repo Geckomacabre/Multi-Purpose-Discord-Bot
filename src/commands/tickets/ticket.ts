@@ -33,7 +33,6 @@ const Ticket: Command = {
       .addUserOption(o => o.setName('user').setDescription('Staff member to check (defaults to yourself)')))
     .addSubcommand(sub => sub.setName('redirect').setDescription('Post a "wrong channel" redirect panel')
       .addChannelOption(o => o.setName('channel').setDescription('Channel to post this in').setRequired(true)))
-      .addChannelOption(o => o.setName('channel').setDescription('Channel to post this in').setRequired(true)))
     .addSubcommandGroup(g => g.setName('config').setDescription('Configure the ticket system')
       .addSubcommand(sub => sub.setName('set').setDescription('Set ticket system settings')
         .addChannelOption(o => o.setName('category').setDescription('Category for ticket channels').addChannelTypes(ChannelType.GuildCategory))
