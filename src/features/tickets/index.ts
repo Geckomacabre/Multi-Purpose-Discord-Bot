@@ -42,13 +42,15 @@ async function createTicketChannel(
       `**Ticket #${ticket.ticket_num}**\nWelcome <@${interaction.user.id}>! Support will be with you shortly.\n**Topic:** ${topic}`
     ));
 
-  const modRows = buildModPanel(channel.id);
-
   await channel.send({
     content: `<@${interaction.user.id}>${cfg?.support_role_id ? ` <@&${cfg.support_role_id}>` : ''}`,
     flags: IS_CV2,
-    components: [container, ...modRows],
+    components: [container],
   });
+
+  const modRows = buildModPanel(channel.id);
+  await channel.send({ content: '**Staff Controls**', components: modRows });
+
   return channel;
 }
 
