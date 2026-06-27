@@ -86,9 +86,8 @@ export async function archiveTicket(
     } catch {}
   }
 
-  // DM user with rating panel before deleting channel
+  // Post rating panel in the ticket channel before it gets deleted
   try {
-    const user = await bot.users.fetch(ticket.user_id);
     const helperText = claimerName
       ? `How was your experience with **${claimerName}**?`
       : 'How was your support experience?';
@@ -102,13 +101,13 @@ export async function archiveTicket(
     );
     const embed = new EmbedBuilder()
       .setColor(0x5865F2)
-      .setTitle(`🎫 Ticket #${ticket.ticket_num} Closed`)
-      .setDescription(`${helperText}\n*Your feedback helps us improve!*`);
-    await user.send({ embeds: [embed], components: [ratingRow] });
+      .setTitle('🔒 Ticket Closed')
+      .setDescription(`${helperText}\n\n*This channel will be deleted in 2 minutes.*`);
+    await channel.send({ content: `<@${ticket.user_id}>`, embeds: [embed], components: [ratingRow] });
   } catch {}
 
-  // Delete channel after short delay
-  setTimeout(() => channel.delete().catch(() => {}), 5000);
+  // Delete channel after 2 minutes
+  setTimeout(() => channel.delete().catch(() => {}), 2 * 60 * 1000);
 }
 
 export function buildModPanel(channelId: string): ActionRowBuilder<ButtonBuilder>[] {

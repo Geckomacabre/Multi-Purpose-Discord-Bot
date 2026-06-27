@@ -146,15 +146,16 @@ const ticketsModule: EventModule = {
           return;
         }
 
-        // Rating buttons — come from DMs, no channel check
+        // Rating buttons
         if (btn.customId.startsWith('ticket:rate:')) {
           const parts = btn.customId.split(':');
           const rating = parseInt(parts[2]);
           const channelId = parts[3];
           if (isNaN(rating) || rating < 1 || rating > 5) return;
+          if (btn.channelId !== channelId) return;
           await btn.deferUpdate();
           await db.rateTicket(channelId, rating);
-          await btn.editReply({ content: `${'⭐'.repeat(rating)} Thanks for your feedback! Your rating of **${rating}/5** has been recorded.`, components: [] });
+          await btn.editReply({ content: `${'⭐'.repeat(rating)} Thanks for your feedback!`, components: [] });
           return;
         }
       }
