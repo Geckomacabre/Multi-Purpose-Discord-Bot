@@ -4,7 +4,7 @@ import {
   SlashCommandBuilder, TextDisplayBuilder,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
-import { getXp, calcLevelFromXp, getXpLeaderboard, getLevelRoles, addLevelRole, removeLevelRole, getXpConfig, setXpConfig } from '../../utils/db';
+import { getXp, calcLevelFromXp, getXpLeaderboard, getLevelRoles, addLevelRole, removeLevelRole, getXpConfig, setXpConfig, getXpRank } from '../../utils/db';
 import { cv2Text } from '../../utils/components.js';
 
 const IS_CV2 = MessageFlags.IsComponentsV2;
@@ -39,6 +39,8 @@ const Level: Command = {
         .addStringOption(o => o.setName('text').setDescription('Message text. Use {user}, {username}, {level}').setRequired(true)))
       .addSubcommand(s => s.setName('announce').setDescription('Enable or disable level-up announcement messages')
         .addBooleanOption(o => o.setName('enabled').setDescription('Send a message when users level up?').setRequired(true)))
+      .addSubcommand(s => s.setName('background').setDescription('Set the rank card background image URL')
+        .addStringOption(o => o.setName('url').setDescription('Image URL to use (leave blank to reset to default)')))
       .addSubcommand(s => s.setName('view').setDescription('View current leveling settings'))) as any,
 
   async run(interaction: ChatInputCommandInteraction) {
@@ -105,6 +107,10 @@ const Level: Command = {
         const enabled = interaction.options.getBoolean('enabled', true);
         await setXpConfig(guildId, { level_up_announce: enabled ? 1 : 0 });
         await interaction.reply({ ...cv2Text(`Level-up announcements **${enabled ? 'enabled' : 'disabled'}**.`), flags: IS_CV2 | MessageFlags.Ephemeral });
+      } else if (sub === 'background') {
+        const url = interaction.options.getString('url') ?? null;
+        await setXpConfig(guildId, { background_url: url });
+        await interaction.reply({ ...cv2Text(url ? '✅ Rank card background updated.' : '✅ Rank card background reset to default.'), flags: IS_CV2 | MessageFlags.Ephemeral });
       } else {
         const cfg = await getXpConfig(guildId);
         const container = new ContainerBuilder()

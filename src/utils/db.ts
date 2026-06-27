@@ -285,6 +285,7 @@ export type IXpConfig = {
   level_up_channel_id: string | null;
   level_up_message: string;
   level_up_announce: number;
+  background_url: string | null;
 };
 
 export type ILevelRole = {
@@ -773,6 +774,7 @@ export async function initDb() {
   try { await db`ALTER TABLE economy_config ADD COLUMN yearly_min INTEGER NOT NULL DEFAULT 25000`; } catch {}
   try { await db`ALTER TABLE economy_config ADD COLUMN yearly_max INTEGER NOT NULL DEFAULT 100000`; } catch {}
   try { await db`ALTER TABLE xp_config ADD COLUMN level_up_announce INTEGER NOT NULL DEFAULT 1`; } catch {}
+  try { await db`ALTER TABLE xp_config ADD COLUMN background_url TEXT`; } catch {}
 
   await db`CREATE TABLE IF NOT EXISTS level_roles (
     id       INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1889,6 +1891,7 @@ export async function getXpConfig(guild_id: string): Promise<IXpConfig> {
     level_up_channel_id: null,
     level_up_message: 'GG {user}, you just advanced to **level {level}**! 🎉',
     level_up_announce: 1,
+    background_url: null,
   };
 }
 
@@ -1902,6 +1905,16 @@ export async function setXpConfig(guild_id: string, fields: Partial<Omit<IXpConf
   if (fields.level_up_channel_id !== undefined) await db`UPDATE xp_config SET level_up_channel_id = ${fields.level_up_channel_id} WHERE guild_id = ${guild_id}`;
   if (fields.level_up_message !== undefined) await db`UPDATE xp_config SET level_up_message = ${fields.level_up_message} WHERE guild_id = ${guild_id}`;
   if (fields.level_up_announce !== undefined) await db`UPDATE xp_config SET level_up_announce = ${fields.level_up_announce} WHERE guild_id = ${guild_id}`;
+  if (fields.background_url !== undefined) await db`UPDATE xp_config SET background_url = ${fields.background_url} WHERE guild_id = ${guild_id}`;
+}
+
+export async function getXpRank(guild_id: string, user_id: string): Promise<number> {
+  const [row] = await db`
+    SELECT COUNT(*) + 1 AS rank FROM xp
+    WHERE guild_id = ${guild_id}
+    AND xp > (SELECT COALESCE(xp, 0) FROM xp WHERE guild_id = ${guild_id} AND user_id = ${user_id})
+  `;
+  return (row as any)?.rank ?? 1;
 }
 
 export async function getXpLeaderboard(guild_id: string, limit = 10): Promise<IXp[]> {
