@@ -31,12 +31,9 @@ const Ticket: Command = {
       .addStringOption(o => o.setName('description').setDescription('Panel description')))
     .addSubcommand(sub => sub.setName('redirect').setDescription('Post a "wrong channel" redirect panel with links to support channels')
       .addChannelOption(o => o.setName('channel').setDescription('Channel to post this in').setRequired(true))
-      .addChannelOption(o => o.setName('link1').setDescription('First support channel to link to').setRequired(true))
-      .addStringOption(o => o.setName('label1').setDescription('Label for first button').setRequired(true))
-      .addChannelOption(o => o.setName('link2').setDescription('Second support channel to link to'))
-      .addStringOption(o => o.setName('label2').setDescription('Label for second button'))
-      .addChannelOption(o => o.setName('link3').setDescription('Third support channel to link to'))
-      .addStringOption(o => o.setName('label3').setDescription('Label for third button')))
+      .addChannelOption(o => o.setName('link1').setDescription('First support channel').setRequired(true))
+      .addChannelOption(o => o.setName('link2').setDescription('Second support channel'))
+      .addChannelOption(o => o.setName('link3').setDescription('Third support channel')))
     .addSubcommandGroup(g => g.setName('config').setDescription('Configure the ticket system')
       .addSubcommand(sub => sub.setName('set').setDescription('Set ticket system settings')
         .addChannelOption(o => o.setName('category').setDescription('Category for ticket channels').addChannelTypes(ChannelType.GuildCategory))
@@ -109,12 +106,12 @@ const Ticket: Command = {
       const postChannel = interaction.options.getChannel('channel', true) as TextChannel;
       const guildId = interaction.guildId!;
 
-      const links: { ch: any; label: string }[] = [];
-      for (let i = 1; i <= 3; i++) {
-        const ch = interaction.options.getChannel(`link${i}`);
-        const label = interaction.options.getString(`label${i}`);
-        if (ch && label) links.push({ ch, label });
-      }
+      const toLabel = (name: string) =>
+        name.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      const links = [1, 2, 3]
+        .map(i => interaction.options.getChannel(`link${i}`))
+        .filter(Boolean)
+        .map(ch => ({ ch, label: toLabel(ch!.name) }));
 
       const embed = new EmbedBuilder()
         .setColor(Colors.Blurple)
