@@ -146,7 +146,7 @@ const ticketsModule: EventModule = {
           return;
         }
 
-        // Rating buttons
+        // Rating buttons — delete channel immediately after rating
         if (btn.customId.startsWith('ticket:rate:')) {
           const parts = btn.customId.split(':');
           const rating = parseInt(parts[2]);
@@ -155,7 +155,8 @@ const ticketsModule: EventModule = {
           if (btn.channelId !== channelId) return;
           await btn.deferUpdate();
           await db.rateTicket(channelId, rating);
-          await btn.editReply({ content: `${'⭐'.repeat(rating)} Thanks for your feedback!`, components: [] });
+          await btn.editReply({ content: `${'⭐'.repeat(rating)} Thanks for your feedback! This channel will be deleted in 5 seconds.`, components: [] });
+          setTimeout(() => (btn.channel as TextChannel)?.delete().catch(() => {}), 5000);
           return;
         }
       }
