@@ -1,12 +1,12 @@
 import {
-  ActionRowBuilder, ButtonBuilder, ButtonInteraction, ButtonStyle,
-  ContainerBuilder, MessageFlags, ModalBuilder, ModalSubmitInteraction,
-  PermissionFlagsBits, TextChannel, TextDisplayBuilder,
-  TextInputBuilder, TextInputStyle,
+  ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonInteraction,
+  ButtonStyle, ContainerBuilder, MessageFlags, ModalBuilder,
+  ModalSubmitInteraction, PermissionFlagsBits, TextChannel,
+  TextDisplayBuilder, TextInputBuilder, TextInputStyle,
 } from 'discord.js';
 import { EventModule } from '../feature';
 import { cv2Text } from '../../utils/components.js';
-import { archiveTicket } from '../../utils/tickets.js';
+import { archiveTicket, buildModPanel, fetchAllMessages } from '../../utils/tickets.js';
 
 const IS_CV2 = MessageFlags.IsComponentsV2;
 
@@ -41,13 +41,13 @@ async function createTicketChannel(
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
       `**Ticket #${ticket.ticket_num}**\nWelcome <@${interaction.user.id}>! Support will be with you shortly.\n**Topic:** ${topic}`
     ));
-  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`ticket:close:${channel.id}`).setLabel('Close Ticket').setStyle(ButtonStyle.Danger)
-  );
+
+  const modRows = buildModPanel(channel.id);
+
   await channel.send({
     content: `<@${interaction.user.id}>${cfg?.support_role_id ? ` <@&${cfg.support_role_id}>` : ''}`,
     flags: IS_CV2,
-    components: [container, row],
+    components: [container, ...modRows],
   });
   return channel;
 }
@@ -81,7 +81,74 @@ const ticketsModule: EventModule = {
           return;
         }
 
-        // Close button
+        // Claim ticket
+        if (btn.customId.startsWith('ticket:claim:')) {
+          const channelId = btn.customId.split(':')[2];
+          if (btn.channelId !== channelId) return;
+          await btn.deferReply({ flags: MessageFlags.Ephemeral });
+          const ticket = await db.getTicketByChannel(channelId);
+          if (!ticket) { await btn.editReply('This is not an open ticket.'); return; }
+          if (ticket.claimed_by) { await btn.editReply(`This ticket is already claimed by <@${ticket.claimed_by}>.`); return; }
+          await db.claimTicket(channelId, btn.user.id);
+          // Remove support role access, add only this mod
+          if (ticket.guild_id) {
+            const cfg = await db.getTicketConfig(ticket.guild_id);
+            if (cfg?.support_role_id) {
+              await (btn.channel as TextChannel).permissionOverwrites.delete(cfg.support_role_id).catch(() => {});
+            }
+          }
+          await (btn.channel as TextChannel).permissionOverwrites.create(btn.user.id, { ViewChannel: true, SendMessages: true }).catch(() => {});
+          await (btn.channel as TextChannel).setTopic(`Ticket by <@${ticket.user_id}> — Claimed by ${btn.user.username}`).catch(() => {});
+          await btn.channel?.send(`🙋 Ticket claimed by <@${btn.user.id}>.`).catch(() => {});
+          await btn.editReply('✅ You have claimed this ticket.');
+          return;
+        }
+
+        // Unclaim ticket
+        if (btn.customId.startsWith('ticket:unclaim:')) {
+          const channelId = btn.customId.split(':')[2];
+          if (btn.channelId !== channelId) return;
+          await btn.deferReply({ flags: MessageFlags.Ephemeral });
+          const ticket = await db.getTicketByChannelAny(channelId);
+          if (!ticket) { await btn.editReply('No ticket found.'); return; }
+          await db.unclaimTicket(channelId);
+          const cfg = await db.getTicketConfig(ticket.guild_id);
+          if (cfg?.support_role_id) {
+            await (btn.channel as TextChannel).permissionOverwrites.create(cfg.support_role_id, { ViewChannel: true, SendMessages: true }).catch(() => {});
+          }
+          await (btn.channel as TextChannel).setTopic(`Ticket by <@${ticket.user_id}> — ${ticket.topic ?? ''}`).catch(() => {});
+          await btn.channel?.send(`🔓 Ticket unclaimed by <@${btn.user.id}>.`).catch(() => {});
+          await btn.editReply('✅ Ticket unclaimed.');
+          return;
+        }
+
+        // Save transcript (without closing)
+        if (btn.customId.startsWith('ticket:save:')) {
+          const channelId = btn.customId.split(':')[2];
+          if (btn.channelId !== channelId) return;
+          await btn.deferReply({ flags: MessageFlags.Ephemeral });
+          const ticket = await db.getTicketByChannelAny(channelId);
+          if (!ticket) { await btn.editReply('No ticket record found.'); return; }
+          const cfg = await db.getTicketConfig(ticket.guild_id);
+          if (!cfg?.log_channel_id) { await btn.editReply('No log channel configured. Use `/ticket config set log:#channel` first.'); return; }
+
+          const { buildTranscriptFile } = await import('../../utils/tickets.js');
+          const messages = await fetchAllMessages(btn.channel as TextChannel);
+          const file = await buildTranscriptFile(ticket, messages);
+          try {
+            const logCh = await bot.channels.fetch(cfg.log_channel_id) as TextChannel;
+            await logCh.send({
+              content: `💾 **Ticket #${ticket.ticket_num}** transcript saved by <@${btn.user.id}>`,
+              files: [file],
+            });
+            await btn.editReply('✅ Transcript saved to the log channel.');
+          } catch {
+            await btn.editReply('❌ Could not post to log channel.');
+          }
+          return;
+        }
+
+        // Close ticket
         if (btn.customId.startsWith('ticket:close:')) {
           const channelId = btn.customId.split(':')[2];
           if (btn.channelId !== channelId) return;
@@ -95,7 +162,7 @@ const ticketsModule: EventModule = {
           return;
         }
 
-        // Reopen button
+        // Reopen ticket
         if (btn.customId.startsWith('ticket:reopen:')) {
           const channelId = btn.customId.split(':')[2];
           if (btn.channelId !== channelId) return;
@@ -105,23 +172,34 @@ const ticketsModule: EventModule = {
           await db.reopenTicket(channelId);
           await (btn.channel as TextChannel).permissionOverwrites.create(ticket.user_id, { ViewChannel: true, SendMessages: true }).catch(() => {});
           await (btn.channel as TextChannel).setName(`ticket-${ticket.ticket_num}`).catch(() => {});
-          const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-            new ButtonBuilder().setCustomId(`ticket:close:${channelId}`).setLabel('Close Ticket').setStyle(ButtonStyle.Danger)
-          );
-          await btn.channel?.send({ content: `🔓 Ticket reopened by <@${btn.user.id}>. <@${ticket.user_id}>`, components: [row] }).catch(() => {});
+          const modRows = buildModPanel(channelId);
+          await btn.channel?.send({ content: `🔓 Ticket reopened by <@${btn.user.id}>. <@${ticket.user_id}>`, components: modRows }).catch(() => {});
           await btn.editReply('✅ Ticket reopened.');
           return;
         }
 
-        // Delete button
+        // Delete ticket
         if (btn.customId.startsWith('ticket:delete:')) {
           const channelId = btn.customId.split(':')[2];
           if (btn.channelId !== channelId) return;
           await btn.deferReply({ flags: MessageFlags.Ephemeral });
           const ticket = await db.getTicketByChannelAny(channelId);
-          if (!ticket) { await btn.editReply('No ticket record found for this channel.'); return; }
+          if (!ticket) { await btn.editReply('No ticket record found.'); return; }
           await btn.editReply('🗑️ Deleting channel in 3 seconds...');
           setTimeout(() => btn.channel?.delete().catch(() => {}), 3000);
+          return;
+        }
+
+        // Rating buttons (come from DMs — no channelId check)
+        if (btn.customId.startsWith('ticket:rate:')) {
+          const parts = btn.customId.split(':');
+          const rating = parseInt(parts[2]);
+          const channelId = parts[3];
+          if (isNaN(rating) || rating < 1 || rating > 5) return;
+          await btn.deferUpdate();
+          await db.rateTicket(channelId, rating);
+          const stars = '⭐'.repeat(rating);
+          await btn.editReply({ content: `${stars} Thanks for your feedback! Your rating of **${rating}/5** has been recorded.`, components: [] });
           return;
         }
       }

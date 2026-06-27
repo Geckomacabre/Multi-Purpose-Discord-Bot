@@ -139,6 +139,8 @@ export type ITicket = {
   topic: string | null;
   created_at: number;
   closed_at: number | null;
+  claimed_by: string | null;
+  rating: number | null;
 };
 
 export type IReminder = {
@@ -574,6 +576,8 @@ export async function initDb() {
     created_at INTEGER NOT NULL,
     closed_at  INTEGER
   )`;
+  try { await db`ALTER TABLE tickets ADD COLUMN claimed_by TEXT`; } catch {}
+  try { await db`ALTER TABLE tickets ADD COLUMN rating INTEGER`; } catch {}
 
   await db`CREATE TABLE IF NOT EXISTS reminders (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1430,6 +1434,24 @@ export async function reopenTicket(channel_id: string): Promise<ITicket | null> 
     RETURNING *
   `;
   return (row as ITicket) || null;
+}
+
+export async function claimTicket(channel_id: string, user_id: string): Promise<ITicket | null> {
+  const [row] = await db`
+    UPDATE tickets SET claimed_by = ${user_id} WHERE channel_id = ${channel_id} RETURNING *
+  `;
+  return (row as ITicket) || null;
+}
+
+export async function unclaimTicket(channel_id: string): Promise<ITicket | null> {
+  const [row] = await db`
+    UPDATE tickets SET claimed_by = NULL WHERE channel_id = ${channel_id} RETURNING *
+  `;
+  return (row as ITicket) || null;
+}
+
+export async function rateTicket(channel_id: string, rating: number): Promise<void> {
+  await db`UPDATE tickets SET rating = ${rating} WHERE channel_id = ${channel_id}`;
 }
 
 // ─── Reminders ────────────────────────────────────────────────────────────────

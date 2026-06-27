@@ -7,7 +7,7 @@ import {
 import * as db from '../../utils/db';
 import { Command } from '../../interfaces/command';
 import { cv2Text } from '../../utils/components.js';
-import { archiveTicket } from '../../utils/tickets.js';
+import { archiveTicket, buildModPanel } from '../../utils/tickets.js';
 
 const IS_CV2 = MessageFlags.IsComponentsV2;
 
@@ -137,10 +137,8 @@ const Ticket: Command = {
       await db.reopenTicket(interaction.channelId);
       await (interaction.channel as TextChannel).permissionOverwrites.create(ticket.user_id, { ViewChannel: true, SendMessages: true }).catch(() => {});
       await (interaction.channel as TextChannel).setName(`ticket-${ticket.ticket_num}`).catch(() => {});
-      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(`ticket:close:${interaction.channelId}`).setLabel('Close Ticket').setStyle(ButtonStyle.Danger)
-      );
-      await interaction.channel?.send({ content: `🔓 Ticket reopened by <@${interaction.user.id}>. <@${ticket.user_id}>`, components: [row] }).catch(() => {});
+      const modRows = buildModPanel(interaction.channelId);
+      await interaction.channel?.send({ content: `🔓 Ticket reopened by <@${interaction.user.id}>. <@${ticket.user_id}>`, components: modRows }).catch(() => {});
       await interaction.editReply(cv2Text('✅ Ticket reopened.'));
 
     } else if (sub === 'delete') {
