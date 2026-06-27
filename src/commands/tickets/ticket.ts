@@ -29,7 +29,10 @@ const Ticket: Command = {
       .addChannelOption(o => o.setName('channel').setDescription('Channel to post the panel in').setRequired(true))
       .addStringOption(o => o.setName('title').setDescription('Panel title'))
       .addStringOption(o => o.setName('description').setDescription('Panel description')))
+    .addSubcommand(sub => sub.setName('ratings').setDescription('View support ratings for a staff member')
+      .addUserOption(o => o.setName('user').setDescription('Staff member to check (defaults to yourself)')))
     .addSubcommand(sub => sub.setName('redirect').setDescription('Post a "wrong channel" redirect panel')
+      .addChannelOption(o => o.setName('channel').setDescription('Channel to post this in').setRequired(true)))
       .addChannelOption(o => o.setName('channel').setDescription('Channel to post this in').setRequired(true)))
     .addSubcommandGroup(g => g.setName('config').setDescription('Configure the ticket system')
       .addSubcommand(sub => sub.setName('set').setDescription('Set ticket system settings')
@@ -91,6 +94,36 @@ const Ticket: Command = {
       } catch {
         await interaction.reply({ content: '❌ Could not post in that channel. Check my permissions.', flags: MessageFlags.Ephemeral });
       }
+      return;
+    }
+
+    // ── Ratings ──────────────────────────────────────────────────────────────────
+    if (sub === 'ratings') {
+      const target = interaction.options.getUser('user') ?? interaction.user;
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      const rows = await db.getModRatings(interaction.guildId!, target.id);
+      if (!rows.length) {
+        await interaction.editReply(`No ratings found for <@${target.id}>.`);
+        return;
+      }
+      const avg = rows.reduce((s, r) => s + r.rating, 0) / rows.length;
+      const breakdown = [1, 2, 3, 4, 5].map(n => {
+        const count = rows.filter(r => r.rating === n).length;
+        return `${'⭐'.repeat(n)} — **${count}**`;
+      }).join('\n');
+      const recent = rows.slice(0, 5).map(r =>
+        `Ticket #${r.ticket_num}: ${'⭐'.repeat(r.rating)} — ${r.topic ?? 'No topic'}`
+      ).join('\n');
+      const embed = new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setTitle(`Support Ratings — ${target.username}`)
+        .setThumbnail(target.displayAvatarURL())
+        .addFields(
+          { name: 'Average Rating', value: `${'⭐'.repeat(Math.round(avg))} (${avg.toFixed(1)}/5 from ${rows.length} ticket${rows.length !== 1 ? 's' : ''})` },
+          { name: 'Breakdown', value: breakdown, inline: true },
+          { name: 'Recent Tickets', value: recent },
+        );
+      await interaction.editReply({ embeds: [embed] });
       return;
     }
 

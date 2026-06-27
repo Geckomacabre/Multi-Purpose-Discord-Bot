@@ -1454,6 +1454,14 @@ export async function rateTicket(channel_id: string, rating: number): Promise<vo
   await db`UPDATE tickets SET rating = ${rating} WHERE channel_id = ${channel_id}`;
 }
 
+export async function getModRatings(guild_id: string, user_id: string): Promise<{ rating: number; ticket_num: number; topic: string | null }[]> {
+  return await db`
+    SELECT rating, ticket_num, topic FROM tickets
+    WHERE guild_id = ${guild_id} AND claimed_by = ${user_id} AND rating IS NOT NULL
+    ORDER BY ticket_num DESC
+  ` as any;
+}
+
 // ─── Reminders ────────────────────────────────────────────────────────────────
 
 export async function createReminder(user_id: string, channel_id: string, guild_id: string | null, message: string, fires_at: number): Promise<IReminder> {
