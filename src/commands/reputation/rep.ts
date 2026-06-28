@@ -24,12 +24,7 @@ const Rep: Command = {
     .addSubcommand(sub => sub
       .setName('leaderboard')
       .setDescription('View the top 10 reputation holders')
-    )
-    .addSubcommand(sub => sub
-      .setName('take')
-      .setDescription('Take a reputation point from a user (Manage Guild only)')
-      .addUserOption(o => o.setName('user').setDescription('User').setRequired(true))
-    ) as any,
+    ),
 
   async run(interaction: ChatInputCommandInteraction) {
     const sub = interaction.options.getSubcommand();
@@ -52,12 +47,6 @@ const Rep: Command = {
       const newPoints = await db.adjustReputation(interaction.guildId!, target.id, 1);
       await db.setRepCooldown(interaction.guildId!, interaction.user.id, target.id);
       await interaction.editReply(`✅ Gave +1 rep to **${target.username}**! They now have **${newPoints}** rep.`);
-
-    } else if (sub === 'take') {
-      if (!interaction.memberPermissions?.has('ManageGuild')) { await interaction.editReply('You need **Manage Guild** to take rep.'); return; }
-      const target = interaction.options.getUser('user', true);
-      const newPoints = await db.adjustReputation(interaction.guildId!, target.id, -1);
-      await interaction.editReply(`✅ Took 1 rep from **${target.username}**. They now have **${newPoints}** rep.`);
 
     } else if (sub === 'view') {
       const target = interaction.options.getUser('user') ?? interaction.user;

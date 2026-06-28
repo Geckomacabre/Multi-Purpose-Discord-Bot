@@ -1,7 +1,7 @@
 import {
   ApplicationIntegrationType, ChatInputCommandInteraction, Colors,
   ContainerBuilder, InteractionContextType, MessageFlags,
-  PermissionFlagsBits, SlashCommandBuilder, TextDisplayBuilder,
+  SlashCommandBuilder, TextDisplayBuilder,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
 import * as db from '../../utils/db';
@@ -38,43 +38,10 @@ const Birthday: Command = {
     .addSubcommand(s => s.setName('remove').setDescription('Remove your birthday from this server'))
     .addSubcommand(s => s.setName('view').setDescription("View a user's birthday")
       .addUserOption(o => o.setName('user').setDescription('User to view (defaults to you)')))
-    .addSubcommand(s => s.setName('list').setDescription('List upcoming birthdays in this server'))
-    .addSubcommand(s => s.setName('delete').setDescription("Delete a user's birthday (Manage Server)")
-      .addUserOption(o => o.setName('user').setDescription('User').setRequired(true)))
-    .addSubcommandGroup(g => g.setName('config').setDescription('Configure birthday announcements')
-      .addSubcommand(s => s.setName('channel').setDescription('Set the birthday announcement channel')
-        .addChannelOption(o => o.setName('channel').setDescription('Channel for announcements').setRequired(true)))
-      .addSubcommand(s => s.setName('toggle').setDescription('Enable or disable birthday announcements'))
-      .addSubcommand(s => s.setName('view').setDescription('View current birthday settings'))) as any,
+    .addSubcommand(s => s.setName('list').setDescription('List upcoming birthdays in this server')),
 
   async run(interaction: ChatInputCommandInteraction) {
-    const group = interaction.options.getSubcommandGroup(false);
     const sub = interaction.options.getSubcommand();
-
-    if (group === 'config') {
-      if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
-        await interaction.reply({ ...cv2Text('❌ You need **Manage Server** to configure birthday settings.'), flags: IS_CV2 | MessageFlags.Ephemeral });
-        return;
-      }
-      const config = await db.getBirthdayConfig(interaction.guildId!);
-      if (sub === 'channel') {
-        const channel = interaction.options.getChannel('channel', true);
-        await db.setBirthdayConfig(interaction.guildId!, { channel_id: channel.id });
-        await interaction.reply({ ...cv2Text(`✅ Birthday announcements will be sent to <#${channel.id}>.`), flags: IS_CV2 | MessageFlags.Ephemeral });
-      } else if (sub === 'toggle') {
-        const newState = !config.enabled;
-        await db.setBirthdayConfig(interaction.guildId!, { enabled: newState ? 1 : 0 });
-        await interaction.reply({ ...cv2Text(`✅ Birthday announcements are now **${newState ? 'enabled' : 'disabled'}**.`), flags: IS_CV2 | MessageFlags.Ephemeral });
-      } else {
-        const container = new ContainerBuilder()
-          .setAccentColor(Colors.Gold)
-          .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-            `**🎂 Birthday Config**\n**Status:** ${config.enabled ? '✅ Enabled' : '❌ Disabled'}\n**Channel:** ${config.channel_id ? `<#${config.channel_id}>` : 'Not set'}`
-          ));
-        await interaction.reply({ flags: IS_CV2 | MessageFlags.Ephemeral, components: [container] });
-      }
-      return;
-    }
 
     if (sub === 'set') {
       const month = interaction.options.getInteger('month', true);
@@ -91,17 +58,6 @@ const Birthday: Command = {
     if (sub === 'remove') {
       await db.removeBirthday(interaction.guildId!, interaction.user.id);
       await interaction.reply({ ...cv2Text('✅ Your birthday has been removed.'), flags: IS_CV2 | MessageFlags.Ephemeral });
-      return;
-    }
-
-    if (sub === 'delete') {
-      if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
-        await interaction.reply({ ...cv2Text('❌ You need **Manage Server** to delete other users\' birthdays.'), flags: IS_CV2 | MessageFlags.Ephemeral });
-        return;
-      }
-      const user = interaction.options.getUser('user', true);
-      await db.removeBirthday(interaction.guildId!, user.id);
-      await interaction.reply({ ...cv2Text(`✅ Removed birthday for **${user.username}**.`), flags: IS_CV2 | MessageFlags.Ephemeral });
       return;
     }
 
