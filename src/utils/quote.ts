@@ -1,4 +1,4 @@
-import { createCanvas, GlobalFonts, loadImage } from '@napi-rs/canvas';
+import { createCanvas, GlobalFonts, loadImage, type SKRSContext2D } from '@napi-rs/canvas';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -46,7 +46,7 @@ function stripMarkers(text: string): string {
   return text.replace(/\*{1,3}/g, '');
 }
 
-function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, fontSize: number, maxLines = 7): string[] {
+function wrapText(ctx: SKRSContext2D, text: string, maxWidth: number, fontSize: number, maxLines = 7): string[] {
   const lines: string[] = [];
   ctx.font = `${fontSize}px ${REG}`;
   for (const para of text.split('\n')) {
@@ -72,7 +72,7 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number,
 }
 
 // Draw a line centered at cx, honoring **bold** / *italic* segments.
-function drawLine(ctx: CanvasRenderingContext2D, line: string, cx: number, y: number, size: number) {
+function drawLine(ctx: SKRSContext2D, line: string, cx: number, y: number, size: number) {
   const segs = parseInline(line);
   ctx.save();
   ctx.textAlign = 'left';

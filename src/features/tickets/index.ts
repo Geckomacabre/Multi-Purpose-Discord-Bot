@@ -106,7 +106,7 @@ const ticketsModule: EventModule = {
           }
           await (btn.channel as TextChannel).permissionOverwrites.create(btn.user.id, { ViewChannel: true, SendMessages: true }).catch(() => {});
           await (btn.channel as TextChannel).setTopic(`Ticket by <@${ticket.user_id}> — Claimed by ${btn.user.username}`).catch(() => {});
-          await btn.channel?.send(`🙋 Ticket claimed by <@${btn.user.id}>.`).catch(() => {});
+          await (btn.channel as TextChannel | null)?.send(`🙋 Ticket claimed by <@${btn.user.id}>.`).catch(() => {});
           await btn.editReply('✅ You have claimed this ticket.');
           return;
         }

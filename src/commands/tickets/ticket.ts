@@ -227,11 +227,11 @@ const Ticket: Command = {
     // ── Add/Remove ───────────────────────────────────────────────────────────
     } else if (sub === 'add') {
       const user = interaction.options.getUser('user', true);
-      await interaction.channel?.permissionOverwrites.create(user.id, { ViewChannel: true, SendMessages: true }).catch(() => {});
+      await (interaction.channel as TextChannel | null)?.permissionOverwrites.create(user.id, { ViewChannel: true, SendMessages: true }).catch(() => {});
       await interaction.editReply(`✅ Added <@${user.id}> to this ticket.`);
     } else if (sub === 'remove') {
       const user = interaction.options.getUser('user', true);
-      await interaction.channel?.permissionOverwrites.delete(user.id).catch(() => {});
+      await (interaction.channel as TextChannel | null)?.permissionOverwrites.delete(user.id).catch(() => {});
       await interaction.editReply(`✅ Removed <@${user.id}> from this ticket.`);
     }
   },

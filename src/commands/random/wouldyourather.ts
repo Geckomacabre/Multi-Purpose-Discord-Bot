@@ -32,10 +32,8 @@ const WouldYouRather: Command = {
 
   async run(interaction: ChatInputCommandInteraction) {
     const [a, b] = WYR_QUESTIONS[Math.floor(Math.random() * WYR_QUESTIONS.length)];
-    const msg = await interaction.reply({
-      ...cv2Text(`**🤔 Would You Rather...**\n\n🅰️ **Option A:** ${a}\n🅱️ **Option B:** ${b}`, Colors.Purple),
-      fetchReply: true,
-    });
+    await interaction.reply(cv2Text(`**🤔 Would You Rather...**\n\n🅰️ **Option A:** ${a}\n🅱️ **Option B:** ${b}`, Colors.Purple));
+    const msg = await interaction.fetchReply();
     await msg.react('🅰️').catch(() => {});
     await msg.react('🅱️').catch(() => {});
   },

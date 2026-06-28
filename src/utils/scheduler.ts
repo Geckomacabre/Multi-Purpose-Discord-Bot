@@ -29,7 +29,7 @@ async function pollTasks() {
       setTimeout(() => runTask(task), delay);
     }
   } catch (err) {
-    logger.error('Scheduler poll error:', err);
+    logger.error(`Scheduler poll error: ${err}`);
   }
 }
 

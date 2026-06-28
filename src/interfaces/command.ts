@@ -16,7 +16,7 @@ export interface Command {
     | SlashCommandOptionsOnlyBuilder
     | ContextMenuCommandBuilder;
   category?: string;
-  run?: (interaction: ChatInputCommandInteraction<CacheType>) => Promise<void>;
-  runMessage?: (interaction: MessageContextMenuCommandInteraction<CacheType>) => Promise<void>;
-  autocomplete?: (interaction: AutocompleteInteraction<CacheType>) => Promise<void>;
+  run?: (interaction: ChatInputCommandInteraction<CacheType>) => Promise<unknown>;
+  runMessage?: (interaction: MessageContextMenuCommandInteraction<CacheType>) => Promise<unknown>;
+  autocomplete?: (interaction: AutocompleteInteraction<CacheType>) => Promise<unknown>;
 }
