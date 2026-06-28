@@ -76,7 +76,7 @@ async function fetchSteamFreeGames(): Promise<FreeGame[]> {
     const specials: any[] = data?.specials?.items ?? [];
 
     return specials
-      .filter((item: any) => item.discounted_price === 0 && (item.original_price ?? 0) > 0)
+      .filter((item: any) => item.final_price === 0 && (item.original_price ?? 0) > 0 && item.discount_percent === 100)
       .map((item: any) => ({
         id: `steam:${item.id}`,
         platform: 'Steam',
