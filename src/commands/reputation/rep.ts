@@ -3,7 +3,10 @@ import {
   InteractionContextType, SlashCommandBuilder,
 } from 'discord.js';
 import * as db from '../../utils/db';
+import { awardBonusXp } from '../../utils/xpBonus.js';
 import { Command } from '../../interfaces/command';
+
+const REP_XP = 75;
 
 const Rep: Command = {
   data: new SlashCommandBuilder()
@@ -46,7 +49,12 @@ const Rep: Command = {
 
       const newPoints = await db.adjustReputation(interaction.guildId!, target.id, 1);
       await db.setRepCooldown(interaction.guildId!, interaction.user.id, target.id);
-      await interaction.editReply(`✅ Gave +1 rep to **${target.username}**! They now have **${newPoints}** rep.`);
+      const xpGiven = await awardBonusXp({
+        guildId: interaction.guildId!, userId: target.id, baseAmount: REP_XP,
+        client: interaction.client, channelId: interaction.channelId,
+      });
+      const xpNote = xpGiven > 0 ? ` (+${xpGiven} XP to ${target.username})` : '';
+      await interaction.editReply(`✅ Gave +1 rep to **${target.username}**! They now have **${newPoints}** rep.${xpNote}`);
 
     } else if (sub === 'view') {
       const target = interaction.options.getUser('user') ?? interaction.user;

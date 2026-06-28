@@ -4,6 +4,7 @@ import {
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
 import { getOrCreateEconomy, getEconomyConfig, adjustBalance } from '../../utils/db';
+import { awardBonusXp } from '../../utils/xpBonus.js';
 import { cv2Err, IS_CV2 } from '../../utils/components.js';
 
 const HighRoll: Command = {
@@ -27,11 +28,19 @@ const HighRoll: Command = {
     const botRoll = Math.floor(Math.random() * 100) + 1;
     const win = playerRoll > botRoll, tie = playerRoll === botRoll;
     const { newBalance } = await adjustBalance(guildId, userId, win ? bet : tie ? 0 : -bet);
+    let xpLine = '';
+    if (win) {
+      const xpGiven = await awardBonusXp({
+        guildId, userId, baseAmount: Math.floor(Math.random() * 51) + 50,
+        client: interaction.client, channelId: interaction.channelId, isGame: true,
+      });
+      xpLine = xpGiven > 0 ? `\n+**${xpGiven} XP** earned!` : '\n*(Daily XP cap reached)*';
+    }
     const result = tie ? `It's a tie! Your bet of **${sym} ${bet.toLocaleString()}** is refunded.` : win ? `You won **${sym} ${bet.toLocaleString()}**!` : `You lost **${sym} ${bet.toLocaleString()}**.`;
     const container = new ContainerBuilder()
       .setAccentColor(win ? Colors.Green : tie ? Colors.Yellow : Colors.Red)
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `**🎲 High Roll**\n**Your Roll:** ${playerRoll} | **Bot Roll:** ${botRoll}\n${result}\n**Balance:** ${sym} **${newBalance.toLocaleString()}**`
+        `**🎲 High Roll**\n**Your Roll:** ${playerRoll} | **Bot Roll:** ${botRoll}\n${result}\n**Balance:** ${sym} **${newBalance.toLocaleString()}**${xpLine}`
       ));
     await interaction.reply({ flags: IS_CV2, components: [container] });
   },

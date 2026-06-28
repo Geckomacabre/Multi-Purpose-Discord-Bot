@@ -5,7 +5,10 @@ import {
   time, TimestampStyles,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
+import { awardBonusXp } from '../../utils/xpBonus.js';
 import he from 'he';
+
+const TRIVIA_XP: Record<string, number> = { easy: 75, medium: 125, hard: 200 };
 
 const IS_CV2 = MessageFlags.IsComponentsV2;
 
@@ -81,8 +84,17 @@ const Trivia: Command = {
         const isCorrect = answers[pickedIndex] === correct;
         const nicknames = isCorrect ? ['wise guy', 'mega brain', 'smarty-pants'] : ['ninny', 'ignoramus', 'nitwit', 'moron'];
         const nickname = nicknames[Math.floor(Math.random() * nicknames.length)];
+        let xpLine = '';
+        if (isCorrect && interaction.guildId) {
+          const xpGiven = await awardBonusXp({
+            guildId: interaction.guildId, userId: interaction.user.id,
+            baseAmount: TRIVIA_XP[question.difficulty] ?? 100,
+            client: interaction.client, channelId: interaction.channelId, isGame: true,
+          });
+          xpLine = xpGiven > 0 ? ` +**${xpGiven} XP**!` : '';
+        }
         await btn.update({
-          embeds: [embed, new EmbedBuilder().setDescription(isCorrect ? `✅ You got that right, ${nickname}!` : `❌ Nope, ${nickname}. The correct answer was **${correct}**`)],
+          embeds: [embed, new EmbedBuilder().setDescription(isCorrect ? `✅ You got that right, ${nickname}!${xpLine}` : `❌ Nope, ${nickname}. The correct answer was **${correct}**`)],
           components: [buildResultRow(answers, correct, pickedIndex)],
         });
         collector.stop();

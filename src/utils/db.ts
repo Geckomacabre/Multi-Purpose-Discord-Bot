@@ -1865,20 +1865,21 @@ export async function getXp(guild_id: string, user_id: string): Promise<IXp | nu
 }
 
 export async function addXp(
-  guild_id: string, user_id: string, amount: number
+  guild_id: string, user_id: string, amount: number, countMessage = true
 ): Promise<{ row: IXp; oldLevel: number }> {
   await ensureConfig(guild_id);
   const existing = await getXp(guild_id, user_id);
   const oldLevel = existing?.level ?? 0;
   const newXp = (existing?.xp ?? 0) + amount;
   const { level: newLevel } = calcLevelFromXp(newXp);
+  const msgIncrement = countMessage ? 1 : 0;
   const [row] = await db`
     INSERT INTO xp (guild_id, user_id, xp, level, total_messages)
-    VALUES (${guild_id}, ${user_id}, ${amount}, ${newLevel}, 1)
+    VALUES (${guild_id}, ${user_id}, ${amount}, ${newLevel}, ${msgIncrement})
     ON CONFLICT(guild_id, user_id) DO UPDATE SET
       xp = xp + ${amount},
       level = ${newLevel},
-      total_messages = total_messages + 1
+      total_messages = total_messages + ${msgIncrement}
     RETURNING *
   `;
   return { row: row as IXp, oldLevel };

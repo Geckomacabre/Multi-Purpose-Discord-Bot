@@ -4,6 +4,7 @@ import {
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
 import { getOrCreateEconomy, getEconomyConfig, adjustBalance } from '../../utils/db';
+import { awardBonusXp } from '../../utils/xpBonus.js';
 import { cv2Err, IS_CV2 } from '../../utils/components.js';
 
 const Flip: Command = {
@@ -25,10 +26,18 @@ const Flip: Command = {
     const sym = cfg.currency_symbol;
     const win = Math.random() < 0.5;
     const { newBalance } = await adjustBalance(guildId, userId, win ? bet : -bet);
+    let xpLine = '';
+    if (win) {
+      const xpGiven = await awardBonusXp({
+        guildId, userId, baseAmount: Math.floor(Math.random() * 51) + 50,
+        client: interaction.client, channelId: interaction.channelId, isGame: true,
+      });
+      xpLine = xpGiven > 0 ? `\n+**${xpGiven} XP** earned!` : '\n*(Daily XP cap reached)*';
+    }
     const container = new ContainerBuilder()
       .setAccentColor(win ? Colors.Green : Colors.Red)
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `**${win ? '🪙 Heads!' : '🌑 Tails!'}**\n${win ? `You won **${sym} ${bet.toLocaleString()}**!` : `You lost **${sym} ${bet.toLocaleString()}**.`}\n**Balance:** ${sym} **${newBalance.toLocaleString()}**`
+        `**${win ? '🪙 Heads!' : '🌑 Tails!'}**\n${win ? `You won **${sym} ${bet.toLocaleString()}**!` : `You lost **${sym} ${bet.toLocaleString()}**.`}\n**Balance:** ${sym} **${newBalance.toLocaleString()}**${xpLine}`
       ));
     await interaction.reply({ flags: IS_CV2, components: [container] });
   },

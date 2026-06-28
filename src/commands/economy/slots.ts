@@ -4,6 +4,7 @@ import {
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
 import { getOrCreateEconomy, getEconomyConfig, adjustBalance } from '../../utils/db';
+import { awardBonusXp } from '../../utils/xpBonus.js';
 import { cv2Err, IS_CV2 } from '../../utils/components.js';
 
 const REEL = ['🍒','🍒','🍒','🍒','🍒','🍋','🍋','🍋','🍋','🔔','🔔','🔔','💎','💎','7️⃣'];
@@ -33,11 +34,20 @@ const Slots: Command = {
     const winnings = Math.floor(bet * multiplier);
     const delta = winnings > 0 ? winnings - bet : -bet;
     const { newBalance } = await adjustBalance(guildId, userId, delta);
+    let xpLine = '';
+    if (multiplier > 0) {
+      const baseXp = Math.min(50 + Math.floor(multiplier * 20), 200);
+      const xpGiven = await awardBonusXp({
+        guildId, userId, baseAmount: baseXp,
+        client: interaction.client, channelId: interaction.channelId, isGame: true,
+      });
+      xpLine = xpGiven > 0 ? `\n+**${xpGiven} XP** earned!` : '\n*(Daily XP cap reached)*';
+    }
     const label = isJackpot ? `**JACKPOT!** Triple ${reels[0]}` : 'No match — better luck next time!';
     const container = new ContainerBuilder()
       .setAccentColor(multiplier > 0 ? Colors.Gold : Colors.Red)
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `**🎰 Slots**\n${reels.join(' ｜ ')}\n${label}\n${multiplier > 0 ? `**${multiplier}x** — you won **${sym} ${winnings.toLocaleString()}**!` : `You lost **${sym} ${bet.toLocaleString()}**.`}\n**Balance:** ${sym} **${newBalance.toLocaleString()}**\n*🍒×3=1.5x | 🍋×3=2x | 🔔×3=3x | 💎×3=5x | 7️⃣×3=10x*`
+        `**🎰 Slots**\n${reels.join(' ｜ ')}\n${label}\n${multiplier > 0 ? `**${multiplier}x** — you won **${sym} ${winnings.toLocaleString()}**!` : `You lost **${sym} ${bet.toLocaleString()}**.`}\n**Balance:** ${sym} **${newBalance.toLocaleString()}**\n*🍒×3=1.5x | 🍋×3=2x | 🔔×3=3x | 💎×3=5x | 7️⃣×3=10x*${xpLine}`
       ));
     await interaction.reply({ flags: IS_CV2, components: [container] });
   },
