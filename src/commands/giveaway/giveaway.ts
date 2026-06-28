@@ -28,6 +28,7 @@ const Giveaway: Command = {
   data: new SlashCommandBuilder()
     .setName('giveaway')
     .setDescription('Giveaway system')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
     .setContexts([InteractionContextType.Guild])
     .addSubcommand(s =>

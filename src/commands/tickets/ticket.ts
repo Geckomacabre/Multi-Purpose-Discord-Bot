@@ -15,6 +15,7 @@ const Ticket: Command = {
   data: new SlashCommandBuilder()
     .setName('ticket')
     .setDescription('Manage support tickets')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
     .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
     .setContexts([InteractionContextType.Guild])
     .addSubcommand(sub => sub.setName('create').setDescription('Open a new support ticket')
