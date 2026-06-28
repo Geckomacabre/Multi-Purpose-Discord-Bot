@@ -124,6 +124,52 @@ async function fetchGOGFreeGames(): Promise<FreeGame[]> {
   }
 }
 
+export async function fetchEpicUpcomingGames(): Promise<FreeGame[]> {
+  try {
+    const res = await fetch(
+      'https://store-site-backend-static.ak.epicgames.com/freeGamesPromotions?locale=en-US&country=US&allowCountries=US',
+      { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TMCBot/1.0)' }, signal: AbortSignal.timeout(10_000) }
+    );
+    if (!res.ok) return [];
+    const data = await res.json() as any;
+    const elements: any[] = data?.data?.Catalog?.searchStore?.elements ?? [];
+
+    return elements.flatMap((el: any) => {
+      const upcoming: any[] = el?.promotions?.upcomingPromotionalOffers ?? [];
+      if (!upcoming.length) return [];
+      const innerOffers: any[] = upcoming[0]?.promotionalOffers ?? [];
+      const offer = innerOffers.find((o: any) => o.discountSetting?.discountPercentage === 0);
+      if (!offer) return [];
+
+      const slug = el.productSlug ?? el.offerMappings?.[0]?.pageSlug ?? el.urlSlug;
+      const url = slug
+        ? `https://store.epicgames.com/en-US/p/${slug.replace(/\/home$/, '')}`
+        : 'https://store.epicgames.com/en-US/free-games';
+
+      const originalCents: number = el.price?.totalPrice?.originalPrice ?? 0;
+      const originalPrice = originalCents > 0 ? `$${(originalCents / 100).toFixed(2)}` : null;
+
+      const image =
+        el.keyImages?.find((k: any) => k.type === 'DieselStoreFrontWide')?.url ??
+        el.keyImages?.find((k: any) => k.type === 'Thumbnail')?.url ??
+        null;
+
+      return [{
+        id: `epic-upcoming:${el.id}`,
+        platform: 'Epic Games Store',
+        title: el.title,
+        description: el.description ? el.description.slice(0, 250) : null,
+        url,
+        image,
+        originalPrice,
+        endDate: offer.startDate, // "free from" date
+      }] as FreeGame[];
+    });
+  } catch {
+    return [];
+  }
+}
+
 // ─── Poller ───────────────────────────────────────────────────────────────────
 
 export async function fetchAllFreeGames(): Promise<FreeGame[]> {
