@@ -5,6 +5,7 @@ import {
 import { Command } from '../../interfaces/command';
 import { getOrCreateEconomy, getEconomyConfig, adjustBalance } from '../../utils/db';
 import { awardBonusXp } from '../../utils/xpBonus.js';
+import { randInt } from '../../utils/random.js';
 import { cv2Err, IS_CV2 } from '../../utils/components.js';
 
 const HighRoll: Command = {
@@ -24,14 +25,14 @@ const HighRoll: Command = {
       await interaction.reply(cv2Err(`❌ Not enough ${cfg.currency_name}. Your balance: **${cfg.currency_symbol} ${eco.balance.toLocaleString()}**.`)); return;
     }
     const sym = cfg.currency_symbol;
-    const playerRoll = Math.floor(Math.random() * 100) + 1;
-    const botRoll = Math.floor(Math.random() * 100) + 1;
+    const playerRoll = randInt(1, 100);
+    const botRoll = randInt(1, 100);
     const win = playerRoll > botRoll, tie = playerRoll === botRoll;
     const { newBalance } = await adjustBalance(guildId, userId, win ? bet : tie ? 0 : -bet);
     let xpLine = '';
     if (win) {
       const xpGiven = await awardBonusXp({
-        guildId, userId, baseAmount: Math.floor(Math.random() * 51) + 50,
+        guildId, userId, baseAmount: randInt(50, 100),
         client: interaction.client, channelId: interaction.channelId, isGame: true,
       });
       xpLine = xpGiven > 0 ? `\n+**${xpGiven} XP** earned!` : '\n*(Daily XP cap reached)*';

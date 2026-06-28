@@ -5,11 +5,12 @@ import {
 import { Command } from '../../interfaces/command';
 import { getOrCreateEconomy, getEconomyConfig, adjustBalance } from '../../utils/db';
 import { awardBonusXp } from '../../utils/xpBonus.js';
+import { randInt } from '../../utils/random.js';
 import { cv2Err, IS_CV2 } from '../../utils/components.js';
 
 const REEL = ['🍒','🍒','🍒','🍒','🍒','🍋','🍋','🍋','🍋','🔔','🔔','🔔','💎','💎','7️⃣'];
 const SLOT_MULTIPLIERS: Record<string, number> = { '7️⃣': 10, '💎': 5, '🔔': 3, '🍋': 2, '🍒': 1.5 };
-function spinReel() { return REEL[Math.floor(Math.random() * REEL.length)]; }
+function spinReel() { return REEL[randInt(0, REEL.length - 1)]; }
 
 const Slots: Command = {
   data: new SlashCommandBuilder()
