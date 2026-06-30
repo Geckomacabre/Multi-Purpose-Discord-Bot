@@ -36,9 +36,6 @@ WEB_PORT=3000            # Port the dashboard listens on
 WEB_URL=http://localhost:3000  # Public-facing URL (used for OAuth redirect)
 
 # Optional — enables specific features
-TWITCH_CLIENT_ID=        # Twitch live alerts (/twitch)
-TWITCH_CLIENT_SECRET=    # Twitch live alerts (/twitch)
-YOUTUBE_API_KEY=         # YouTube upload alerts (/youtube)
 WEATHER_API_KEY=         # OpenWeatherMap key (/weather)
 REPORT_CHANNEL_ID=       # Fallback channel for /report when no modlog is set
 TENOR_API_KEY=           # GIF search (/gif) — free key at https://developers.google.com/tenor
@@ -113,25 +110,31 @@ Each moderation action is its own top-level command. Action commands are hidden 
 Logged events: member join/leave, message edit/delete, bans/unbans, nickname changes, role changes.
 
 #### Role Management
-All role management is under the `/roles` command.
+
+User commands:
 
 | Command | Description |
 |---|---|
 | `/roles self <name>` | Toggle a self-assignable role on yourself. |
-| `/roles bulk <action> <role> <filter>` | Assign or remove a role from many members at once (all, has role, missing role, bots, humans). |
-| `/roles self-assign add <name> <role>` | Register a self-assignable role with a name and optional group. |
-| `/roles self-assign remove <id>` | Remove a role command by ID. |
-| `/roles self-assign list` | List all self-assignable roles. |
-| `/roles auto add <role>` | Assign a role automatically to new members (with optional delay). |
-| `/roles auto remove <id>` | Remove an autorole by ID. |
-| `/roles auto list` | List all autoroles. |
-| `/roles voice add <channel> <role>` | Assign a role when members join a specific voice channel. |
-| `/roles voice remove <id>` | Remove a voice role binding. |
-| `/roles voice list` | List all voice role bindings. |
-| `/roles reaction add <message_link> <emoji> <role>` | Bind an emoji reaction on a message to a role. |
-| `/roles reaction remove <id>` | Remove a reaction role binding by ID. |
-| `/roles reaction clear <message_link>` | Remove all reaction roles from a message. |
-| `/roles reaction list` | List all active reaction role bindings. |
+
+Admin configuration is under `/rolesconfig` (Manage Roles required):
+
+| Command | Description |
+|---|---|
+| `/rolesconfig bulk <action> <role> <filter>` | Assign or remove a role from many members at once (all, has role, missing role, bots, humans). |
+| `/rolesconfig self-assign add <name> <role>` | Register a self-assignable role with a name and optional group. |
+| `/rolesconfig self-assign remove <id>` | Remove a role command by ID. |
+| `/rolesconfig self-assign list` | List all self-assignable roles. |
+| `/rolesconfig auto add <role>` | Assign a role automatically to new members (with optional delay). |
+| `/rolesconfig auto remove <id>` | Remove an autorole by ID. |
+| `/rolesconfig auto list` | List all autoroles. |
+| `/rolesconfig voice add <channel> <role>` | Assign a role when members join a specific voice channel. |
+| `/rolesconfig voice remove <id>` | Remove a voice role binding. |
+| `/rolesconfig voice list` | List all voice role bindings. |
+| `/rolesconfig reaction add <message_link> <emoji> <role>` | Bind an emoji reaction on a message to a role. |
+| `/rolesconfig reaction remove <id>` | Remove a reaction role binding by ID. |
+| `/rolesconfig reaction clear <message_link>` | Remove all reaction roles from a message. |
+| `/rolesconfig reaction list` | List all active reaction role bindings. |
 
 #### Reputation
 | Command | Description |
@@ -145,9 +148,13 @@ All role management is under the `/roles` command.
 | Command | Description |
 |---|---|
 | `/ticket create` | Open a new support ticket channel. |
-| `/ticket close` | Close and delete the current ticket channel. |
+| `/ticket close` | Close and archive the current ticket channel. |
+| `/ticket delete` | Permanently delete the ticket channel. |
 | `/ticket add <user>` | Add a user to the current ticket. |
 | `/ticket remove <user>` | Remove a user from the current ticket. |
+| `/ticket panel [channel]` | Post a panel with an **Open Ticket** button in a channel. |
+| `/ticket redirect [channel]` | Post a "wrong channel" redirect message pointing users to the ticket channel. |
+| `/ticket ratings [user]` | View support ratings for a staff member or the whole server. |
 | `/ticket config set` | Configure ticket category, log channel, and support role. |
 | `/ticket config view` | View current ticket settings. |
 
@@ -160,24 +167,6 @@ All role management is under the `/roles` command.
 
 #### Custom Commands
 Custom commands are managed entirely through the [Web Dashboard](#web-dashboard) — there are no `/cc` slash commands. Supported trigger types: `command`, `startswith`, `contains`, `exact`, `regex`. Responses support `{user}`, `{username}`, `{server}`, `{channel}`, `{membercount}`.
-
-#### Feed Subscriptions
-All feeds are polled every 5 minutes. All commands are under `/feed` and require **Manage Server**.
-
-| Command | Description |
-|---|---|
-| `/feed twitch add <username> <channel>` | Subscribe to Twitch live alerts. Requires `TWITCH_CLIENT_ID` and `TWITCH_CLIENT_SECRET`. |
-| `/feed twitch remove <id>` | Remove a Twitch subscription. |
-| `/feed twitch list` | List Twitch subscriptions. |
-| `/feed youtube add <channel_id> <channel>` | Subscribe to YouTube upload alerts. Requires `YOUTUBE_API_KEY`. |
-| `/feed youtube remove <id>` | Remove a YouTube subscription. |
-| `/feed youtube list` | List YouTube subscriptions. |
-| `/feed reddit add <subreddit> <channel>` | Subscribe to new posts from a subreddit (no API key needed). |
-| `/feed reddit remove <id>` | Remove a Reddit subscription. |
-| `/feed reddit list` | List Reddit subscriptions. |
-| `/feed rss add <url> <channel>` | Subscribe to an RSS/Atom feed. |
-| `/feed rss remove <id>` | Remove an RSS feed. |
-| `/feed rss list` | List RSS feeds. |
 
 #### Streaming Announcements
 Powered by Discord presence detection. Requires the **Presence Intent**.
@@ -209,16 +198,6 @@ A locked voice channel (e.g. a streamer's private VC). Setting the channel **aut
 | `/config serverstats channels remove <id>` | Delete a stat channel by ID. |
 | `/config serverstats channels list` | List all stat channels. |
 
-#### RSVP / Events
-| Command | Description |
-|---|---|
-| `/rsvp create` | Create a server event with a title, time, and optional description. |
-| `/rsvp list` | List upcoming events. |
-| `/rsvp attend` | RSVP as attending. |
-| `/rsvp decline` | RSVP as not attending. |
-| `/rsvp maybe` | RSVP as maybe. |
-| `/rsvp view` | View an event's details and full attendee list. |
-
 #### AntiPhishing
 No configuration needed — active automatically. Detects and deletes messages containing known phishing domains using the [sinking.yachts](https://phish.sinking.yachts) API. Domain list refreshes every 30 minutes.
 
@@ -231,8 +210,6 @@ No configuration needed — active automatically. Detects and deletes messages c
 | `/userinfo [user]` | Display account creation date, join date, roles, and nickname. |
 | `/serverinfo` | Display server stats: owner, member count, boost level, verification level. |
 | `/roll [dice]` | Roll dice (e.g. `2d6`, `1d20+5`). |
-| `/poll <question>` | Create a reaction poll with up to 5 options. |
-| `/calc <expression>` | Evaluate a math expression (supports `+`, `-`, `*`, `/`, `^`, `%`). |
 | `/listroles` | List all roles in the server with member counts. |
 | `/viewperms [user] [channel]` | View a user's permissions globally or in a specific channel. |
 | `/weather <location>` | Get current weather for a location. Requires `WEATHER_API_KEY`. |
@@ -243,12 +220,7 @@ No configuration needed — active automatically. Detects and deletes messages c
 | Command | Description |
 |---|---|
 | `/8ball <question>` | Ask the magic 8-ball a yes/no question. |
-| `/catfact` | Get a random cat fact. |
-| `/dogfact` | Get a random dog fact. |
-| `/inspire` | Get an inspirational quote. |
 | `/wouldyourather` | Get a would-you-rather question. |
-| `/xkcd [number]` | Get a random or specific xkcd comic. |
-| `/roast <user>` | Roast a user (all in good fun). |
 
 #### Guessing Games
 
@@ -269,11 +241,10 @@ Powered by the **TMDB API** — add `TMDB_API_KEY=your_key` to `.env` (free key 
 
 | Command | Description |
 |---|---|
-| `/cat` | Random cat picture. |
-| `/dog` | Random dog picture. |
-| `/bird` | Random bird picture. |
 | `/gif <query>` | Search for a GIF using Tenor. Requires `TENOR_API_KEY` in `.env`. |
 | `/trivia` | Answer a multiple-choice trivia question with button responses. Powered by OpenTDB (no API key needed). |
+| `/freegames now` | Show games that are free right now on Epic Games Store, Steam, and GOG. |
+| `/freegames upcoming` | Show upcoming free games on Epic Games Store. |
 
 ---
 
@@ -286,21 +257,28 @@ XP is awarded per message sent (15–25 XP by default, 60-second cooldown per us
 Level formula (MEE6-style): `5n² + 50n + 100` XP required per level.
 Coin reward on level-up: `level × 50` coins.
 
-All leveling commands are under `/level`.
+User commands:
 
 | Command | Description |
 |---|---|
-| `/level rank [user]` | View your or another user's level, XP progress bar, and total messages. |
+| `/rank [user]` | View a user's rank card image showing level, XP bar, and server rank. |
+| `/level rank [user]` | Text-based rank showing level, XP progress, and message count. |
 | `/level leaderboard [limit]` | Show the top users by XP and level. |
-| `/level roles add <level> <role>` | Assign a role automatically when users reach a specific level. |
-| `/level roles remove <id>` | Remove a level role binding by ID. |
-| `/level roles list` | List all level role bindings. |
-| `/level config toggle <enabled>` | Enable or disable XP gain for the server. |
-| `/level config channel [channel]` | Set the channel for level-up announcements. |
-| `/level config xp [min] [max] [cooldown]` | Set XP per message range and cooldown seconds. |
-| `/level config message <text>` | Customize the level-up announcement. Supports `{user}`, `{username}`, `{level}`. |
-| `/level config announce <enabled>` | Enable or disable level-up announcement messages. |
-| `/level config view` | View current leveling settings. |
+
+Admin configuration is under `/levelconfig` (Manage Server required):
+
+| Command | Description |
+|---|---|
+| `/levelconfig toggle <enabled>` | Enable or disable XP gain for the server. |
+| `/levelconfig channel [channel]` | Set the channel for level-up announcements. |
+| `/levelconfig xp [min] [max] [cooldown]` | Set XP per message range and cooldown seconds. |
+| `/levelconfig message <text>` | Customize the level-up announcement. Supports `{user}`, `{username}`, `{level}`. |
+| `/levelconfig announce <enabled>` | Enable or disable level-up announcement messages. |
+| `/levelconfig background [url]` | Set a custom background image URL for rank cards (omit to reset to default). |
+| `/levelconfig view` | View current leveling settings. |
+| `/levelconfig roles add <level> <role>` | Assign a role automatically when users reach a specific level. |
+| `/levelconfig roles remove <id>` | Remove a level role binding by ID. |
+| `/levelconfig roles list` | List all level role bindings. |
 
 #### Economy
 Each server has its own virtual currency. Earn coins through daily rewards, work, leveling up, and gambling.
@@ -330,6 +308,7 @@ All economy commands are under `/economy`.
 | `/protection` | Hire mob protection for 5,000 coins — blocks rob attempts for 24 hours. |
 | `/shop browse` | View available boosts in the shop. |
 | `/shop buy <item>` | Buy XP Surge (2× XP, 1h, 25,000 coins), Lucky Charm (1.5× gambling, 30min, 30,000 coins), or Hint Rush (no hint cooldown in the guessing games, 15min, 75,000 coins). |
+| `/games leaderboard <game>` | Show the top players for a specific game (flip, highroll, slots, roulette, crash, blackjack, poker, scratch, movie guesser, TV guesser). |
 
 #### Daily Lottery
 Once per day, one random server member wins **1,000 coins** automatically. Any member with at least 1 XP (i.e. anyone who has ever chatted) is entered. Winners are announced in the configured lottery channel. Enable it with `/economyconfig lottery <channel>`.
@@ -352,17 +331,19 @@ Supported platforms:
 - **GOG** — discounted-to-free games from their catalog
 
 #### Economy Config (Manage Server required)
+All admin economy commands are under `/economyconfig`.
+
 | Command | Description |
 |---|---|
-| `/economy config currency <name> <symbol>` | Set the currency name and symbol for this server. |
-| `/economy config starting <amount>` | Set how many coins new users start with. |
-| `/economy config daily <min> <max>` | Set the daily reward min/max range. |
-| `/economy config weekly <min> <max>` | Set the weekly reward min/max range. |
-| `/economy config monthly <min> <max>` | Set the monthly reward min/max range. |
-| `/economy config yearly <min> <max>` | Set the yearly reward min/max range. |
-| `/economy config work <min> <max>` | Set the work reward min/max range. |
+| `/economyconfig currency <name> <symbol>` | Set the currency name and symbol for this server. |
+| `/economyconfig starting <amount>` | Set how many coins new users start with. |
+| `/economyconfig daily <min> <max>` | Set the daily reward min/max range. |
+| `/economyconfig weekly <min> <max>` | Set the weekly reward min/max range. |
+| `/economyconfig monthly <min> <max>` | Set the monthly reward min/max range. |
+| `/economyconfig yearly <min> <max>` | Set the yearly reward min/max range. |
+| `/economyconfig work <min> <max>` | Set the work reward min/max range. |
 | `/economyconfig lottery [channel]` | Enable daily lottery with an announcement channel, or disable by omitting channel. |
-| `/economy config view` | View current economy settings. |
+| `/economyconfig view` | View current economy settings. |
 
 ---
 
@@ -497,6 +478,7 @@ Full-featured music player. Supports YouTube, Spotify, SoundCloud, Apple Music, 
 | `/music shuffle` | Shuffle the queue. |
 | `/music remove <position>` | Remove a track from the queue by position. |
 | `/music seek <time>` | Seek to a position (e.g. `1:30` or `90`). |
+| `/music host <user>` | Transfer DJ privileges to another user. |
 
 ---
 
@@ -520,7 +502,7 @@ The `install` script attempts to build automatically. If it fails (Windows dev m
 
 **Optional features:**
 - `WITH_MAGICK=ON` — enables the `magik` effect (content-aware scale); requires `libmagick++-dev`
-- `WITH_ZXING=ON` (default on Linux) — enables `/qr create` and `/qr read` (QR code generation and decoding via native ZXing); requires `libzxing-dev`
+- `WITH_ZXING=ON` (default on Linux) — enables native ZXing QR code support; requires `libzxing-dev`
 
 All effects below are values for the `effect` option, e.g. `/image effect:blur`. `[number]` effects take the `number` option; `<text>` effects take `text`; `flag`/`watermark`/`uncanny` take `choice`.
 
@@ -556,10 +538,9 @@ All effects below are values for the `effect` option, e.g. `/image effect:blur`.
 | Command | Description |
 |---|---|
 | `/base64 <encode\|decode> <text>` | Encode or decode base64. |
-| `/qr create <text>` | Generate a QR code from text or a URL. |
-| `/qr read [image]` | Decode a QR code from an image (attach image or it uses a recent channel image). |
-| `/snowflake <id>` | Decode a Discord snowflake ID into its timestamp and components. |
-| `/emote <emoji>` | Get the full-size image and info for a custom emoji. |
+| `/status set <message> [type]` | Set the bot's presence/status message (bot owner only). Types: custom, playing, watching, listening, competing. |
+| `/status clear` | Clear the bot's status message (bot owner only). |
+| `/status view` | View the current bot status (bot owner only). |
 
 ---
 
