@@ -3,9 +3,9 @@ import {
   ContainerBuilder, InteractionContextType, SlashCommandBuilder, TextDisplayBuilder,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
-import { getOrCreateEconomy, getEconomyConfig, adjustBalance } from '../../utils/db';
+import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplier, recordGameResult } from '../../utils/db';
 import { awardBonusXp } from '../../utils/xpBonus.js';
-import { randInt } from '../../utils/random.js';
+import { randInt, rand, getHouseCut } from '../../utils/random.js';
 import { cv2Err, IS_CV2 } from '../../utils/components.js';
 
 const HighRoll: Command = {
@@ -26,9 +26,15 @@ const HighRoll: Command = {
     }
     const sym = cfg.currency_symbol;
     const playerRoll = randInt(1, 100);
-    const botRoll = randInt(1, 100);
+    let botRoll = randInt(1, 100);
+    // Apply house cut before showing result: boost bot roll so the displayed numbers tell the true story
+    if (playerRoll > botRoll && rand() < getHouseCut(bet)) {
+      botRoll = randInt(playerRoll, 100); // bot wins or ties
+    }
     const win = playerRoll > botRoll, tie = playerRoll === botRoll;
-    const { newBalance } = await adjustBalance(guildId, userId, win ? bet : tie ? 0 : -bet);
+    const luckMult = win ? await getGambleMultiplier(guildId, userId) : 1;
+    const { newBalance } = await adjustBalance(guildId, userId, win ? Math.floor(bet * luckMult) : tie ? 0 : -bet);
+    if (!tie) recordGameResult(guildId, userId, 'highroll', win, bet).catch(() => {});
     let xpLine = '';
     if (win) {
       const xpGiven = await awardBonusXp({
@@ -37,7 +43,7 @@ const HighRoll: Command = {
       });
       xpLine = xpGiven > 0 ? `\n+**${xpGiven} XP** earned!` : '\n*(Daily XP cap reached)*';
     }
-    const result = tie ? `It's a tie! Your bet of **${sym} ${bet.toLocaleString()}** is refunded.` : win ? `You won **${sym} ${bet.toLocaleString()}**!` : `You lost **${sym} ${bet.toLocaleString()}**.`;
+    const result = tie ? `It's a tie! Your bet of **${sym} ${bet.toLocaleString()}** is refunded.` : win ? `You won **${sym} ${Math.floor(bet * luckMult).toLocaleString()}**!${luckMult > 1 ? ' *(🍀 Lucky Charm!)*' : ''}` : `You lost **${sym} ${bet.toLocaleString()}**.`;
     const container = new ContainerBuilder()
       .setAccentColor(win ? Colors.Green : tie ? Colors.Yellow : Colors.Red)
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(

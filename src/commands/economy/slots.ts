@@ -3,9 +3,9 @@ import {
   ContainerBuilder, InteractionContextType, SlashCommandBuilder, TextDisplayBuilder,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
-import { getOrCreateEconomy, getEconomyConfig, adjustBalance } from '../../utils/db';
+import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplier, recordGameResult } from '../../utils/db';
 import { awardBonusXp } from '../../utils/xpBonus.js';
-import { randInt } from '../../utils/random.js';
+import { randInt, rand, getHouseCut } from '../../utils/random.js';
 import { cv2Err, IS_CV2 } from '../../utils/components.js';
 
 const REEL = ['🍒','🍒','🍒','🍒','🍒','🍋','🍋','🍋','🍋','🔔','🔔','🔔','💎','💎','7️⃣'];
@@ -30,11 +30,17 @@ const Slots: Command = {
     }
     const sym = cfg.currency_symbol;
     const reels = [spinReel(), spinReel(), spinReel()];
+    // Apply house cut before showing result: re-spin middle reel to visually break the match
+    if (reels[0] === reels[1] && reels[1] === reels[2] && rand() < getHouseCut(bet)) {
+      do { reels[1] = spinReel(); } while (reels[1] === reels[0]);
+    }
     const isJackpot = reels[0] === reels[1] && reels[1] === reels[2];
     const multiplier = isJackpot ? (SLOT_MULTIPLIERS[reels[0]] ?? 1) : 0;
-    const winnings = Math.floor(bet * multiplier);
+    const luckMult = multiplier > 0 ? await getGambleMultiplier(guildId, userId) : 1;
+    const winnings = Math.floor(bet * multiplier * luckMult);
     const delta = winnings > 0 ? winnings - bet : -bet;
     const { newBalance } = await adjustBalance(guildId, userId, delta);
+    recordGameResult(guildId, userId, 'slots', multiplier > 0, bet).catch(() => {});
     let xpLine = '';
     if (multiplier > 0) {
       const baseXp = Math.min(50 + Math.floor(multiplier * 20), 200);
@@ -48,7 +54,7 @@ const Slots: Command = {
     const container = new ContainerBuilder()
       .setAccentColor(multiplier > 0 ? Colors.Gold : Colors.Red)
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `**🎰 Slots**\n${reels.join(' ｜ ')}\n${label}\n${multiplier > 0 ? `**${multiplier}x** — you won **${sym} ${winnings.toLocaleString()}**!` : `You lost **${sym} ${bet.toLocaleString()}**.`}\n**Balance:** ${sym} **${newBalance.toLocaleString()}**\n*🍒×3=1.5x | 🍋×3=2x | 🔔×3=3x | 💎×3=5x | 7️⃣×3=10x*${xpLine}`
+        `**🎰 Slots**\n${reels.join(' ｜ ')}\n${label}\n${multiplier > 0 ? `**${multiplier}x** — you won **${sym} ${winnings.toLocaleString()}**!${luckMult > 1 ? ' *(🍀 Lucky Charm!)*' : ''}` : `You lost **${sym} ${bet.toLocaleString()}**.`}\n**Balance:** ${sym} **${newBalance.toLocaleString()}**\n*🍒×3=1.5x | 🍋×3=2x | 🔔×3=3x | 💎×3=5x | 7️⃣×3=10x*${xpLine}`
       ));
     await interaction.reply({ flags: IS_CV2, components: [container] });
   },

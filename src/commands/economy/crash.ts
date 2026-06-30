@@ -4,24 +4,26 @@ import {
   SlashCommandBuilder,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
-import { getOrCreateEconomy, getEconomyConfig, adjustBalance } from '../../utils/db';
+import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplier, recordGameResult } from '../../utils/db';
 import { awardBonusXp } from '../../utils/xpBonus.js';
-import { rand, randInt } from '../../utils/random.js';
+import { rand, getHouseCut } from '../../utils/random.js';
 import { cv2Err } from '../../utils/components.js';
 
-// 4% house edge via forced instant crash; otherwise uniform→ ~1/(1-t) distribution
-function generateCrash(): number {
-  const r = rand();
-  if (r < 0.04) return 1.00;
-  const t = (r - 0.04) / 0.96;
-  return Math.min(100, Math.round(1 / (1 - t) * 100) / 100);
+// Stock-style multiplier: it drifts up and down each tick. You can cash out at the
+// current value (never below 1.00x) any time — the only way to lose everything is
+// a "crash to 0" bust event, whose chance rises the higher the multiplier climbs.
+const FLOOR = 1.00;
+
+function bustChance(m: number): number {
+  // 4% near the floor, climbing as it goes up (higher reward ⇒ higher risk), capped at 35%.
+  return Math.min(0.35, 0.04 + (m - 1) * 0.025);
 }
 
-function getStep(m: number): number {
-  if (m < 2)  return 0.10;
-  if (m < 5)  return 0.20;
-  if (m < 10) return 0.50;
-  return 1.00;
+function nextMultiplier(m: number): number {
+  // Multiplicative random walk, roughly symmetric (range ≈ -24.75%…+25.25%). Tuned
+  // so no cash-out target is profitable: house edge grows the higher you hold out.
+  const pct = (rand() - 0.495) * 0.5;
+  return Math.max(FLOOR, Math.min(100, Math.round(m * (1 + pct) * 100) / 100));
 }
 
 function fmtMult(m: number): string {
@@ -42,7 +44,7 @@ function buildCashOutRow(mult: number, sym: string, bet: number, disabled = fals
 const Crash: Command = {
   data: new SlashCommandBuilder()
     .setName('crash')
-    .setDescription('Ride the multiplier up — cash out before it crashes or lose everything!')
+    .setDescription('Ride the multiplier as it swings up and down — cash out before it crashes to 0!')
     .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
     .setContexts([InteractionContextType.Guild])
     .addIntegerOption(o => o.setName('bet').setDescription('Amount to bet').setRequired(true).setMinValue(1)),
@@ -58,24 +60,14 @@ const Crash: Command = {
     }
 
     const sym = cfg.currency_symbol;
-    const crashPoint = generateCrash();
     let current = 1.00;
+    let peak = 1.00;
     let gameOver = false;
 
     await interaction.deferReply();
 
-    if (crashPoint <= 1.00) {
-      // Instant crash
-      const { newBalance } = await adjustBalance(guildId, userId, -bet);
-      await interaction.editReply({
-        content: `**🚀 Crash**\n💥 **Crashed instantly at 1.00x!**\nYou lost **${sym} ${bet.toLocaleString()}**.\n**Balance:** ${sym} **${newBalance.toLocaleString()}**`,
-        components: [],
-      });
-      return;
-    }
-
     const msg = await interaction.editReply({
-      content: `**🚀 Crash**\n\n📈 **${fmtMult(current)}** — Bet: ${sym} ${bet.toLocaleString()}\n\n*Click Cash Out before the rocket crashes!*`,
+      content: `**🚀 Crash**\n\n📈 **${fmtMult(current)}** — Bet: ${sym} ${bet.toLocaleString()}\n\n*The price swings up and down — cash out before it crashes to 0!*`,
       components: buildCashOutRow(current, sym, bet),
     });
 
@@ -83,34 +75,39 @@ const Crash: Command = {
       componentType: ComponentType.Button,
       filter: btn => btn.user.id === userId && btn.customId === 'crash_cashout',
       max: 1,
-      time: 90_000,
+      time: 120_000,
     });
 
     collector.on('collect', async (btn) => {
       if (gameOver) {
-        await btn.reply({ content: '💥 Too late — already crashed!', flags: MessageFlags.Ephemeral });
+        await btn.reply({ content: '💥 Too late — it already crashed!', flags: MessageFlags.Ephemeral });
         return;
       }
       gameOver = true;
       clearInterval(tick);
 
-      const winAmount = Math.floor(bet * current);
+      // Progressive house cut: larger bets have a chance the cash-out is voided.
+      const houseLoss = rand() < getHouseCut(bet);
+      const luckMult = !houseLoss ? await getGambleMultiplier(guildId, userId) : 1;
+      const winAmount = houseLoss ? 0 : Math.floor(bet * current * luckMult);
       const delta = winAmount - bet;
       const { newBalance } = await adjustBalance(guildId, userId, delta);
+      recordGameResult(guildId, userId, 'crash', !houseLoss, bet).catch(() => {});
 
-      const xpGiven = await awardBonusXp({
-        guildId, userId, baseAmount: Math.min(Math.floor(50 * current), 200),
-        client: interaction.client, channelId: interaction.channelId, isGame: true,
-      });
-      const xpLine = xpGiven > 0 ? ` +**${xpGiven} XP**!` : '';
+      let xpLine = '';
+      if (!houseLoss) {
+        const xpGiven = await awardBonusXp({
+          guildId, userId, baseAmount: Math.min(Math.floor(50 * current), 200),
+          client: interaction.client, channelId: interaction.channelId, isGame: true,
+        });
+        xpLine = xpGiven > 0 ? ` +**${xpGiven} XP**!` : '';
+      }
+      const boostLine = luckMult > 1 ? ' *(🍀 Lucky Charm!)*' : '';
 
       await btn.update({
-        content:
-          `**🚀 Crash**\n\n` +
-          `✅ **Cashed out at ${fmtMult(current)}!**\n` +
-          `You won **${sym} ${winAmount.toLocaleString()}**!${xpLine}\n` +
-          `*(Rocket crashed at ${fmtMult(crashPoint)})*\n` +
-          `**Balance:** ${sym} **${newBalance.toLocaleString()}**`,
+        content: houseLoss
+          ? `**🚀 Crash**\n\n💸 **The house wins!** You cashed out at ${fmtMult(current)} but the house took this one.\nYou lost **${sym} ${bet.toLocaleString()}**.\n**Balance:** ${sym} **${newBalance.toLocaleString()}**`
+          : `**🚀 Crash**\n\n✅ **Cashed out at ${fmtMult(current)}!** *(peak ${fmtMult(peak)})*\nYou won **${sym} ${winAmount.toLocaleString()}**!${boostLine}${xpLine}\n**Balance:** ${sym} **${newBalance.toLocaleString()}**`,
         components: [],
       });
     });
@@ -120,11 +117,11 @@ const Crash: Command = {
         gameOver = true;
         clearInterval(tick);
         const { newBalance } = await adjustBalance(guildId, userId, -bet);
+        recordGameResult(guildId, userId, 'crash', false, bet).catch(() => {});
         await interaction.editReply({
           content:
             `**🚀 Crash**\n\n` +
-            `⏰ **Timed out** — the rocket crashed at ${fmtMult(crashPoint)}.\n` +
-            `You lost **${sym} ${bet.toLocaleString()}**.\n` +
+            `⏰ **Timed out** — you never cashed out and lost **${sym} ${bet.toLocaleString()}**.\n` +
             `**Balance:** ${sym} **${newBalance.toLocaleString()}**`,
           components: [],
         }).catch(() => {});
@@ -134,17 +131,17 @@ const Crash: Command = {
     const tick = setInterval(async () => {
       if (gameOver) { clearInterval(tick); return; }
 
-      current = Math.round((current + getStep(current)) * 100) / 100;
-
-      if (current >= crashPoint) {
+      // Bust check — the price crashes straight to 0 and the bet is lost.
+      if (rand() < bustChance(current)) {
         gameOver = true;
         clearInterval(tick);
         collector.stop('crashed');
         const { newBalance } = await adjustBalance(guildId, userId, -bet);
+        recordGameResult(guildId, userId, 'crash', false, bet).catch(() => {});
         await interaction.editReply({
           content:
             `**🚀 Crash**\n\n` +
-            `💥 **CRASHED at ${fmtMult(crashPoint)}!**\n` +
+            `💥 **CRASHED to 0 from ${fmtMult(current)}!** *(peak ${fmtMult(peak)})*\n` +
             `You lost **${sym} ${bet.toLocaleString()}**.\n` +
             `**Balance:** ${sym} **${newBalance.toLocaleString()}**`,
           components: [],
@@ -152,8 +149,13 @@ const Crash: Command = {
         return;
       }
 
+      const prev = current;
+      current = nextMultiplier(current);
+      if (current > peak) peak = current;
+      const arrow = current >= prev ? '📈' : '📉';
+
       await interaction.editReply({
-        content: `**🚀 Crash**\n\n📈 **${fmtMult(current)}** — Bet: ${sym} ${bet.toLocaleString()}\n\n*Click Cash Out before the rocket crashes!*`,
+        content: `**🚀 Crash**\n\n${arrow} **${fmtMult(current)}** — Bet: ${sym} ${bet.toLocaleString()}  *(peak ${fmtMult(peak)})*\n\n*The price swings up and down — cash out before it crashes to 0!*`,
         components: buildCashOutRow(current, sym, bet),
       }).catch(() => {});
     }, 1500);

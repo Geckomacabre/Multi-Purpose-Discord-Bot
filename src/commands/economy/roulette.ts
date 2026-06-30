@@ -3,9 +3,9 @@ import {
   ContainerBuilder, InteractionContextType, SlashCommandBuilder, TextDisplayBuilder,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
-import { getOrCreateEconomy, getEconomyConfig, adjustBalance } from '../../utils/db';
+import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplier, recordGameResult } from '../../utils/db';
 import { awardBonusXp } from '../../utils/xpBonus.js';
-import { randInt } from '../../utils/random.js';
+import { randInt, rand, getHouseCut } from '../../utils/random.js';
 import { cv2Err, IS_CV2 } from '../../utils/components.js';
 
 // Standard European roulette red numbers
@@ -30,7 +30,7 @@ const Roulette: Command = {
           { name: '🎯 Single Number (35x)', value: 'number' },
         ))
     .addIntegerOption(o =>
-      o.setName('number').setDescription('0–36 (only used with Single Number)').setMinValue(0).setMaxValue(36)),
+      o.setName('number').setDescription('1–36 (only used with Single Number)').setMinValue(1).setMaxValue(36)),
 
   async run(interaction: ChatInputCommandInteraction) {
     const guildId = interaction.guildId!;
@@ -48,26 +48,40 @@ const Roulette: Command = {
       await interaction.reply(cv2Err(`❌ Not enough ${cfg.currency_name}. Balance: **${cfg.currency_symbol} ${eco.balance.toLocaleString()}**.`)); return;
     }
 
-    const result = randInt(0, 36);
-    const isRed = RED.has(result);
-    const colorEmoji = result === 0 ? '🟢' : isRed ? '🔴' : '⚫';
-    const colorName  = result === 0 ? 'Green' : isRed ? 'Red' : 'Black';
-
-    let win = false;
+    let result = randInt(1, 36);
     let multiplier = 2;
-    switch (type) {
-      case 'red':    win = isRed;                          break;
-      case 'black':  win = !isRed && result !== 0;         break;
-      case 'even':   win = result !== 0 && result % 2 === 0; break;
-      case 'odd':    win = result % 2 === 1;               break;
-      case 'low':    win = result >= 1 && result <= 18;    break;
-      case 'high':   win = result >= 19;                   break;
-      case 'number': win = result === targetNum; multiplier = 36; break;
+    const wouldWin = (r: number) => {
+      const red = RED.has(r);
+      switch (type) {
+        case 'red':    return red;
+        case 'black':  return !red;
+        case 'even':   return r % 2 === 0;
+        case 'odd':    return r % 2 === 1;
+        case 'low':    return r <= 18;
+        case 'high':   return r >= 19;
+        case 'number': return r === targetNum;
+        default:       return false;
+      }
+    };
+    if (type === 'number') multiplier = 36;
+    // Apply house cut before showing result: re-spin to a losing number so the display is honest
+    if (wouldWin(result) && rand() < getHouseCut(bet)) {
+      for (let i = 0; i < 50; i++) {
+        const candidate = randInt(1, 36);
+        if (!wouldWin(candidate)) { result = candidate; break; }
+      }
     }
+    const isRed = RED.has(result);
+    const colorEmoji = isRed ? '🔴' : '⚫';
+    const colorName  = isRed ? 'Red' : 'Black';
+    const win = wouldWin(result);
 
     const sym = cfg.currency_symbol;
-    const delta = win ? bet * (multiplier - 1) : -bet;
+    const luckMult = win ? await getGambleMultiplier(guildId, userId) : 1;
+    const winnings = win ? Math.floor(bet * (multiplier - 1) * luckMult) : 0;
+    const delta = win ? winnings : -bet;
     const { newBalance } = await adjustBalance(guildId, userId, delta);
+    recordGameResult(guildId, userId, 'roulette', win, bet).catch(() => {});
 
     let xpLine = '';
     if (win) {
@@ -91,7 +105,7 @@ const Roulette: Command = {
         `The ball landed on **${colorEmoji} ${result}** *(${colorName})*\n\n` +
         `Bet on: **${betLabel[type]}**\n` +
         (win
-          ? `✅ You won **${sym} ${(bet * (multiplier - 1)).toLocaleString()}**!`
+          ? `✅ You won **${sym} ${winnings.toLocaleString()}**!${luckMult > 1 ? ' *(🍀 Lucky Charm!)*' : ''}`
           : `❌ You lost **${sym} ${bet.toLocaleString()}**.`) +
         `\n**Balance:** ${sym} **${newBalance.toLocaleString()}**${xpLine}`
       ));

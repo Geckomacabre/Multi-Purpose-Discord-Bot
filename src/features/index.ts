@@ -25,6 +25,9 @@ import guildActionsModule from './guild-actions';
 import timezoneModule from './timezone';
 import verifyModule from './verify';
 import spamDetectModule from './spamdetect';
+import mediaguessModule, { startMediaGames } from './mediaguess';
+import streamVcModule from './streamvc';
+import { startLottery } from './lottery';
 
 const features = [
   countingModule,
@@ -47,6 +50,8 @@ const features = [
   timezoneModule,
   verifyModule,
   spamDetectModule,
+  mediaguessModule,
+  streamVcModule,
 ];
 
 export function registerFeatures(bot: Client) {
@@ -70,5 +75,7 @@ export function registerFeatures(bot: Client) {
     startBirthdayChecker(bot);
     startStatChannelUpdater(bot);
     startTopicPoller(bot);
+    startMediaGames(bot);
+    startLottery(bot);
   });
 }

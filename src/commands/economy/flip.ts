@@ -3,9 +3,9 @@ import {
   ContainerBuilder, InteractionContextType, SlashCommandBuilder, TextDisplayBuilder,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
-import { getOrCreateEconomy, getEconomyConfig, adjustBalance } from '../../utils/db';
+import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplier, recordGameResult } from '../../utils/db';
 import { awardBonusXp } from '../../utils/xpBonus.js';
-import { rand, randInt } from '../../utils/random.js';
+import { rand, randInt, getHouseCut } from '../../utils/random.js';
 import { cv2Err, IS_CV2 } from '../../utils/components.js';
 
 const Flip: Command = {
@@ -25,8 +25,11 @@ const Flip: Command = {
       await interaction.reply(cv2Err(`❌ Not enough ${cfg.currency_name}. Your balance: **${cfg.currency_symbol} ${eco.balance.toLocaleString()}**.`)); return;
     }
     const sym = cfg.currency_symbol;
-    const win = rand() < 0.5;
-    const { newBalance } = await adjustBalance(guildId, userId, win ? bet : -bet);
+    const win = rand() < 0.5 && rand() >= getHouseCut(bet);
+    const luckMult = win ? await getGambleMultiplier(guildId, userId) : 1;
+    const winDelta = win ? Math.floor(bet * luckMult) : -bet;
+    const { newBalance } = await adjustBalance(guildId, userId, winDelta);
+    recordGameResult(guildId, userId, 'flip', win, bet).catch(() => {});
     let xpLine = '';
     if (win) {
       const xpGiven = await awardBonusXp({
@@ -38,7 +41,7 @@ const Flip: Command = {
     const container = new ContainerBuilder()
       .setAccentColor(win ? Colors.Green : Colors.Red)
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `**${win ? '🪙 Heads!' : '🌑 Tails!'}**\n${win ? `You won **${sym} ${bet.toLocaleString()}**!` : `You lost **${sym} ${bet.toLocaleString()}**.`}\n**Balance:** ${sym} **${newBalance.toLocaleString()}**${xpLine}`
+        `**${win ? '🪙 Heads!' : '🌑 Tails!'}**\n${win ? `You won **${sym} ${Math.floor(bet * luckMult).toLocaleString()}**!${luckMult > 1 ? ' *(🍀 Lucky Charm!)*' : ''}` : `You lost **${sym} ${bet.toLocaleString()}**.`}\n**Balance:** ${sym} **${newBalance.toLocaleString()}**${xpLine}`
       ));
     await interaction.reply({ flags: IS_CV2, components: [container] });
   },

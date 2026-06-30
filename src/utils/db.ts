@@ -129,6 +129,19 @@ export type ITicketConfig = {
   next_ticket_num: number;
 };
 
+export type IStreamVcConfig = {
+  guild_id: string;
+  vc_id: string | null;
+  alert_channel_id: string | null;
+  required_role_id: string | null; // role needed to be eligible to request (e.g. Self Promo)
+};
+
+export type IStreamVcApprover = {
+  guild_id: string;
+  target_id: string;
+  is_role: number; // 1 = role, 0 = user
+};
+
 export type ITicket = {
   id: number;
   guild_id: string;
@@ -266,6 +279,24 @@ export type IEconomyConfig = {
   yearly_max: number;
   work_min: number;
   work_max: number;
+  lottery_channel_id: string | null;
+  lottery_enabled: number;
+  lottery_prize: number;
+};
+
+export type IEconomyProtection = {
+  guild_id: string;
+  user_id: string;
+  expires_at: number;
+};
+
+export type IEconomyBoost = {
+  id: number;
+  guild_id: string;
+  user_id: string;
+  type: string;
+  multiplier: number;
+  expires_at: number;
 };
 
 export type IXp = {
@@ -579,6 +610,21 @@ export async function initDb() {
   )`;
   try { await db`ALTER TABLE tickets ADD COLUMN claimed_by TEXT`; } catch {}
   try { await db`ALTER TABLE tickets ADD COLUMN rating INTEGER`; } catch {}
+
+  await db`CREATE TABLE IF NOT EXISTS streamvc_config (
+    guild_id         TEXT PRIMARY KEY,
+    vc_id            TEXT,
+    alert_channel_id TEXT,
+    required_role_id TEXT
+  )`;
+  try { await db`ALTER TABLE streamvc_config ADD COLUMN required_role_id TEXT`; } catch {}
+
+  await db`CREATE TABLE IF NOT EXISTS streamvc_approvers (
+    guild_id  TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    is_role   INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (guild_id, target_id)
+  )`;
 
   await db`CREATE TABLE IF NOT EXISTS reminders (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -957,6 +1003,53 @@ export async function initDb() {
     posted_at INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (guild_id, item_id)
   )`;
+
+  await db`CREATE TABLE IF NOT EXISTS mediaguess_config (
+    guild_id         TEXT PRIMARY KEY,
+    movie_channel_id TEXT,
+    tv_channel_id    TEXT
+  )`;
+
+  await db`CREATE TABLE IF NOT EXISTS economy_protection (
+    guild_id   TEXT NOT NULL,
+    user_id    TEXT NOT NULL,
+    expires_at INTEGER NOT NULL,
+    PRIMARY KEY (guild_id, user_id)
+  )`;
+
+  await db`CREATE TABLE IF NOT EXISTS economy_boosts (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id   TEXT NOT NULL,
+    user_id    TEXT NOT NULL,
+    type       TEXT NOT NULL,
+    multiplier REAL NOT NULL DEFAULT 1.0,
+    expires_at INTEGER NOT NULL
+  )`;
+
+  try { await db`ALTER TABLE economy_config ADD COLUMN lottery_channel_id TEXT`; } catch {}
+  try { await db`ALTER TABLE economy_config ADD COLUMN lottery_enabled INTEGER NOT NULL DEFAULT 0`; } catch {}
+  try { await db`ALTER TABLE economy_config ADD COLUMN lottery_prize INTEGER NOT NULL DEFAULT 50000`; } catch {}
+  // Migrate existing rows still at the old 1 000 default
+  try { await db`UPDATE economy_config SET lottery_prize = 50000 WHERE lottery_prize = 1000`; } catch {}
+
+  await db`CREATE TABLE IF NOT EXISTS game_stats (
+    guild_id      TEXT    NOT NULL,
+    user_id       TEXT    NOT NULL,
+    game          TEXT    NOT NULL,
+    wins          INTEGER NOT NULL DEFAULT 0,
+    losses        INTEGER NOT NULL DEFAULT 0,
+    total_wagered INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (guild_id, user_id, game)
+  )`;
+
+  await db`CREATE TABLE IF NOT EXISTS game_xp_daily (
+    guild_id TEXT    NOT NULL,
+    user_id  TEXT    NOT NULL,
+    date     TEXT    NOT NULL,
+    total    INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (guild_id, user_id, date)
+  )`;
+  try { await db`DELETE FROM game_xp_daily WHERE date < date('now', '-7 days')`; } catch {}
 }
 
 // ─── News feeds ───────────────────────────────────────────────────────────────
@@ -997,6 +1090,37 @@ export async function pruneOldNews(cutoffMs: number): Promise<void> {
   await db`DELETE FROM news_posted WHERE posted_at < ${cutoffMs}`;
 }
 
+// ─── Media guessing game ──────────────────────────────────────────────────────
+
+export type IMediaGuessConfig = {
+  guild_id: string;
+  movie_channel_id: string | null;
+  tv_channel_id: string | null;
+};
+
+export async function getMediaGuessConfig(guild_id: string): Promise<IMediaGuessConfig | null> {
+  const [row] = await db`SELECT * FROM mediaguess_config WHERE guild_id = ${guild_id}`;
+  return row ? (row as IMediaGuessConfig) : null;
+}
+
+export async function setMediaGuessConfig(guild_id: string, type: 'movie' | 'tv', channel_id: string | null): Promise<void> {
+  await ensureConfig(guild_id);
+  if (type === 'movie') {
+    await db`INSERT INTO mediaguess_config (guild_id, movie_channel_id, tv_channel_id)
+      VALUES (${guild_id}, ${channel_id}, NULL)
+      ON CONFLICT(guild_id) DO UPDATE SET movie_channel_id = excluded.movie_channel_id`;
+  } else {
+    await db`INSERT INTO mediaguess_config (guild_id, movie_channel_id, tv_channel_id)
+      VALUES (${guild_id}, NULL, ${channel_id})
+      ON CONFLICT(guild_id) DO UPDATE SET tv_channel_id = excluded.tv_channel_id`;
+  }
+}
+
+export async function getAllMediaGuessConfigs(): Promise<IMediaGuessConfig[]> {
+  const rows = await db`SELECT * FROM mediaguess_config WHERE movie_channel_id IS NOT NULL OR tv_channel_id IS NOT NULL`;
+  return rows as IMediaGuessConfig[];
+}
+
 // ─── Bot config ───────────────────────────────────────────────────────────────
 
 export async function getBotConfig(key: string): Promise<string | null> {
@@ -1029,6 +1153,7 @@ export async function removeGuild(guild_id: string) {
     'welcome_config', 'stat_channels', 'giveaways', 'reaction_roles',
     'topic_channels', 'topics', 'starboard_config', 'starboard_posts',
     'tags', 'music_config', 'news_config', 'verify_config',
+    'streamvc_config', 'streamvc_approvers',
   ]) {
     await db`DELETE FROM ${db(table)} WHERE guild_id = ${guild_id}`.catch(() => {});
   }
@@ -1394,6 +1519,42 @@ export async function setTicketConfig(guild_id: string, fields: Partial<Omit<ITi
       log_channel_id = COALESCE(excluded.log_channel_id, log_channel_id),
       support_role_id = COALESCE(excluded.support_role_id, support_role_id)
   `;
+}
+
+// ─── Stream VC request-to-join ──────────────────────────────────────────────────
+
+export async function getStreamVcConfig(guild_id: string): Promise<IStreamVcConfig | null> {
+  const [row] = await db`SELECT * FROM streamvc_config WHERE guild_id = ${guild_id}`;
+  return (row as IStreamVcConfig) || null;
+}
+
+export async function setStreamVcConfig(guild_id: string, fields: Partial<Omit<IStreamVcConfig, 'guild_id'>>) {
+  await db`
+    INSERT INTO streamvc_config (guild_id, vc_id, alert_channel_id, required_role_id)
+    VALUES (${guild_id}, ${fields.vc_id ?? null}, ${fields.alert_channel_id ?? null}, ${fields.required_role_id ?? null})
+    ON CONFLICT(guild_id) DO UPDATE SET
+      vc_id = COALESCE(excluded.vc_id, vc_id),
+      alert_channel_id = COALESCE(excluded.alert_channel_id, alert_channel_id),
+      required_role_id = COALESCE(excluded.required_role_id, required_role_id)
+  `;
+}
+
+export async function getStreamVcApprovers(guild_id: string): Promise<IStreamVcApprover[]> {
+  const rows = await db`SELECT * FROM streamvc_approvers WHERE guild_id = ${guild_id}`;
+  return rows as IStreamVcApprover[];
+}
+
+export async function addStreamVcApprover(guild_id: string, target_id: string, is_role: boolean) {
+  await db`
+    INSERT INTO streamvc_approvers (guild_id, target_id, is_role)
+    VALUES (${guild_id}, ${target_id}, ${is_role ? 1 : 0})
+    ON CONFLICT(guild_id, target_id) DO UPDATE SET is_role = excluded.is_role
+  `;
+}
+
+export async function removeStreamVcApprover(guild_id: string, target_id: string): Promise<boolean> {
+  const rows = await db`DELETE FROM streamvc_approvers WHERE guild_id = ${guild_id} AND target_id = ${target_id} RETURNING target_id`;
+  return (rows as unknown[]).length > 0;
 }
 
 export async function createTicket(guild_id: string, channel_id: string, user_id: string, topic: string | null): Promise<ITicket> {
@@ -1788,6 +1949,7 @@ export async function getEconomyConfig(guild_id: string): Promise<IEconomyConfig
     monthly_min: 2000, monthly_max: 8000,
     yearly_min: 25000, yearly_max: 100000,
     work_min: 50, work_max: 200,
+    lottery_channel_id: null, lottery_enabled: 0, lottery_prize: 50000,
   };
 }
 
@@ -1854,6 +2016,122 @@ export async function setEconomyCooldown(user_id: string, type: string) {
   await db`
     INSERT INTO economy_cooldowns (user_id, type, last_used) VALUES (${user_id}, ${type}, ${Date.now()})
     ON CONFLICT(user_id, type) DO UPDATE SET last_used = excluded.last_used
+  `;
+}
+
+// ─── Economy Protection ────────────────────────────────────────────────────────
+
+export async function getProtection(guild_id: string, user_id: string): Promise<number | null> {
+  const [row] = await db`SELECT expires_at FROM economy_protection WHERE guild_id = ${guild_id} AND user_id = ${user_id} AND expires_at > ${Date.now()}`;
+  return row ? (row.expires_at as number) : null;
+}
+
+export async function setProtection(guild_id: string, user_id: string, expires_at: number): Promise<void> {
+  await db`
+    INSERT INTO economy_protection (guild_id, user_id, expires_at) VALUES (${guild_id}, ${user_id}, ${expires_at})
+    ON CONFLICT(guild_id, user_id) DO UPDATE SET expires_at = CASE WHEN excluded.expires_at > economy_protection.expires_at THEN excluded.expires_at ELSE economy_protection.expires_at END
+  `;
+}
+
+// ─── Economy Boosts ───────────────────────────────────────────────────────────
+
+export async function getActiveBoost(guild_id: string, user_id: string, type: string): Promise<IEconomyBoost | null> {
+  const [row] = await db`
+    SELECT * FROM economy_boosts
+    WHERE guild_id = ${guild_id} AND user_id = ${user_id} AND type = ${type} AND expires_at > ${Date.now()}
+    ORDER BY expires_at DESC LIMIT 1
+  `;
+  return (row as IEconomyBoost) || null;
+}
+
+export async function addBoost(guild_id: string, user_id: string, type: string, multiplier: number, expires_at: number): Promise<void> {
+  await db`INSERT INTO economy_boosts (guild_id, user_id, type, multiplier, expires_at) VALUES (${guild_id}, ${user_id}, ${type}, ${multiplier}, ${expires_at})`;
+}
+
+export async function getGambleMultiplier(guild_id: string, user_id: string): Promise<number> {
+  const boost = await getActiveBoost(guild_id, user_id, 'luck');
+  return boost?.multiplier ?? 1.0;
+}
+
+export async function getXpMultiplier(guild_id: string, user_id: string): Promise<number> {
+  const boost = await getActiveBoost(guild_id, user_id, 'xp');
+  return boost?.multiplier ?? 1.0;
+}
+
+// ─── Lottery ──────────────────────────────────────────────────────────────────
+
+export async function getLotteryConfigs(): Promise<Array<{ guild_id: string; lottery_channel_id: string; lottery_prize: number }>> {
+  const rows = await db`SELECT guild_id, lottery_channel_id, lottery_prize FROM economy_config WHERE lottery_enabled = 1 AND lottery_channel_id IS NOT NULL`;
+  return rows as any[];
+}
+
+export async function getLotteryLastRun(guild_id: string): Promise<string | null> {
+  const [row] = await db`SELECT value FROM bot_config WHERE key = ${'lottery_last_' + guild_id}`;
+  return (row?.value as string) ?? null;
+}
+
+export async function setLotteryLastRun(guild_id: string, date: string): Promise<void> {
+  await db`INSERT INTO bot_config (key, value) VALUES (${'lottery_last_' + guild_id}, ${date})
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value`;
+}
+
+export async function getRandomLotteryWinner(guild_id: string): Promise<string | null> {
+  const [row] = await db`SELECT user_id FROM xp WHERE guild_id = ${guild_id} ORDER BY RANDOM() LIMIT 1`;
+  return (row?.user_id as string) ?? null;
+}
+
+export async function setLotteryConfig(guild_id: string, channel_id: string | null, enabled: boolean): Promise<void> {
+  await ensureConfig(guild_id);
+  await db`INSERT INTO economy_config (guild_id, lottery_channel_id, lottery_enabled)
+    VALUES (${guild_id}, ${channel_id}, ${enabled ? 1 : 0})
+    ON CONFLICT(guild_id) DO UPDATE SET lottery_channel_id = excluded.lottery_channel_id, lottery_enabled = excluded.lottery_enabled`;
+}
+
+// ─── Game stats ───────────────────────────────────────────────────────────────
+
+export async function recordGameResult(
+  guild_id: string, user_id: string, game: string, won: boolean, wagered: number,
+): Promise<void> {
+  await db`
+    INSERT INTO game_stats (guild_id, user_id, game, wins, losses, total_wagered)
+    VALUES (${guild_id}, ${user_id}, ${game}, ${won ? 1 : 0}, ${won ? 0 : 1}, ${wagered})
+    ON CONFLICT(guild_id, user_id, game) DO UPDATE SET
+      wins          = wins + ${won ? 1 : 0},
+      losses        = losses + ${won ? 0 : 1},
+      total_wagered = total_wagered + ${wagered}
+  `;
+}
+
+export async function getGameLeaderboard(
+  guild_id: string, game: string, limit = 10,
+): Promise<{ user_id: string; wins: number; losses: number; total_wagered: number }[]> {
+  const rows = await db`
+    SELECT user_id, wins, losses, total_wagered
+    FROM game_stats
+    WHERE guild_id = ${guild_id} AND game = ${game}
+    ORDER BY wins DESC, losses ASC
+    LIMIT ${limit}
+  `;
+  return rows as any[];
+}
+
+// ─── Game XP daily cap (DB-backed so it survives restarts) ────────────────────
+
+export async function getGameXpUsedToday(guild_id: string, user_id: string): Promise<number> {
+  const today = new Date().toISOString().slice(0, 10);
+  const [row] = await db`
+    SELECT total FROM game_xp_daily
+    WHERE guild_id = ${guild_id} AND user_id = ${user_id} AND date = ${today}
+  `;
+  return (row?.total as number) ?? 0;
+}
+
+export async function addGameXpToday(guild_id: string, user_id: string, amount: number): Promise<void> {
+  const today = new Date().toISOString().slice(0, 10);
+  await db`
+    INSERT INTO game_xp_daily (guild_id, user_id, date, total)
+    VALUES (${guild_id}, ${user_id}, ${today}, ${amount})
+    ON CONFLICT(guild_id, user_id, date) DO UPDATE SET total = total + ${amount}
   `;
 }
 

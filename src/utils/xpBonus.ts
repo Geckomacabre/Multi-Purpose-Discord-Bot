@@ -1,32 +1,7 @@
 import { Client, TextChannel } from 'discord.js';
-import { addXp, getXpConfig, getLevelRoles, adjustBalance } from './db.js';
+import { addXp, getXpConfig, getLevelRoles, adjustBalance, getXpMultiplier, getGameXpUsedToday, addGameXpToday } from './db.js';
 
 const GAME_XP_DAILY_CAP = 1000;
-
-// guildId:userId -> { total, date (YYYY-MM-DD) }
-const gameXpTracker = new Map<string, { total: number; date: string }>();
-
-function todayDate() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-export function getGameXpRemaining(guildId: string, userId: string): number {
-  const key = `${guildId}:${userId}`;
-  const entry = gameXpTracker.get(key);
-  if (!entry || entry.date !== todayDate()) return GAME_XP_DAILY_CAP;
-  return Math.max(0, GAME_XP_DAILY_CAP - entry.total);
-}
-
-function recordGameXp(guildId: string, userId: string, amount: number) {
-  const key = `${guildId}:${userId}`;
-  const today = todayDate();
-  const entry = gameXpTracker.get(key);
-  if (!entry || entry.date !== today) {
-    gameXpTracker.set(key, { total: amount, date: today });
-  } else {
-    entry.total += amount;
-  }
-}
 
 async function handleLevelUp(
   guildId: string, userId: string, newLevel: number,
@@ -68,7 +43,7 @@ async function handleLevelUp(
 
 /**
  * Award bonus XP from a rep or game win.
- * @param isGame - if true, applies and enforces the 1000 XP/day game cap
+ * @param isGame - if true, applies and enforces the 1000 XP/day game cap (DB-backed)
  * @returns how much XP was actually awarded (0 if cap reached or XP disabled)
  */
 export async function awardBonusXp(opts: {
@@ -84,18 +59,30 @@ export async function awardBonusXp(opts: {
   const config = await getXpConfig(guildId);
   if (!config.enabled) return 0;
 
-  let amount = baseAmount;
+  // Apply XP boost FIRST so the cap enforces on actual XP being awarded
+  const xpMult = await getXpMultiplier(guildId, userId);
+  let amount = xpMult > 1.0 ? Math.floor(baseAmount * xpMult) : baseAmount;
+
   if (isGame) {
-    const remaining = getGameXpRemaining(guildId, userId);
+    const usedToday = await getGameXpUsedToday(guildId, userId);
+    const remaining = Math.max(0, GAME_XP_DAILY_CAP - usedToday);
     if (remaining <= 0) return 0;
-    amount = Math.min(baseAmount, remaining);
-    recordGameXp(guildId, userId, amount);
+    amount = Math.min(amount, remaining);
+    await addGameXpToday(guildId, userId, amount);
   }
 
   const { row, oldLevel } = await addXp(guildId, userId, amount, false);
   if (row.level > oldLevel) {
+    for (let lvl = oldLevel + 1; lvl < row.level; lvl++) {
+      await adjustBalance(guildId, userId, lvl * 50).catch(() => {});
+    }
     await handleLevelUp(guildId, userId, row.level, client, channelId);
   }
 
   return amount;
+}
+
+export function getGameXpRemaining(_guildId: string, _userId: string): number {
+  // Kept for backwards compatibility — callers should use awardBonusXp instead
+  return GAME_XP_DAILY_CAP;
 }

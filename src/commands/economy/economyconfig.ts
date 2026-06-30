@@ -4,7 +4,7 @@ import {
   SlashCommandBuilder, TextDisplayBuilder,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
-import { getEconomyConfig, setEconomyConfig } from '../../utils/db';
+import { getEconomyConfig, setEconomyConfig, setLotteryConfig } from '../../utils/db';
 import { cv2Text } from '../../utils/components.js';
 
 const IS_CV2 = MessageFlags.IsComponentsV2;
@@ -36,6 +36,8 @@ const EconomyConfig: Command = {
     .addSubcommand(s => s.setName('work').setDescription('Set the work reward range')
       .addIntegerOption(o => o.setName('min').setDescription('Minimum work reward').setRequired(true).setMinValue(1))
       .addIntegerOption(o => o.setName('max').setDescription('Maximum work reward').setRequired(true).setMinValue(1)))
+    .addSubcommand(s => s.setName('lottery').setDescription('Configure the daily lottery')
+      .addChannelOption(o => o.setName('channel').setDescription('Channel to announce lottery winners (omit to disable)').setRequired(false)))
     .addSubcommand(s => s.setName('view').setDescription('View current economy settings')),
 
   async run(interaction: ChatInputCommandInteraction) {
@@ -76,12 +78,24 @@ const EconomyConfig: Command = {
       if (min > max) { await interaction.reply({ ...cv2Text('❌ Min cannot be greater than max.'), flags: IS_CV2 | MessageFlags.Ephemeral }); return; }
       await setEconomyConfig(guildId, { work_min: min, work_max: max });
       await interaction.reply({ ...cv2Text(`Work reward set to **${min}–${max}** coins.`), flags: IS_CV2 | MessageFlags.Ephemeral });
+    } else if (sub === 'lottery') {
+      const channel = interaction.options.getChannel('channel');
+      if (channel) {
+        await setLotteryConfig(guildId, channel.id, true);
+        await interaction.reply({ ...cv2Text(`Daily lottery enabled! Winners announced in <#${channel.id}> once per day.`), flags: IS_CV2 | MessageFlags.Ephemeral });
+      } else {
+        await setLotteryConfig(guildId, null, false);
+        await interaction.reply({ ...cv2Text('Daily lottery disabled.'), flags: IS_CV2 | MessageFlags.Ephemeral });
+      }
     } else {
       const cfg = await getEconomyConfig(guildId);
+      const lotteryLine = cfg.lottery_enabled && cfg.lottery_channel_id
+        ? `\n**Daily Lottery:** Enabled — <#${cfg.lottery_channel_id}> (🪙 ${cfg.lottery_prize.toLocaleString()})`
+        : '\n**Daily Lottery:** Disabled';
       const container = new ContainerBuilder()
         .setAccentColor(Colors.Gold)
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-          `**Economy Config**\n**Currency:** ${cfg.currency_symbol} ${cfg.currency_name}\n**Starting Balance:** ${cfg.currency_symbol} ${cfg.starting_balance}\n**Daily Reward:** ${cfg.currency_symbol} ${cfg.daily_min}–${cfg.daily_max}\n**Weekly Reward:** ${cfg.currency_symbol} ${cfg.weekly_min}–${cfg.weekly_max}\n**Monthly Reward:** ${cfg.currency_symbol} ${cfg.monthly_min}–${cfg.monthly_max}\n**Yearly Reward:** ${cfg.currency_symbol} ${cfg.yearly_min}–${cfg.yearly_max}\n**Work Reward:** ${cfg.currency_symbol} ${cfg.work_min}–${cfg.work_max}`
+          `**Economy Config**\n**Currency:** ${cfg.currency_symbol} ${cfg.currency_name}\n**Starting Balance:** ${cfg.currency_symbol} ${cfg.starting_balance}\n**Daily Reward:** ${cfg.currency_symbol} ${cfg.daily_min}–${cfg.daily_max}\n**Weekly Reward:** ${cfg.currency_symbol} ${cfg.weekly_min}–${cfg.weekly_max}\n**Monthly Reward:** ${cfg.currency_symbol} ${cfg.monthly_min}–${cfg.monthly_max}\n**Yearly Reward:** ${cfg.currency_symbol} ${cfg.yearly_min}–${cfg.yearly_max}\n**Work Reward:** ${cfg.currency_symbol} ${cfg.work_min}–${cfg.work_max}${lotteryLine}`
         ));
       await interaction.reply({ flags: IS_CV2 | MessageFlags.Ephemeral, components: [container] });
     }

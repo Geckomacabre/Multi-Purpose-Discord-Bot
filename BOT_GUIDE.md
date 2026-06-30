@@ -1,0 +1,314 @@
+# 📖 Bot Command Guide
+
+---
+
+## 💰 Economy
+
+Earn and spend coins in the server economy.
+
+- `/balance [user]` — Check your coin balance (or anyone else's)
+- `/daily` — Collect your daily reward
+- `/work` — Work for a random coin payout
+- `/weekly` — Collect your weekly bonus
+- `/monthly` — Collect your monthly bonus
+- `/yearly` — Collect your yearly bonus
+- `/beg` — Beg for a small amount of coins (15-minute cooldown)
+- `/pay user: amount:` — Send coins to another member
+- `/economy leaderboard` — See who has the most coins on the server
+
+### 🦹 Rob & Protection
+
+- `/rob target:` — Attempt to rob another user (50/50 chance). On success you steal a **random amount** — could be a single coin or their whole wallet. Get fined if caught. **30-min cooldown** after failure, **1-hour cooldown** after success
+- `/protection` — Hire mob protection for **5,000 coins** — blocks all robbery attempts for 24 hours. Robbers who try get bounced with no cooldown penalty
+
+### 🏪 Shop
+
+- `/shop browse` — View available boosts
+- `/shop buy item:` — Purchase a boost with your coins
+  - 🔮 **XP Surge** — 2× XP from all sources for 1 hour (25,000 coins)
+  - 🍀 **Lucky Charm** — 1.5× gambling winnings for 30 minutes (30,000 coins)
+  - ⚡ **Hint Rush** — no hint cooldown in the guessing games for 15 minutes (75,000 coins)
+
+### 🎰 Daily Lottery
+
+Every day, one random member wins **1,000 coins** automatically! You're entered just by being active in the server (having any XP).
+
+---
+
+## 🎰 Gambling
+
+All gambling games award **bonus XP** on wins (capped at 1,000 XP/day across all games).
+
+- `/flip bet:` — Coin flip. 50/50 — win doubles your bet
+- `/highroll bet:` — Roll 1–100 against the bot. Higher roll wins
+- `/slots bet:` — 3-reel slot machine. Match 3 symbols to win (🍒×1.5x up to 7️⃣×10x)
+- `/roulette bet: type:` — Bet on Red/Black, Even/Odd, Low/High (all 2x), or a single number 1–36 (35x)
+- `/crash bet:` — Ride a stock-style multiplier that swings **up and down** each tick. Click **Cash Out** to bank the current value (always at least 1×) — but the price can **crash to 0** at any moment and wipe your bet, and the higher it climbs the likelier that gets
+- `/blackjack bet:` — Classic blackjack vs the dealer. Hit, Stand, or Double Down. Blackjack pays 1.5x
+- `/poker bet:` — **Jacks or Better** video poker. Pick which cards to hold, draw the rest, and get paid on your hand (Royal Flush = 250x)
+- `/scratch bet:` — Buy a scratch card. Click tiles to reveal 9 symbols — match 3 of any kind to win (🍒×1x up to 💎×10x)
+
+---
+
+## ⭐ Levels & XP
+
+Earn XP by chatting, winning games, and getting rep. Level up to earn coins and unlock roles.
+
+- `/rank [user]` — View your rank card showing level, XP, and server rank
+- `/level leaderboard` — See the top members by XP on this server
+
+> XP formula per level: `5L² + 50L + 100` — gets harder as you go up.
+
+---
+
+## 🏆 Reputation
+
+Give respect to members you like. Rep counts toward their XP too.
+
+- `/rep give user:` — Give someone a reputation point (+75 XP to them)
+- `/rep view [user]` — See how many rep points someone has
+- `/rep leaderboard` — Server reputation rankings
+
+---
+
+## 🎉 Giveaways
+
+- Use the **Enter** button on any active giveaway message to enter
+- Winners are picked randomly and announced when the timer ends
+
+---
+
+## 🎟️ Tickets
+
+- Click the **Open Ticket** button in the support channel to create a private ticket with staff
+- Inside your ticket: use the buttons to **save a transcript**, **rate support** (after closing), or wait for a mod to assist
+
+---
+
+## 🎥 Stream VC — Request to Join
+
+A locked voice channel (like a streamer's private VC). Only members with the **required role** (e.g. Self Promo) can ask, and approvers decide.
+
+- Click the **Request to Join** button on the panel (or run `/streamvc request`) — you need the required role. A notice posts in the request channel with a **Review** button
+- An approver clicks **Review** and gets an **ephemeral Approve / Reject** panel (only they see it). On **Approve**, the bot **unlocks the channel for you** and DMs you; on **Reject**, you're notified
+- Admins set it up with `/streamvc config set vc: request_channel: required_role:` — setting the VC **auto-locks it** — post the button with `/streamvc config panel`, and choose approvers with `/streamvc config add-approver`
+
+---
+
+## 🎬 Movie & TV Guessing Games
+
+Channel-based guessing games — a still from a movie or show is posted and everyone guesses in chat.
+
+- **Just type your guess** in the game channel — no command needed
+- Bot reacts **❗** if you're close, **‼️** if you're very close
+- First to guess correctly wins **+150 XP** (counts toward daily XP cap)
+- `/hint` — Reveal the next clue (5 per round: year → genre → cast → screenshot → synopsis)
+- `/voteskip` — Vote to skip the current round (2 votes needed)
+
+---
+
+## 🎮 Fun & Games
+
+- `/trivia [difficulty] [category]` — Answer a multiple-choice trivia question. Harder difficulties give more XP
+- `/wouldyourather` — Get a Would You Rather question — react with 🅰️ or 🅱️
+- `/8ball question:` — Ask the magic 8-ball anything
+- `/freegames` — Browse current free games on Epic Games, Steam, and GOG
+
+---
+
+## 🖼️ Image Effects
+
+Apply 40+ effects to any image or GIF. Target an image by attaching one to your command, replying to a message, or using **Right-click → Apps → Select Image** first.
+
+- `/image effect: [image]` — Apply an effect to an image
+
+**Available effects include:**
+`blur` `sharpen` `invert` `deepfry` `grayscale` `sepia` `flip` `flop` `wide` `stretch` `swirl` `magik` `circle` `crop` `tile` `wall` `bounce` `reverse` `spin` `slide` `fade` `explode` `implode` `vignette` `squish` `globe` `hue` `pixelate` `rotate` `jpeg` `caption` `caption2` `meme` `motivate` `whisper` `spotify` `reddit` `snapchat` `uncanny` `sonic` `homebrew` `watermark` `flag` `speed` `slow` `freeze` `togif`
+
+---
+
+## 🎵 Music
+
+Must be in a voice channel to use.
+
+- `/music play query:` — Play a song or playlist (name, YouTube, Spotify, SoundCloud links)
+- `/music nowplaying` — Show the currently playing track
+- `/music queue [page]` — View the queue
+- `/music skip` — Skip the current track
+- `/music pause` — Pause or resume playback
+- `/music stop` — Stop music and clear the queue
+- `/music volume level:` — Set playback volume (1–200)
+- `/music loop mode:` — Loop the current track, the whole queue, or turn off
+- `/music shuffle` — Shuffle the queue
+- `/music remove position:` — Remove a specific track from the queue
+- `/music seek time:` — Jump to a position in the current track (e.g. `1:30`)
+- `/music host user:` — Transfer DJ privileges to another user
+
+---
+
+## 🏷️ Tags
+
+Store and share reusable text snippets — great for FAQs, rules, links, etc.
+
+- `/tag get name:` — Post a saved tag
+- `/tag create name: content:` — Create a new tag (you own it)
+- `/tag edit name: content:` — Edit your own tag
+- `/tag delete name:` — Delete your own tag
+- `/tag info name:` — See who made a tag and how many times it's been used
+- `/tag list` — List all tags in the server
+
+---
+
+## 🎂 Birthday
+
+- `/birthday set month: day:` — Register your birthday with the server
+- `/birthday remove` — Remove your birthday
+- `/birthday view [user]` — See when someone's birthday is
+- `/birthday list` — See upcoming birthdays in the server
+
+---
+
+## 🎭 Self-Assign Roles
+
+- `/roles self name:` — Assign yourself a self-assignable role (if set up by admins)
+
+---
+
+## ⏰ Reminders
+
+- `/reminder set time: message:` — Set a reminder (e.g. `2h`, `30m`, `1d`)
+- `/reminder list` — See your active reminders
+- `/reminder delete id:` — Cancel a reminder
+
+---
+
+## 🛠️ Utility
+
+- `/ping` — Check the bot's response time and latency
+- `/userinfo [user]` — View detailed info about a member
+- `/serverinfo` — View server stats (members, roles, boosts, etc.)
+- `/avatar [user]` — View someone's full avatar
+- `/banner [user]` — View someone's profile banner
+- `/define word:` — Look up a word in the dictionary
+- `/translate text: [to]` — Translate text to another language
+- `/weather city:` — Get current weather for a location
+- `/roll [dice]` — Roll dice — supports expressions like `2d6`, `1d20+3`
+- `/base64 action: text:` — Encode or decode text in Base64
+- `/viewperms [user] [channel]` — View a user's permissions in the server or a specific channel
+- `/listroles` — List all roles in the server
+- `/makeaquote` — Turn any message into a styled quote card (right-click a message → **Apps → Make it a Quote**)
+
+---
+---
+
+# 🔨 Moderator Section
+
+*Paste the section below into your mod-only info channel.*
+
+---
+
+## ⚖️ Moderation Actions
+
+All actions are logged to the modlog channel and stored as cases.
+
+- `/ban user: [reason] [delete_days]` — Permanently ban a member
+- `/unban user:` — Unban a member by user ID
+- `/kick user: [reason]` — Kick a member from the server
+- `/timeout user: duration: [reason]` — Mute a member for a set duration (e.g. `1h`, `7d`)
+- `/untimeout user:` — Remove an active timeout early
+- `/warn user: reason:` — Issue a formal warning (stored in case log)
+- `/purge amount: [user] [contains]` — Bulk delete up to 100 messages; filter by user or keyword
+- `/case id:` — Look up a specific mod case by its ID
+- `/reason id: reason:` — Update the reason on an existing mod case
+- `/warnings user:` — View all warnings on record for a member
+- `/report user: reason:` — Members can also use this to report someone to staff
+
+---
+
+## 🎟️ Ticket Management
+
+These commands work **inside an active ticket channel**.
+
+- `/ticket close [reason]` — Close and archive the ticket
+- `/ticket transcript` — Generate and save a full text transcript
+- `/ticket add user:` — Add a user to the ticket channel
+- `/ticket remove user:` — Remove a user from the ticket channel
+- **Claim button** — Click inside the ticket to claim it (removes the support role, assigns to you)
+- `/ticket ratings` — View ticket rating stats and breakdown for the server
+
+---
+
+## 🎉 Giveaway Management
+
+- `/giveaway start prize: duration: winners: [channel]` — Start a giveaway (`1h`, `2d`, etc.)
+- `/giveaway end id:` — End a giveaway early and pick winners immediately
+- `/giveaway reroll id:` — Reroll new winners for an ended giveaway
+- `/giveaway list` — See all active giveaways
+
+---
+
+## ⚙️ Configuration (Admin Only)
+
+### Moderation
+- `/modconfig modlog [channel]` — Set the channel where all mod actions are logged (omit to clear)
+- `/modconfig dm enabled:` — Toggle whether punished users receive a DM about their case
+- `/modconfig view` — View current mod settings
+
+### Birthday System
+- `/birthdayconfig channel [channel]` — Set the birthday announcement channel
+- `/birthdayconfig toggle` — Enable or disable birthday announcements
+- `/birthdayconfig view` — View current birthday config
+- `/birthdayconfig delete user:` — Remove a user's birthday from the server
+
+### Levels & XP
+- `/levelconfig toggle` — Enable or disable the XP system
+- `/levelconfig channel [channel]` — Set where level-up announcements are sent
+- `/levelconfig xp min: max:` — Set the XP range awarded per message
+- `/levelconfig message text:` — Customize the level-up announcement message
+- `/levelconfig announce type:` — Set announcement style (channel, reply, or off)
+- `/levelconfig background url:` — Set a custom background image for rank cards
+- `/levelconfig roles add role: level:` — Add a role reward at a specific level
+- `/levelconfig roles remove role:` — Remove a level role reward
+- `/levelconfig roles list` — List all configured level role rewards
+- `/levelconfig view` — View all level system settings
+
+### Economy
+- `/economyconfig currency name:` — Set the server currency name (e.g. "Gold")
+- `/economyconfig starting amount:` — Set how many coins new members start with
+- `/economyconfig daily amount:` — Set the `/daily` payout
+- `/economyconfig weekly amount:` — Set the `/weekly` payout
+- `/economyconfig monthly amount:` — Set the `/monthly` payout
+- `/economyconfig yearly amount:` — Set the `/yearly` payout
+- `/economyconfig work min: max:` — Set the `/work` payout range
+- `/economyconfig view` — View all economy settings
+
+### Reputation
+- `/repconfig take user:` — Remove a reputation point from a user
+
+### Roles
+- `/rolesconfig self-assign add role:` — Add a self-assignable role
+- `/rolesconfig self-assign remove role:` — Remove a self-assignable role
+- `/rolesconfig self-assign list` — List self-assignable roles
+- `/rolesconfig auto add role: [trigger]` — Add an auto-role on member join
+- `/rolesconfig auto remove role:` — Remove an auto-role
+- `/rolesconfig auto list` — List auto-roles
+- `/rolesconfig voice add role: channel:` — Assign a role while in a voice channel
+- `/rolesconfig voice remove role:` — Remove a voice role
+- `/rolesconfig voice list` — List voice roles
+- `/rolesconfig reaction add role: message: emoji:` — Set up a reaction role
+- `/rolesconfig reaction remove` — Remove a reaction role
+- `/rolesconfig reaction clear` — Clear all reaction roles from a message
+- `/rolesconfig reaction list` — List all reaction roles
+- `/rolesconfig bulk roles:` — Assign multiple roles to a member at once
+
+### Verification Gate
+- `/verify setup channel: member_role: [unverified_role] [title] [description]` — Post a verification button in a channel; members click it to receive their member role
+
+### Guessing Games
+- `/mediaguess setup type: channel:` — Set up the movie or TV show game in a channel (starts the first round immediately)
+- `/mediaguess stop` — Stop the game in the current channel and remove its config
+- `/mediaguess skip` — Force-skip the current round without needing 2 votes
+- `/mediaguess info` — View configured channels and current round status
+
+### Server Features
+- `/config` — Configure server-wide features (free games platforms, stat channels, and more)

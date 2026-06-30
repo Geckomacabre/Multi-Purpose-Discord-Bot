@@ -42,6 +42,7 @@ YOUTUBE_API_KEY=         # YouTube upload alerts (/youtube)
 WEATHER_API_KEY=         # OpenWeatherMap key (/weather)
 REPORT_CHANNEL_ID=       # Fallback channel for /report when no modlog is set
 TENOR_API_KEY=           # GIF search (/gif) — free key at https://developers.google.com/tenor
+TMDB_API_KEY=            # Movie/TV guessing games — free key at https://www.themoviedb.org/settings/api
 ```
 
 ### Running
@@ -186,6 +187,20 @@ Powered by Discord presence detection. Requires the **Presence Intent**.
 | `/config streaming set` | Configure the announcement channel, a role to assign while streaming, and a custom message template (`{username}`, `{game}`, `{url}`). |
 | `/config streaming view` | View current streaming settings. |
 
+#### Stream VC — Request to Join
+A locked voice channel (e.g. a streamer's private VC). Setting the channel **auto-locks it** (denies `@everyone` Connect). Only members with the configured **required role** (e.g. Self Promo) can request. Each request posts a notice in the **request channel** with a **Review** button; when an approver clicks it, the **Approve/Reject panel opens ephemerally** (only that approver sees it). Approving **unlocks the channel for that member** (grants `Connect`), and the notice updates to show the outcome.
+
+| Command | Description |
+|---|---|
+| `/streamvc request [reason]` | Ask the approvers to let you in (requires the configured role). |
+| `/streamvc config set [vc] [request_channel] [required_role]` | Set the voice channel (auto-locked), the channel where requests are posted, and the role needed to request (Manage Server). |
+| `/streamvc config panel [channel]` | Post a persistent **Request to Join** button panel members can click (Manage Server). |
+| `/streamvc config add-approver <user/role>` | Add a user or role that can review and approve/reject requests (Manage Server). |
+| `/streamvc config remove-approver <user/role>` | Remove an approver (Manage Server). |
+| `/streamvc config view` | Show the current stream VC settings. |
+
+> The bot needs **Manage Roles/Channels** on the voice channel to lock it and grant access. Make the request channel visible only to approvers so requests stay private. Anyone with **Manage Channels** can always approve, in addition to the configured approvers.
+
 #### Server Stats
 | Command | Description |
 |---|---|
@@ -230,13 +245,25 @@ No configuration needed — active automatically. Detects and deletes messages c
 | `/8ball <question>` | Ask the magic 8-ball a yes/no question. |
 | `/catfact` | Get a random cat fact. |
 | `/dogfact` | Get a random dog fact. |
-| `/dadjoke` | Get a random dad joke. |
-| `/advice` | Get a random piece of advice. |
 | `/inspire` | Get an inspirational quote. |
-| `/topic` | Get a random conversation topic. |
 | `/wouldyourather` | Get a would-you-rather question. |
 | `/xkcd [number]` | Get a random or specific xkcd comic. |
 | `/roast <user>` | Roast a user (all in good fun). |
+
+#### Guessing Games
+
+Channel-based movie and TV show guessing games.
+
+| Command | Description |
+|---|---|
+| `/hint` | Reveal the next clue for the active guessing game (5 hints per round: year, genre, cast, screenshot, synopsis) |
+| `/voteskip` | Vote to skip the current round (2 votes needed) |
+| `/mediaguess setup <type> <channel>` | *(Admin)* Set up the movie or TV show game channel and start the first round |
+| `/mediaguess stop` | *(Admin)* Stop the game in this channel and remove its config |
+| `/mediaguess skip` | *(Admin)* Force-skip the current round without a vote |
+| `/mediaguess info` | *(Admin)* View game configuration and active round status |
+
+Powered by the **TMDB API** — add `TMDB_API_KEY=your_key` to `.env` (free key at [themoviedb.org](https://www.themoviedb.org/settings/api)). No local database needed; titles and metadata are fetched live from thousands of popular movies and shows (1975 to present). Scene stills are sourced from **MovieStillsDB** (genuine publicity/production stills with no title overlay), falling back to TMDB backdrops when a title isn't available there. Repeats are suppressed per channel for 6 hours.
 
 #### Fun
 
@@ -288,11 +315,24 @@ All economy commands are under `/economy`.
 | `/monthly` | Claim a monthly coin reward (30-day cooldown). |
 | `/yearly` | Claim a yearly coin reward (365-day cooldown). |
 | `/work` | Work to earn coins with a random job flavor text (1-hour cooldown). |
+| `/beg` | Beg for a small coin reward (15-minute cooldown, 10–100 coins). |
 | `/pay <user> <amount>` | Transfer coins to another user. |
 | `/economy leaderboard [limit]` | Show the richest users in the server. |
-| `/flip <bet>` | Bet on a coin flip — win doubles your bet (50/50). |
+| `/flip <bet>` | Bet on a coin flip — win doubles your bet (50/50). Lucky Charm boosts wins 1.5×. |
 | `/highroll <bet>` | Roll 1–100 against the bot — higher roll wins; ties refund your bet. |
 | `/slots <bet>` | Spin the slot machine — match 3 symbols to win. Payouts: 🍒×3=1.5× \| 🍋×3=2× \| 🔔×3=3× \| 💎×3=5× \| 7️⃣×3=10×. |
+| `/scratch <bet>` | Buy a scratch card — reveal 9 symbols, match 3 to win (pure RNG, up to 10×). |
+| `/roulette <bet> <type>` | Bet on Red/Black, Even/Odd, Low/High (2×), or a single number 1–36 (35×). |
+| `/crash <bet>` | Ride a stock-style multiplier that swings up and down — cash out at any value above 1×, but it can crash to 0 and wipe your bet. |
+| `/blackjack <bet>` | Classic blackjack — Hit, Stand, or Double Down. Blackjack pays 1.5×. |
+| `/poker <bet>` | Jacks or Better video poker. Royal Flush = 250×. |
+| `/rob <user>` | Attempt to rob another user (50/50). On success a **random amount** — anywhere from 1 up to their entire balance — is stolen. 30-min cooldown on fail, 1-hour on success. |
+| `/protection` | Hire mob protection for 5,000 coins — blocks rob attempts for 24 hours. |
+| `/shop browse` | View available boosts in the shop. |
+| `/shop buy <item>` | Buy XP Surge (2× XP, 1h, 25,000 coins), Lucky Charm (1.5× gambling, 30min, 30,000 coins), or Hint Rush (no hint cooldown in the guessing games, 15min, 75,000 coins). |
+
+#### Daily Lottery
+Once per day, one random server member wins **1,000 coins** automatically. Any member with at least 1 XP (i.e. anyone who has ever chatted) is entered. Winners are announced in the configured lottery channel. Enable it with `/economyconfig lottery <channel>`.
 
 #### Free Game Tracker
 Polls Epic Games Store, Steam, and GOG every hour for free game promotions. Posts to a configured channel with a claim button, the original price, and how long the freebie lasts. Deduplicates per server so no game is posted twice.
@@ -321,6 +361,7 @@ Supported platforms:
 | `/economy config monthly <min> <max>` | Set the monthly reward min/max range. |
 | `/economy config yearly <min> <max>` | Set the yearly reward min/max range. |
 | `/economy config work <min> <max>` | Set the work reward min/max range. |
+| `/economyconfig lottery [channel]` | Enable daily lottery with an announcement channel, or disable by omitting channel. |
 | `/economy config view` | View current economy settings. |
 
 ---

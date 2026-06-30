@@ -4,9 +4,9 @@ import {
   SlashCommandBuilder,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
-import { getOrCreateEconomy, getEconomyConfig, adjustBalance } from '../../utils/db';
+import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplier, recordGameResult } from '../../utils/db';
 import { awardBonusXp } from '../../utils/xpBonus.js';
-import { randInt } from '../../utils/random.js';
+import { randInt, rand, getHouseCut } from '../../utils/random.js';
 import { cv2Err } from '../../utils/components.js';
 import { newDeck, shuffleDeck, cardStr, evaluatePokerHand, type Card } from '../../utils/cards.js';
 
@@ -57,6 +57,8 @@ const Poker: Command = {
       await interaction.reply(cv2Err(`❌ Not enough ${cfg.currency_name}. Balance: **${cfg.currency_symbol} ${eco.balance.toLocaleString()}**.`)); return;
     }
 
+    const luckMult = await getGambleMultiplier(guildId, userId);
+
     await interaction.deferReply();
 
     const deck = shuffleDeck(newDeck());
@@ -93,10 +95,11 @@ const Poker: Command = {
         }
 
         const result = evaluatePokerHand(hand);
-        const isWin = result.multiplier > 0;
-        const winAmount = Math.floor(bet * result.multiplier);
+        const isWin = result.multiplier > 0 && rand() >= getHouseCut(bet);
+        const winAmount = Math.floor(bet * result.multiplier * (isWin ? luckMult : 1));
         const delta = isWin ? winAmount - bet : -bet;
         const { newBalance } = await adjustBalance(guildId, userId, delta);
+        recordGameResult(guildId, userId, 'poker', isWin, bet).catch(() => {});
 
         let xpLine = '';
         if (isWin) {
@@ -112,7 +115,7 @@ const Poker: Command = {
             `**🃏 Video Poker** — Bet: ${sym} ${bet.toLocaleString()}\n\n` +
             `${hand.map(cardStr).join('  ')}\n\n` +
             (isWin
-              ? `✅ **${result.name}!** You won **${sym} ${winAmount.toLocaleString()}**! *(${result.multiplier}x)*${xpLine}`
+              ? `✅ **${result.name}!** You won **${sym} ${winAmount.toLocaleString()}**! *(${result.multiplier}x${luckMult > 1 ? ' 🍀' : ''})*${xpLine}`
               : `❌ **${result.name}** — You lost **${sym} ${bet.toLocaleString()}**.`) +
             `\n**Balance:** ${sym} **${newBalance.toLocaleString()}**\n${PAYTABLE}`,
           components: [],

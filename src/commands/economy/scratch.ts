@@ -4,9 +4,9 @@ import {
   MessageFlags, SlashCommandBuilder,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
-import { getOrCreateEconomy, getEconomyConfig, adjustBalance } from '../../utils/db';
+import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplier, recordGameResult } from '../../utils/db';
 import { awardBonusXp } from '../../utils/xpBonus.js';
-import { randInt } from '../../utils/random.js';
+import { rand, getHouseCut } from '../../utils/random.js';
 import { cv2Err } from '../../utils/components.js';
 
 const SYMBOLS = [
@@ -21,9 +21,18 @@ const TOTAL_WEIGHT = SYMBOLS.reduce((s, sym) => s + sym.weight, 0);
 const LEGEND = '*🍒×3=1x | 🍋×3=1.5x | 🍊×3=2x | 🍇×3=3x | ⭐×3=5x | 💎×3=10x*';
 
 function pickSymbol(): string {
-  let r = randInt(1, TOTAL_WEIGHT);
+  let r = Math.floor(Math.random() * TOTAL_WEIGHT) + 1;
   for (const sym of SYMBOLS) { r -= sym.weight; if (r <= 0) return sym.emoji; }
   return SYMBOLS[0]!.emoji;
+}
+
+function generateGrid(forceLoss = false): string[] {
+  if (!forceLoss) return Array.from({ length: 9 }, () => pickSymbol());
+  // Keep re-rolling until the grid has no 3-of-a-kind — house cut is invisible
+  let grid: string[];
+  do { grid = Array.from({ length: 9 }, () => pickSymbol()); }
+  while (checkWin(grid) !== null);
+  return grid;
 }
 
 function buildGrid(symbols: string[], revealed: boolean[]): ActionRowBuilder<ButtonBuilder>[] {
@@ -56,7 +65,7 @@ function checkWin(symbols: string[]): { emoji: string; count: number; mult: numb
 }
 
 async function resolveGame(
-  symbols: string[], revealed: boolean[], bet: number,
+  symbols: string[], bet: number,
   guildId: string, userId: string, cfg: Awaited<ReturnType<typeof getEconomyConfig>>,
   client: ChatInputCommandInteraction['client'], channelId: string,
 ): Promise<{ content: string }> {
@@ -64,15 +73,19 @@ async function resolveGame(
   const sym = cfg.currency_symbol;
   let line = '';
   if (win) {
-    const winAmount = Math.floor(bet * win.mult);
+    const luckMult = await getGambleMultiplier(guildId, userId);
+    const winAmount = Math.floor(bet * win.mult * luckMult);
     await adjustBalance(guildId, userId, winAmount);
+    recordGameResult(guildId, userId, 'scratch', true, bet).catch(() => {});
     const xpGiven = await awardBonusXp({
       guildId, userId, baseAmount: Math.floor(50 * win.mult),
       client, channelId, isGame: true,
     });
     const xpLine = xpGiven > 0 ? ` +**${xpGiven} XP**!` : '';
-    line = `\n🎉 **${win.emoji} × ${win.count}!** You won **${sym} ${winAmount.toLocaleString()}**! *(${win.mult}x)*${xpLine}`;
+    const boostLine = luckMult > 1.0 ? ` *(🍀 ${luckMult}x boost!)*` : '';
+    line = `\n🎉 **${win.emoji} × ${win.count}!** You won **${sym} ${winAmount.toLocaleString()}**!${boostLine}${xpLine}`;
   } else {
+    recordGameResult(guildId, userId, 'scratch', false, bet).catch(() => {});
     line = '\n😢 No match — better luck next time!';
   }
   const eco2 = await getOrCreateEconomy(guildId, userId);
@@ -99,7 +112,7 @@ const Scratch: Command = {
 
     await adjustBalance(guildId, userId, -bet);
 
-    const symbols = Array.from({ length: 9 }, pickSymbol);
+    const symbols = generateGrid(rand() < getHouseCut(bet));
     const revealed = new Array<boolean>(9).fill(false);
 
     await interaction.deferReply();
@@ -121,7 +134,7 @@ const Scratch: Command = {
 
       if (revealed.every(r => r)) {
         collector.stop('done');
-        const { content } = await resolveGame(symbols, revealed, bet, guildId, userId, cfg, interaction.client, interaction.channelId);
+        const { content } = await resolveGame(symbols, bet, guildId, userId, cfg, interaction.client, interaction.channelId);
         await interaction.editReply({ content, components: buildGrid(symbols, revealed) }).catch(() => {});
       } else {
         await interaction.editReply({ components: buildGrid(symbols, revealed) }).catch(() => {});
@@ -131,7 +144,7 @@ const Scratch: Command = {
     collector.on('end', async (_c, reason) => {
       if (reason !== 'done') {
         revealed.fill(true);
-        const { content } = await resolveGame(symbols, revealed, bet, guildId, userId, cfg, interaction.client, interaction.channelId);
+        const { content } = await resolveGame(symbols, bet, guildId, userId, cfg, interaction.client, interaction.channelId);
         await interaction.editReply({ content: `*(Timed out — auto-revealed)*\n${content}`, components: buildGrid(symbols, revealed) }).catch(() => {});
       }
     });

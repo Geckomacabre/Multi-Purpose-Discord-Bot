@@ -4,9 +4,9 @@ import {
   SlashCommandBuilder,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
-import { getOrCreateEconomy, getEconomyConfig, adjustBalance } from '../../utils/db';
+import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplier, recordGameResult } from '../../utils/db';
 import { awardBonusXp } from '../../utils/xpBonus.js';
-import { randInt } from '../../utils/random.js';
+import { randInt, rand, getHouseCut } from '../../utils/random.js';
 import { cv2Err } from '../../utils/components.js';
 import { newDeck, shuffleDeck, handStr, bjHandValue, type Card } from '../../utils/cards.js';
 
@@ -56,6 +56,8 @@ const Blackjack: Command = {
       await interaction.reply(cv2Err(`❌ Not enough ${cfg.currency_name}. Balance: **${cfg.currency_symbol} ${eco.balance.toLocaleString()}**.`)); return;
     }
 
+    const luckMult = await getGambleMultiplier(guildId, userId);
+
     await interaction.deferReply();
 
     const deck = shuffleDeck(newDeck());
@@ -69,12 +71,21 @@ const Blackjack: Command = {
     let canDouble = true;
 
     async function endGame(outcome: Outcome, msg: string): Promise<void> {
+      // Apply house cut: convert a win to a loss based on bet size
+      if ((outcome === 'win' || outcome === 'blackjack') && rand() < getHouseCut(activeBet)) {
+        outcome = 'lose';
+        msg = `The house wins this round. You lost **${cfg.currency_symbol} ${activeBet.toLocaleString()}**.`;
+      }
+
       let delta = 0;
-      if (outcome === 'win')       delta =  activeBet;
-      if (outcome === 'blackjack') delta =  Math.floor(activeBet * 1.5);
+      if (outcome === 'win')       delta =  Math.floor(activeBet * luckMult);
+      if (outcome === 'blackjack') delta =  Math.floor(activeBet * 1.5 * luckMult);
       if (outcome === 'lose')      delta = -activeBet;
 
       const { newBalance } = await adjustBalance(guildId, userId, delta);
+      if (outcome !== 'push') {
+        recordGameResult(guildId, userId, 'blackjack', outcome === 'win' || outcome === 'blackjack', activeBet).catch(() => {});
+      }
 
       let xpLine = '';
       if (outcome === 'win' || outcome === 'blackjack') {
@@ -103,10 +114,12 @@ const Blackjack: Command = {
       playDealer();
       const pv = bjHandValue(playerHand);
       const dv = bjHandValue(dealerHand);
+      const winPayout = Math.floor(activeBet * luckMult);
+      const boostTag = luckMult > 1 ? ' *(🍀 Lucky Charm!)*' : '';
       if (dv > 21) {
-        await endGame('win', `Dealer busted with **${dv}**! You win **${sym} ${activeBet.toLocaleString()}**!`);
+        await endGame('win', `Dealer busted with **${dv}**! You win **${sym} ${winPayout.toLocaleString()}**!${boostTag}`);
       } else if (pv > dv) {
-        await endGame('win', `You win **${pv}** vs **${dv}**! You win **${sym} ${activeBet.toLocaleString()}**!`);
+        await endGame('win', `You win **${pv}** vs **${dv}**! You win **${sym} ${winPayout.toLocaleString()}**!${boostTag}`);
       } else if (dv > pv) {
         await endGame('lose', `Dealer wins **${dv}** vs **${pv}**. You lost **${sym} ${activeBet.toLocaleString()}**.`);
       } else {
@@ -121,7 +134,9 @@ const Blackjack: Command = {
       if (playerBJ && dealerBJ) {
         await endGame('push', '**Both Blackjack!** Push — bet refunded.');
       } else if (playerBJ) {
-        await endGame('blackjack', `**Blackjack! 🃏** You win **${sym} ${Math.floor(activeBet * 1.5).toLocaleString()}**!`);
+        const bjPayout = Math.floor(activeBet * 1.5 * luckMult);
+        const bjBoost = luckMult > 1 ? ' *(🍀 Lucky Charm!)*' : '';
+        await endGame('blackjack', `**Blackjack! 🃏** You win **${sym} ${bjPayout.toLocaleString()}**!${bjBoost}`);
       } else {
         await endGame('lose', `**Dealer Blackjack!** You lost **${sym} ${activeBet.toLocaleString()}**.`);
       }
