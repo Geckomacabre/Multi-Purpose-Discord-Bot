@@ -2019,6 +2019,11 @@ export async function setEconomyCooldown(user_id: string, type: string) {
   `;
 }
 
+/** Clear a cooldown entirely (Time Skip shop item). */
+export async function resetEconomyCooldown(user_id: string, type: string): Promise<void> {
+  await db`DELETE FROM economy_cooldowns WHERE user_id = ${user_id} AND type = ${type}`;
+}
+
 // ─── Economy Protection ────────────────────────────────────────────────────────
 
 export async function getProtection(guild_id: string, user_id: string): Promise<number | null> {
@@ -2046,6 +2051,19 @@ export async function getActiveBoost(guild_id: string, user_id: string, type: st
 
 export async function addBoost(guild_id: string, user_id: string, type: string, multiplier: number, expires_at: number): Promise<void> {
   await db`INSERT INTO economy_boosts (guild_id, user_id, type, multiplier, expires_at) VALUES (${guild_id}, ${user_id}, ${type}, ${multiplier}, ${expires_at})`;
+}
+
+/** Consume a one-shot boost (Goon Squad, Insurance, Second Chance). Returns true if one was active and used. */
+export async function consumeBoost(guild_id: string, user_id: string, type: string): Promise<boolean> {
+  const boost = await getActiveBoost(guild_id, user_id, type);
+  if (!boost) return false;
+  await db`DELETE FROM economy_boosts WHERE id = ${boost.id}`;
+  return true;
+}
+
+/** Remove all boosts of a type for a guild — used to expire Loaded Dice after each lottery draw. */
+export async function clearGuildBoosts(guild_id: string, type: string): Promise<void> {
+  await db`DELETE FROM economy_boosts WHERE guild_id = ${guild_id} AND type = ${type}`;
 }
 
 export async function getGambleMultiplier(guild_id: string, user_id: string): Promise<number> {
@@ -2076,8 +2094,20 @@ export async function setLotteryLastRun(guild_id: string, date: string): Promise
 }
 
 export async function getRandomLotteryWinner(guild_id: string): Promise<string | null> {
-  const [row] = await db`SELECT user_id FROM xp WHERE guild_id = ${guild_id} ORDER BY RANDOM() LIMIT 1`;
-  return (row?.user_id as string) ?? null;
+  const rows = await db`SELECT user_id FROM xp WHERE guild_id = ${guild_id}`;
+  if (!rows.length) return null;
+  // Loaded Dice holders get a second entry — double the chance to win.
+  const boosted = await db`
+    SELECT DISTINCT user_id FROM economy_boosts
+    WHERE guild_id = ${guild_id} AND type = 'lotto' AND expires_at > ${Date.now()}
+  `;
+  const boostedIds = new Set((boosted as Array<{ user_id: string }>).map(r => r.user_id));
+  const pool: string[] = [];
+  for (const r of rows as Array<{ user_id: string }>) {
+    pool.push(r.user_id);
+    if (boostedIds.has(r.user_id)) pool.push(r.user_id);
+  }
+  return pool[Math.floor(Math.random() * pool.length)] ?? null;
 }
 
 export async function setLotteryConfig(guild_id: string, channel_id: string | null, enabled: boolean): Promise<void> {

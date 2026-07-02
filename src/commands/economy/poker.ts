@@ -9,6 +9,7 @@ import { awardBonusXp } from '../../utils/xpBonus.js';
 import { randInt, rand, getHouseCut } from '../../utils/random.js';
 import { cv2Err } from '../../utils/components.js';
 import { newDeck, shuffleDeck, cardStr, evaluatePokerHand, type Card } from '../../utils/cards.js';
+import { applyLossInsurance, insuranceLine } from '../../utils/gamble.js';
 
 const PAYTABLE =
   '**Paytable** (multiplier × bet):\n' +
@@ -89,17 +90,26 @@ const Poker: Command = {
       if (btn.customId === 'poker_draw') {
         collector.stop('draw');
 
-        // Replace non-held cards
-        for (let i = 0; i < 5; i++) {
-          if (!held[i]) hand[i] = draw();
+        // Replace non-held cards. The house cut is applied HERE, before the
+        // hand is shown: re-deal the replacements until the hand doesn't pay,
+        // so the displayed cards always justify the outcome. A paying hand the
+        // player locked in by holding all five cards can't be taken away.
+        const slots = hand.map((_, i) => i).filter(i => !held[i]);
+        const rig = slots.length > 0 && rand() < getHouseCut(bet);
+        let pool = deck.slice(di);
+        for (let attempt = 0; ; attempt++) {
+          slots.forEach((slot, j) => { hand[slot] = pool[j]!; });
+          if (!rig || evaluatePokerHand(hand).multiplier === 0 || attempt >= 30) break;
+          pool = shuffleDeck(pool);
         }
 
         const result = evaluatePokerHand(hand);
-        const isWin = result.multiplier > 0 && rand() >= getHouseCut(bet);
+        const isWin = result.multiplier > 0;
         const winAmount = Math.floor(bet * result.multiplier * (isWin ? luckMult : 1));
         const delta = isWin ? winAmount - bet : -bet;
         const { newBalance } = await adjustBalance(guildId, userId, delta);
         recordGameResult(guildId, userId, 'poker', isWin, bet).catch(() => {});
+        const refund = isWin ? 0 : await applyLossInsurance(guildId, userId, bet);
 
         let xpLine = '';
         if (isWin) {
@@ -116,8 +126,8 @@ const Poker: Command = {
             `${hand.map(cardStr).join('  ')}\n\n` +
             (isWin
               ? `✅ **${result.name}!** You won **${sym} ${winAmount.toLocaleString()}**! *(${result.multiplier}x${luckMult > 1 ? ' 🍀' : ''})*${xpLine}`
-              : `❌ **${result.name}** — You lost **${sym} ${bet.toLocaleString()}**.`) +
-            `\n**Balance:** ${sym} **${newBalance.toLocaleString()}**\n${PAYTABLE}`,
+              : `❌ **${result.name}** — You lost **${sym} ${bet.toLocaleString()}**.${insuranceLine(sym, refund)}`) +
+            `\n**Balance:** ${sym} **${(newBalance + refund).toLocaleString()}**\n${PAYTABLE}`,
           components: [],
         }).catch(() => {});
         return;

@@ -1,7 +1,7 @@
 import { Client, TextChannel } from 'discord.js';
 import {
   getLotteryConfigs, getLotteryLastRun, setLotteryLastRun,
-  getRandomLotteryWinner, adjustBalance,
+  getRandomLotteryWinner, adjustBalance, clearGuildBoosts,
 } from '../../utils/db';
 
 function todayUTC(): string {
@@ -15,12 +15,14 @@ async function runLotteryForGuild(
   prize: number,
 ): Promise<void> {
   const winnerId = await getRandomLotteryWinner(guildId);
+  // Loaded Dice only applies to one draw — clear them win or lose.
+  await clearGuildBoosts(guildId, 'lotto').catch(() => {});
   if (!winnerId) return;
 
   await adjustBalance(guildId, winnerId, prize).catch(() => {});
 
-  const channel = client.channels.cache.get(channelId) as TextChannel | undefined;
-  if (!channel) return;
+  const channel = await client.channels.fetch(channelId).catch(() => null);
+  if (!(channel instanceof TextChannel)) return;
 
   await channel.send(
     `🎰 **Daily Lottery!**\n<@${winnerId}> is today's lucky winner and received **🪙 ${prize.toLocaleString()} coins**! 🎉`

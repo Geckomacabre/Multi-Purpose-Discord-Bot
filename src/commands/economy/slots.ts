@@ -7,6 +7,7 @@ import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplie
 import { awardBonusXp } from '../../utils/xpBonus.js';
 import { randInt, rand, getHouseCut } from '../../utils/random.js';
 import { cv2Err, IS_CV2 } from '../../utils/components.js';
+import { applyLossInsurance, insuranceLine } from '../../utils/gamble.js';
 
 const REEL = ['🍒','🍒','🍒','🍒','🍒','🍋','🍋','🍋','🍋','🔔','🔔','🔔','💎','💎','7️⃣'];
 const SLOT_MULTIPLIERS: Record<string, number> = { '7️⃣': 10, '💎': 5, '🔔': 3, '🍋': 2, '🍒': 1.5 };
@@ -41,6 +42,7 @@ const Slots: Command = {
     const delta = winnings > 0 ? winnings - bet : -bet;
     const { newBalance } = await adjustBalance(guildId, userId, delta);
     recordGameResult(guildId, userId, 'slots', multiplier > 0, bet).catch(() => {});
+    const refund = multiplier > 0 ? 0 : await applyLossInsurance(guildId, userId, bet);
     let xpLine = '';
     if (multiplier > 0) {
       const baseXp = Math.min(50 + Math.floor(multiplier * 20), 200);
@@ -54,7 +56,7 @@ const Slots: Command = {
     const container = new ContainerBuilder()
       .setAccentColor(multiplier > 0 ? Colors.Gold : Colors.Red)
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `**🎰 Slots**\n${reels.join(' ｜ ')}\n${label}\n${multiplier > 0 ? `**${multiplier}x** — you won **${sym} ${winnings.toLocaleString()}**!${luckMult > 1 ? ' *(🍀 Lucky Charm!)*' : ''}` : `You lost **${sym} ${bet.toLocaleString()}**.`}\n**Balance:** ${sym} **${newBalance.toLocaleString()}**\n*🍒×3=1.5x | 🍋×3=2x | 🔔×3=3x | 💎×3=5x | 7️⃣×3=10x*${xpLine}`
+        `**🎰 Slots**\n${reels.join(' ｜ ')}\n${label}\n${multiplier > 0 ? `**${multiplier}x** — you won **${sym} ${winnings.toLocaleString()}**!${luckMult > 1 ? ' *(🍀 Lucky Charm!)*' : ''}` : `You lost **${sym} ${bet.toLocaleString()}**.`}${insuranceLine(sym, refund)}\n**Balance:** ${sym} **${(newBalance + refund).toLocaleString()}**\n*🍒×3=1.5x | 🍋×3=2x | 🔔×3=3x | 💎×3=5x | 7️⃣×3=10x*${xpLine}`
       ));
     await interaction.reply({ flags: IS_CV2, components: [container] });
   },

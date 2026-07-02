@@ -7,6 +7,7 @@ import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplie
 import { awardBonusXp } from '../../utils/xpBonus.js';
 import { rand, randInt, getHouseCut } from '../../utils/random.js';
 import { cv2Err, IS_CV2 } from '../../utils/components.js';
+import { applyLossInsurance, insuranceLine } from '../../utils/gamble.js';
 
 const Flip: Command = {
   data: new SlashCommandBuilder()
@@ -30,6 +31,7 @@ const Flip: Command = {
     const winDelta = win ? Math.floor(bet * luckMult) : -bet;
     const { newBalance } = await adjustBalance(guildId, userId, winDelta);
     recordGameResult(guildId, userId, 'flip', win, bet).catch(() => {});
+    const refund = win ? 0 : await applyLossInsurance(guildId, userId, bet);
     let xpLine = '';
     if (win) {
       const xpGiven = await awardBonusXp({
@@ -41,7 +43,7 @@ const Flip: Command = {
     const container = new ContainerBuilder()
       .setAccentColor(win ? Colors.Green : Colors.Red)
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `**${win ? '🪙 Heads!' : '🌑 Tails!'}**\n${win ? `You won **${sym} ${Math.floor(bet * luckMult).toLocaleString()}**!${luckMult > 1 ? ' *(🍀 Lucky Charm!)*' : ''}` : `You lost **${sym} ${bet.toLocaleString()}**.`}\n**Balance:** ${sym} **${newBalance.toLocaleString()}**${xpLine}`
+        `**${win ? '🪙 Heads!' : '🌑 Tails!'}**\n${win ? `You won **${sym} ${Math.floor(bet * luckMult).toLocaleString()}**!${luckMult > 1 ? ' *(🍀 Lucky Charm!)*' : ''}` : `You lost **${sym} ${bet.toLocaleString()}**.`}${insuranceLine(sym, refund)}\n**Balance:** ${sym} **${(newBalance + refund).toLocaleString()}**${xpLine}`
       ));
     await interaction.reply({ flags: IS_CV2, components: [container] });
   },

@@ -23,15 +23,29 @@ Earn and spend coins in the server economy.
 
 ### 🏪 Shop
 
-- `/shop browse` — View available boosts
-- `/shop buy item:` — Purchase a boost with your coins
-  - 🔮 **XP Surge** — 2× XP from all sources for 1 hour (25,000 coins)
-  - 🍀 **Lucky Charm** — 1.5× gambling winnings for 30 minutes (30,000 coins)
-  - ⚡ **Hint Rush** — no hint cooldown in the guessing games for 15 minutes (75,000 coins)
+- `/shop browse` — View all shop items
+- `/shop buy item:` — Purchase an item with your coins (add the `cooldown` option for Time Skip)
+
+**⏱️ Timed boosts:**
+- 🔮 **XP Surge** — 2× XP from all sources for 1 hour (25,000 coins)
+- 🍀 **Lucky Charm** — 1.5× gambling winnings for 30 minutes (30,000 coins)
+- ⚡ **Hint Rush** — no hint cooldown in the guessing games for 15 minutes (75,000 coins)
+- 💼 **Overtime Permit** — half `/work` cooldown (30 min) for 4 hours (20,000 coins)
+- 🧲 **Coin Magnet** — 1.5× coins from `/work`, `/daily`, and `/beg` for 24 hours (40,000 coins)
+- 🎟️ **Loaded Dice** — double your chance in the next daily lottery draw (15,000 coins)
+
+**🎫 One-shots** *(sit in your pocket until they trigger — expire after 7 days)*:
+- 🥊 **Goon Squad** — your next failed `/rob` has no cooldown (25,000 coins)
+- 🛡️ **Gambling Insurance** — your next lost bet is 50% refunded, any game (30,000 coins)
+- 🔁 **Second Chance** — if `/crash` busts below 1.5x, your bet is refunded (40,000 coins)
+
+**⚡ Instant:**
+- ⏩ **Time Skip** — instantly reset your `/daily`, `/work`, or `/beg` cooldown (35,000 coins)
+- 📦 **Mystery Box** — 60% coins (2k–8k), 25% a random boost, 10% nothing, 5% a 50k jackpot (10,000 coins)
 
 ### 🎰 Daily Lottery
 
-Every day, one random member wins **1,000 coins** automatically! You're entered just by being active in the server (having any XP).
+Every day, one random member wins **50,000 coins** automatically! You're entered just by being active in the server (having any XP). Buy 🎟️ **Loaded Dice** to double your chance in the next draw.
 
 ---
 

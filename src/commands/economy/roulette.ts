@@ -7,6 +7,7 @@ import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplie
 import { awardBonusXp } from '../../utils/xpBonus.js';
 import { randInt, rand, getHouseCut } from '../../utils/random.js';
 import { cv2Err, IS_CV2 } from '../../utils/components.js';
+import { applyLossInsurance, insuranceLine } from '../../utils/gamble.js';
 
 // Standard European roulette red numbers
 const RED = new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36]);
@@ -82,6 +83,7 @@ const Roulette: Command = {
     const delta = win ? winnings : -bet;
     const { newBalance } = await adjustBalance(guildId, userId, delta);
     recordGameResult(guildId, userId, 'roulette', win, bet).catch(() => {});
+    const refund = win ? 0 : await applyLossInsurance(guildId, userId, bet);
 
     let xpLine = '';
     if (win) {
@@ -106,8 +108,8 @@ const Roulette: Command = {
         `Bet on: **${betLabel[type]}**\n` +
         (win
           ? `✅ You won **${sym} ${winnings.toLocaleString()}**!${luckMult > 1 ? ' *(🍀 Lucky Charm!)*' : ''}`
-          : `❌ You lost **${sym} ${bet.toLocaleString()}**.`) +
-        `\n**Balance:** ${sym} **${newBalance.toLocaleString()}**${xpLine}`
+          : `❌ You lost **${sym} ${bet.toLocaleString()}**.${insuranceLine(sym, refund)}`) +
+        `\n**Balance:** ${sym} **${(newBalance + refund).toLocaleString()}**${xpLine}`
       ));
 
     await interaction.reply({ flags: IS_CV2, components: [container] });

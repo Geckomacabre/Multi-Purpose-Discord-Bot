@@ -7,6 +7,7 @@ import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplie
 import { awardBonusXp } from '../../utils/xpBonus.js';
 import { randInt, rand, getHouseCut } from '../../utils/random.js';
 import { cv2Err, IS_CV2 } from '../../utils/components.js';
+import { applyLossInsurance, insuranceLine } from '../../utils/gamble.js';
 
 const HighRoll: Command = {
   data: new SlashCommandBuilder()
@@ -35,6 +36,7 @@ const HighRoll: Command = {
     const luckMult = win ? await getGambleMultiplier(guildId, userId) : 1;
     const { newBalance } = await adjustBalance(guildId, userId, win ? Math.floor(bet * luckMult) : tie ? 0 : -bet);
     if (!tie) recordGameResult(guildId, userId, 'highroll', win, bet).catch(() => {});
+    const refund = !win && !tie ? await applyLossInsurance(guildId, userId, bet) : 0;
     let xpLine = '';
     if (win) {
       const xpGiven = await awardBonusXp({
@@ -47,7 +49,7 @@ const HighRoll: Command = {
     const container = new ContainerBuilder()
       .setAccentColor(win ? Colors.Green : tie ? Colors.Yellow : Colors.Red)
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `**🎲 High Roll**\n**Your Roll:** ${playerRoll} | **Bot Roll:** ${botRoll}\n${result}\n**Balance:** ${sym} **${newBalance.toLocaleString()}**${xpLine}`
+        `**🎲 High Roll**\n**Your Roll:** ${playerRoll} | **Bot Roll:** ${botRoll}\n${result}${insuranceLine(sym, refund)}\n**Balance:** ${sym} **${(newBalance + refund).toLocaleString()}**${xpLine}`
       ));
     await interaction.reply({ flags: IS_CV2, components: [container] });
   },

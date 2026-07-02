@@ -4,7 +4,7 @@ import {
   SlashCommandBuilder, TextDisplayBuilder,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
-import { getEconomyConfig, getEconomyCooldown, setEconomyCooldown, adjustBalance } from '../../utils/db';
+import { getEconomyConfig, getEconomyCooldown, setEconomyCooldown, adjustBalance, getActiveBoost } from '../../utils/db';
 import { cv2Text } from '../../utils/components.js';
 
 const IS_CV2 = MessageFlags.IsComponentsV2;
@@ -32,23 +32,31 @@ const Work: Command = {
     const guildId = interaction.guildId!;
     const userId = interaction.user.id;
     const cfg = await getEconomyConfig(guildId);
+    // Overtime Permit halves the cooldown while active.
+    const overtime = await getActiveBoost(guildId, userId, 'workcd');
+    const cooldownMs = overtime ? WORK_COOLDOWN_MS / 2 : WORK_COOLDOWN_MS;
     const lastUsed = await getEconomyCooldown(userId, 'work');
     const elapsed = Date.now() - lastUsed;
-    if (elapsed < WORK_COOLDOWN_MS) {
-      const remaining = WORK_COOLDOWN_MS - elapsed;
+    if (elapsed < cooldownMs) {
+      const remaining = cooldownMs - elapsed;
       const minutes = Math.floor(remaining / 60_000);
       const seconds = Math.floor((remaining % 60_000) / 1000);
       await interaction.reply({ ...cv2Text(`You're tired from your last job. Rest for **${minutes}m ${seconds}s** before working again.`), flags: IS_CV2 | MessageFlags.Ephemeral });
       return;
     }
-    const amount = Math.floor(Math.random() * (cfg.work_max - cfg.work_min + 1)) + cfg.work_min;
+    const magnet = await getActiveBoost(guildId, userId, 'magnet');
+    const base = Math.floor(Math.random() * (cfg.work_max - cfg.work_min + 1)) + cfg.work_min;
+    const amount = magnet ? Math.floor(base * magnet.multiplier) : base;
     const job = pick(WORK_JOBS);
     const { newBalance } = await adjustBalance(guildId, userId, amount);
     await setEconomyCooldown(userId, 'work');
+    const boostNotes =
+      (magnet ? '\n🧲 *Coin Magnet boosted your pay!*' : '') +
+      (overtime ? '\n💼 *Overtime Permit: you can work again in 30 minutes.*' : '');
     const container = new ContainerBuilder()
       .setAccentColor(Colors.Blue)
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `**${cfg.currency_symbol} Work Complete**\nYou ${job} and earned **${cfg.currency_symbol} ${amount.toLocaleString()} ${cfg.currency_name}**!\nNew balance: **${newBalance.toLocaleString()}**\n*You can work again in 1 hour.*`
+        `**${cfg.currency_symbol} Work Complete**\nYou ${job} and earned **${cfg.currency_symbol} ${amount.toLocaleString()} ${cfg.currency_name}**!\nNew balance: **${newBalance.toLocaleString()}**${boostNotes}\n*You can work again in ${overtime ? '30 minutes' : '1 hour'}.*`
       ));
     await interaction.reply({ flags: IS_CV2, components: [container] });
     const existing = pendingWorkNotifications.get(userId);
@@ -60,7 +68,7 @@ const Work: Command = {
         const channel = await client.channels.fetch(channelId);
         if (channel?.isTextBased()) await (channel as any).send(`⏰ <@${userId}> Your work cooldown is up! Run \`/work\` to earn more ${cfg.currency_symbol} ${cfg.currency_name}.`);
       } catch {}
-    }, WORK_COOLDOWN_MS);
+    }, cooldownMs);
     pendingWorkNotifications.set(userId, timer);
   },
 };

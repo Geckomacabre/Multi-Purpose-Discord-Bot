@@ -306,12 +306,28 @@ All economy commands are under `/economy`.
 | `/poker <bet>` | Jacks or Better video poker. Royal Flush = 250×. |
 | `/rob <user>` | Attempt to rob another user (50/50). On success a **random amount** — anywhere from 1 up to their entire balance — is stolen. 30-min cooldown on fail, 1-hour on success. |
 | `/protection` | Hire mob protection for 5,000 coins — blocks rob attempts for 24 hours. |
-| `/shop browse` | View available boosts in the shop. |
-| `/shop buy <item>` | Buy XP Surge (2× XP, 1h, 25,000 coins), Lucky Charm (1.5× gambling, 30min, 30,000 coins), or Hint Rush (no hint cooldown in the guessing games, 15min, 75,000 coins). |
+| `/shop browse` | View all shop items — boosts, one-shots, and instants. |
+| `/shop buy <item> [cooldown]` | Buy a shop item (the `cooldown` option is only for Time Skip). |
 | `/games leaderboard <game>` | Show the top players for a specific game (flip, highroll, slots, roulette, crash, blackjack, poker, scratch, movie guesser, TV guesser). |
 
+**Shop items:**
+
+| Item | Effect | Price |
+|---|---|---|
+| 🔮 XP Surge | 2× XP from all sources for 1 hour | 25,000 |
+| 🍀 Lucky Charm | 1.5× gambling winnings for 30 minutes | 30,000 |
+| ⚡ Hint Rush | No hint cooldown in the guessing games for 15 minutes | 75,000 |
+| 💼 Overtime Permit | Half `/work` cooldown (30 min) for 4 hours | 20,000 |
+| 🧲 Coin Magnet | 1.5× coins from `/work`, `/daily`, `/beg` for 24 hours | 40,000 |
+| 🎟️ Loaded Dice | Double your chance in the next daily lottery draw | 15,000 |
+| 🥊 Goon Squad | One-shot: your next failed `/rob` has no cooldown (keeps 7 days) | 25,000 |
+| 🛡️ Gambling Insurance | One-shot: your next lost bet is 50% refunded (keeps 7 days) | 30,000 |
+| 🔁 Second Chance | One-shot: a `/crash` bust below 1.5x refunds your bet (keeps 7 days) | 40,000 |
+| ⏩ Time Skip | Instant: reset your `/daily`, `/work`, or `/beg` cooldown | 35,000 |
+| 📦 Mystery Box | Instant: 60% coins (2k–8k), 25% a random boost, 10% nothing, 5% 50k jackpot | 10,000 |
+
 #### Daily Lottery
-Once per day, one random server member wins **1,000 coins** automatically. Any member with at least 1 XP (i.e. anyone who has ever chatted) is entered. Winners are announced in the configured lottery channel. Enable it with `/economyconfig lottery <channel>`.
+Once per day, one random server member wins **50,000 coins** automatically. Any member with at least 1 XP (i.e. anyone who has ever chatted) is entered. Buying 🎟️ **Loaded Dice** from the shop doubles your chance for the next draw. Winners are announced in the configured lottery channel. Enable it with `/economyconfig lottery <channel>`.
 
 #### Free Game Tracker
 Polls Epic Games Store, Steam, and GOG every hour for free game promotions. Posts to a configured channel with a claim button, the original price, and how long the freebie lasts. Deduplicates per server so no game is posted twice.

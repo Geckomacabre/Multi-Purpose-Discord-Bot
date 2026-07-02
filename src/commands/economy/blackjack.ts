@@ -9,6 +9,7 @@ import { awardBonusXp } from '../../utils/xpBonus.js';
 import { randInt, rand, getHouseCut } from '../../utils/random.js';
 import { cv2Err } from '../../utils/components.js';
 import { newDeck, shuffleDeck, handStr, bjHandValue, type Card } from '../../utils/cards.js';
+import { applyLossInsurance, insuranceLine } from '../../utils/gamble.js';
 
 type Outcome = 'win' | 'blackjack' | 'push' | 'lose';
 
@@ -71,12 +72,6 @@ const Blackjack: Command = {
     let canDouble = true;
 
     async function endGame(outcome: Outcome, msg: string): Promise<void> {
-      // Apply house cut: convert a win to a loss based on bet size
-      if ((outcome === 'win' || outcome === 'blackjack') && rand() < getHouseCut(activeBet)) {
-        outcome = 'lose';
-        msg = `The house wins this round. You lost **${cfg.currency_symbol} ${activeBet.toLocaleString()}**.`;
-      }
-
       let delta = 0;
       if (outcome === 'win')       delta =  Math.floor(activeBet * luckMult);
       if (outcome === 'blackjack') delta =  Math.floor(activeBet * 1.5 * luckMult);
@@ -86,6 +81,7 @@ const Blackjack: Command = {
       if (outcome !== 'push') {
         recordGameResult(guildId, userId, 'blackjack', outcome === 'win' || outcome === 'blackjack', activeBet).catch(() => {});
       }
+      const refund = outcome === 'lose' ? await applyLossInsurance(guildId, userId, activeBet) : 0;
 
       let xpLine = '';
       if (outcome === 'win' || outcome === 'blackjack') {
@@ -101,17 +97,31 @@ const Blackjack: Command = {
       await interaction.editReply({
         content:
           gameContent(playerHand, dealerHand, activeBet, sym, false) +
-          `\n\n${icon} ${msg}${xpLine}\n**Balance:** ${sym} **${newBalance.toLocaleString()}**`,
+          `\n\n${icon} ${msg}${insuranceLine(sym, refund)}${xpLine}\n**Balance:** ${sym} **${(newBalance + refund).toLocaleString()}**`,
         components: [],
       }).catch(() => {});
     }
 
-    function playDealer(): void {
-      while (bjHandValue(dealerHand) < 17) dealerHand.push(draw());
+    function playDealer(rigged = false): void {
+      const pv = bjHandValue(playerHand);
+      while (bjHandValue(dealerHand) < 17) {
+        if (rigged) {
+          // House cut, applied BEFORE the cards are shown: stack the shoe in
+          // the dealer's favor on each hit — prefer a card that beats the
+          // player outright, else one that keeps the dealer alive. The final
+          // hands always justify the outcome the player sees.
+          const pick = (test: (total: number) => boolean) =>
+            deck.findIndex((c, i) => i >= di && test(bjHandValue([...dealerHand, c])));
+          let idx = pick(t => t >= 17 && t <= 21 && t > pv);
+          if (idx === -1) idx = pick(t => t <= 21);
+          if (idx > di) [deck[di], deck[idx]] = [deck[idx]!, deck[di]!];
+        }
+        dealerHand.push(draw());
+      }
     }
 
     async function resolveStand(): Promise<void> {
-      playDealer();
+      playDealer(rand() < getHouseCut(activeBet));
       const pv = bjHandValue(playerHand);
       const dv = bjHandValue(dealerHand);
       const winPayout = Math.floor(activeBet * luckMult);

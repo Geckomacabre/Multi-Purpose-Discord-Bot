@@ -3,7 +3,7 @@ import {
   ContainerBuilder, InteractionContextType, SlashCommandBuilder, TextDisplayBuilder,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
-import { getEconomyConfig, getEconomyCooldown, setEconomyCooldown, adjustBalance } from '../../utils/db';
+import { getEconomyConfig, getEconomyCooldown, setEconomyCooldown, adjustBalance, getActiveBoost } from '../../utils/db';
 import { cv2Err, IS_CV2 } from '../../utils/components.js';
 
 const BEG_COOLDOWN_MS = 15 * 60 * 1000; // 15 minutes
@@ -41,17 +41,20 @@ const Beg: Command = {
       return;
     }
 
-    const amount = Math.floor(Math.random() * 91) + 10; // 10–100 coins
+    const magnet = await getActiveBoost(guildId, userId, 'magnet');
+    const base = Math.floor(Math.random() * 91) + 10; // 10–100 coins
+    const amount = magnet ? Math.floor(base * magnet.multiplier) : base;
     const { newBalance } = await adjustBalance(guildId, userId, amount);
     await setEconomyCooldown(userId, 'beg');
 
     const flavor = RESPONSES[Math.floor(Math.random() * RESPONSES.length)]!;
     const sym = cfg.currency_symbol;
+    const magnetNote = magnet ? '\n🧲 *Coin Magnet boosted your haul!*' : '';
 
     const container = new ContainerBuilder()
       .setAccentColor(Colors.Blurple)
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `🙏 **Beg**\n${flavor}\nYou received **${sym} ${amount.toLocaleString()} ${cfg.currency_name}**.\n**Balance:** ${sym} **${newBalance.toLocaleString()}**\n*Come back in 15 minutes.*`
+        `🙏 **Beg**\n${flavor}\nYou received **${sym} ${amount.toLocaleString()} ${cfg.currency_name}**.${magnetNote}\n**Balance:** ${sym} **${newBalance.toLocaleString()}**\n*Come back in 15 minutes.*`
       ));
     await interaction.reply({ flags: IS_CV2, components: [container] });
   },

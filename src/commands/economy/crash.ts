@@ -4,7 +4,8 @@ import {
   SlashCommandBuilder,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
-import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplier, recordGameResult } from '../../utils/db';
+import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplier, recordGameResult, consumeBoost } from '../../utils/db';
+import { applyLossInsurance, insuranceLine } from '../../utils/gamble.js';
 import { awardBonusXp } from '../../utils/xpBonus.js';
 import { rand, getHouseCut } from '../../utils/random.js';
 import { cv2Err } from '../../utils/components.js';
@@ -93,9 +94,12 @@ const Crash: Command = {
       const delta = winAmount - bet;
       const { newBalance } = await adjustBalance(guildId, userId, delta);
       recordGameResult(guildId, userId, 'crash', !houseLoss, bet).catch(() => {});
+      const refund = houseLoss ? await applyLossInsurance(guildId, userId, bet) : 0;
 
       let xpLine = '';
-      if (!houseLoss) {
+      // XP only when there was real profit — an instant 1.00x cash-out risks
+      // nothing and shouldn't farm the daily game-XP cap.
+      if (!houseLoss && winAmount > bet) {
         const xpGiven = await awardBonusXp({
           guildId, userId, baseAmount: Math.min(Math.floor(50 * current), 200),
           client: interaction.client, channelId: interaction.channelId, isGame: true,
@@ -106,7 +110,7 @@ const Crash: Command = {
 
       await btn.update({
         content: houseLoss
-          ? `**🚀 Crash**\n\n💸 **The house wins!** You cashed out at ${fmtMult(current)} but the house took this one.\nYou lost **${sym} ${bet.toLocaleString()}**.\n**Balance:** ${sym} **${newBalance.toLocaleString()}**`
+          ? `**🚀 Crash**\n\n💸 **The house wins!** You cashed out at ${fmtMult(current)} but the house took this one.\nYou lost **${sym} ${bet.toLocaleString()}**.${insuranceLine(sym, refund)}\n**Balance:** ${sym} **${(newBalance + refund).toLocaleString()}**`
           : `**🚀 Crash**\n\n✅ **Cashed out at ${fmtMult(current)}!** *(peak ${fmtMult(peak)})*\nYou won **${sym} ${winAmount.toLocaleString()}**!${boostLine}${xpLine}\n**Balance:** ${sym} **${newBalance.toLocaleString()}**`,
         components: [],
       });
@@ -136,14 +140,30 @@ const Crash: Command = {
         gameOver = true;
         clearInterval(tick);
         collector.stop('crashed');
-        const { newBalance } = await adjustBalance(guildId, userId, -bet);
         recordGameResult(guildId, userId, 'crash', false, bet).catch(() => {});
+
+        // Second Chance (one-shot shop item): a bust below 1.5x refunds the bet.
+        if (current < 1.5 && await consumeBoost(guildId, userId, 'second_chance')) {
+          const { balance } = await getOrCreateEconomy(guildId, userId);
+          await interaction.editReply({
+            content:
+              `**🚀 Crash**\n\n` +
+              `💥 **CRASHED to 0 from ${fmtMult(current)}!** *(peak ${fmtMult(peak)})*\n` +
+              `🔁 **Second Chance!** Your bet of **${sym} ${bet.toLocaleString()}** was refunded.\n` +
+              `**Balance:** ${sym} **${balance.toLocaleString()}**`,
+            components: [],
+          }).catch(() => {});
+          return;
+        }
+
+        const { newBalance } = await adjustBalance(guildId, userId, -bet);
+        const refund = await applyLossInsurance(guildId, userId, bet);
         await interaction.editReply({
           content:
             `**🚀 Crash**\n\n` +
             `💥 **CRASHED to 0 from ${fmtMult(current)}!** *(peak ${fmtMult(peak)})*\n` +
-            `You lost **${sym} ${bet.toLocaleString()}**.\n` +
-            `**Balance:** ${sym} **${newBalance.toLocaleString()}**`,
+            `You lost **${sym} ${bet.toLocaleString()}**.${insuranceLine(sym, refund)}\n` +
+            `**Balance:** ${sym} **${(newBalance + refund).toLocaleString()}**`,
           components: [],
         }).catch(() => {});
         return;

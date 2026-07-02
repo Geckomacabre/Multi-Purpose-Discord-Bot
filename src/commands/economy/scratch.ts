@@ -6,8 +6,9 @@ import {
 import { Command } from '../../interfaces/command';
 import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplier, recordGameResult } from '../../utils/db';
 import { awardBonusXp } from '../../utils/xpBonus.js';
-import { rand, getHouseCut } from '../../utils/random.js';
+import { rand, randInt, getHouseCut } from '../../utils/random.js';
 import { cv2Err } from '../../utils/components.js';
+import { applyLossInsurance, insuranceLine } from '../../utils/gamble.js';
 
 const SYMBOLS = [
   { emoji: '🍒', mult: 1.0,  weight: 30 },
@@ -21,7 +22,7 @@ const TOTAL_WEIGHT = SYMBOLS.reduce((s, sym) => s + sym.weight, 0);
 const LEGEND = '*🍒×3=1x | 🍋×3=1.5x | 🍊×3=2x | 🍇×3=3x | ⭐×3=5x | 💎×3=10x*';
 
 function pickSymbol(): string {
-  let r = Math.floor(Math.random() * TOTAL_WEIGHT) + 1;
+  let r = randInt(1, TOTAL_WEIGHT);
   for (const sym of SYMBOLS) { r -= sym.weight; if (r <= 0) return sym.emoji; }
   return SYMBOLS[0]!.emoji;
 }
@@ -86,7 +87,9 @@ async function resolveGame(
     line = `\n🎉 **${win.emoji} × ${win.count}!** You won **${sym} ${winAmount.toLocaleString()}**!${boostLine}${xpLine}`;
   } else {
     recordGameResult(guildId, userId, 'scratch', false, bet).catch(() => {});
-    line = '\n😢 No match — better luck next time!';
+    // Insurance runs before the balance refetch below, so the shown total is right.
+    const refund = await applyLossInsurance(guildId, userId, bet);
+    line = `\n😢 No match — better luck next time!${insuranceLine(sym, refund)}`;
   }
   const eco2 = await getOrCreateEconomy(guildId, userId);
   return { content: `🎟️ **Scratch Card** — ${sym} ${bet.toLocaleString()}${line}\n**Balance:** ${sym} ${eco2.balance.toLocaleString()}\n${LEGEND}` };
