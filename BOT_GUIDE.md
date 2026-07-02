@@ -258,6 +258,7 @@ These commands work **inside an active ticket channel**.
 - `/giveaway end id:` — End a giveaway early and pick winners immediately
 - `/giveaway reroll id:` — Reroll new winners for an ended giveaway
 - `/giveaway list` — See all active giveaways
+- `/giveaway entries id:` — See who has entered a giveaway
 
 ---
 

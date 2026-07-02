@@ -44,7 +44,10 @@ const Giveaway: Command = {
       s.setName('reroll').setDescription('Reroll winners for an ended giveaway')
         .addIntegerOption(o => o.setName('id').setDescription('Giveaway ID').setRequired(true)))
     .addSubcommand(s =>
-      s.setName('list').setDescription('List active giveaways')) as any,
+      s.setName('list').setDescription('List active giveaways'))
+    .addSubcommand(s =>
+      s.setName('entries').setDescription('View who has entered a giveaway')
+        .addIntegerOption(o => o.setName('id').setDescription('Giveaway ID').setRequired(true))) as any,
 
   async run(interaction: ChatInputCommandInteraction) {
     const sub = interaction.options.getSubcommand();
@@ -124,6 +127,44 @@ const Giveaway: Command = {
       const channel = interaction.guild!.channels.cache.get(g.channel_id) as TextChannel | null;
       await channel?.send({ content: `🎊 **Rerolled!** New winner${count > 1 ? 's' : ''}: ${winners} — **${g.prize}**!` }).catch(() => {});
       return interaction.editReply(`✅ Rerolled: ${winners}`);
+    }
+
+    if (sub === 'entries') {
+      if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
+        return interaction.reply({ content: 'You need **Manage Server** to view giveaway entries.', flags: MessageFlags.Ephemeral });
+      }
+      const id = interaction.options.getInteger('id', true);
+      const g = await db.getGiveaway(id, interaction.guildId!);
+      if (!g) return interaction.reply({ content: 'Giveaway not found.', flags: MessageFlags.Ephemeral });
+
+      const entries = await db.getGiveawayEntries(id);
+      if (!entries.length) {
+        return interaction.reply({ content: `**${g.prize}** (ID ${id}) has no entries yet.`, flags: MessageFlags.Ephemeral });
+      }
+
+      const header = `**${entries.length}** ${entries.length === 1 ? 'entry' : 'entries'}\n\n`;
+      const mentions = entries.map(uid => `<@${uid}>`);
+      let list = mentions.join(', ');
+      // Embed descriptions cap at 4096 chars — truncate large entrant lists instead of erroring.
+      if (header.length + list.length > 4096) {
+        let acc = '';
+        let shown = 0;
+        for (const m of mentions) {
+          const candidate = acc ? `${acc}, ${m}` : m;
+          if (header.length + candidate.length + 30 > 4096) break;
+          acc = candidate;
+          shown++;
+        }
+        list = `${acc}, *…and ${entries.length - shown} more*`;
+      }
+
+      const embed = new EmbedBuilder()
+        .setColor(Colors.Gold)
+        .setTitle(`🎉 Entries — ${g.prize}`)
+        .setDescription(header + list)
+        .setFooter({ text: `Giveaway ID ${id}${g.ended ? ' • Ended' : ''}` });
+
+      return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
     }
 
     if (sub === 'list') {

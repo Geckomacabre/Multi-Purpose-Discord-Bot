@@ -2093,6 +2093,21 @@ export async function setLotteryLastRun(guild_id: string, date: string): Promise
     ON CONFLICT(key) DO UPDATE SET value = excluded.value`;
 }
 
+// Stores "channelId:messageId" of the last winner announcement so it can be deleted
+// before the next one posts (channel is included in case the lottery channel is reconfigured).
+export async function getLotteryLastMessage(guild_id: string): Promise<{ channelId: string; messageId: string } | null> {
+  const [row] = await db`SELECT value FROM bot_config WHERE key = ${'lottery_msg_' + guild_id}`;
+  if (!row) return null;
+  const [channelId, messageId] = (row.value as string).split(':');
+  return channelId && messageId ? { channelId, messageId } : null;
+}
+
+export async function setLotteryLastMessage(guild_id: string, channel_id: string, message_id: string): Promise<void> {
+  const value = `${channel_id}:${message_id}`;
+  await db`INSERT INTO bot_config (key, value) VALUES (${'lottery_msg_' + guild_id}, ${value})
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value`;
+}
+
 export async function getRandomLotteryWinner(guild_id: string): Promise<string | null> {
   const rows = await db`SELECT user_id FROM xp WHERE guild_id = ${guild_id}`;
   if (!rows.length) return null;

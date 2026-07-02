@@ -327,7 +327,7 @@ All economy commands are under `/economy`.
 | 📦 Mystery Box | Instant: 60% coins (2k–8k), 25% a random boost, 10% nothing, 5% 50k jackpot | 10,000 |
 
 #### Daily Lottery
-Once per day, one random server member wins **50,000 coins** automatically. Any member with at least 1 XP (i.e. anyone who has ever chatted) is entered. Buying 🎟️ **Loaded Dice** from the shop doubles your chance for the next draw. Winners are announced in the configured lottery channel. Enable it with `/economyconfig lottery <channel>`.
+Once per day, one random server member wins **50,000 coins** automatically. Any member with at least 1 XP (i.e. anyone who has ever chatted) is entered. Buying 🎟️ **Loaded Dice** from the shop doubles your chance for the next draw. Winners are announced in the configured lottery channel — the previous day's winner announcement is deleted right before the new one posts, so the channel never accumulates old winner messages. Enable it with `/economyconfig lottery <channel>`.
 
 #### Free Game Tracker
 Polls Epic Games Store, Steam, and GOG every hour for free game promotions. Posts to a configured channel with a claim button, the original price, and how long the freebie lasts. Deduplicates per server so no game is posted twice.
@@ -443,6 +443,7 @@ Button-based giveaway system. Users click to enter, winners are picked randomly 
 | `/giveaway end <id>` | End a giveaway early and pick winners immediately. |
 | `/giveaway reroll <id>` | Re-pick winners for an already-ended giveaway. |
 | `/giveaway list` | List all active giveaways in the server. |
+| `/giveaway entries <id>` | View who has entered a giveaway (Manage Server required). |
 
 ---
 
