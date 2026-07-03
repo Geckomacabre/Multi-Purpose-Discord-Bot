@@ -61,6 +61,11 @@ const SHOP_ITEMS = [
     price: 40_000, type: 'second_chance', multiplier: 1.0, durationMs: 7 * DAY,
   },
   {
+    id: 'extra_life', name: 'Extra Life', emoji: '💖', kind: 'oneshot',
+    description: 'Your next mistake in **counting** is forgiven instead of resetting the streak — one use, keeps for 7 days',
+    price: 35_000, type: 'extra_life', multiplier: 1.0, durationMs: 7 * DAY,
+  },
+  {
     id: 'time_skip', name: 'Time Skip', emoji: '⏩', kind: 'instant',
     description: 'Instantly reset your `/daily`, `/work`, or `/beg` cooldown (pick one)',
     price: 35_000, type: '', multiplier: 1.0, durationMs: 0,
@@ -138,6 +143,7 @@ const Shop: Command = {
               { name: '🥊 Goon Squad — next failed rob: no cooldown (25,000)', value: 'goon_squad' },
               { name: '🛡️ Gambling Insurance — next lost bet 50% back (30,000)', value: 'insurance' },
               { name: '🔁 Second Chance — crash bust <1.5x refunded (40,000)', value: 'second_chance' },
+              { name: '💖 Extra Life — forgive next counting mistake (35,000)', value: 'extra_life' },
               { name: '⏩ Time Skip — reset daily/work/beg cooldown (35,000)', value: 'time_skip' },
               { name: '📦 Mystery Box — random reward (10,000)', value: 'mystery_box' },
             )

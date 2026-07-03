@@ -163,6 +163,12 @@ const countingModule: EventModule = {
           return;
         }
 
+        if (await db.consumeBoost(message.guildId, message.author.id, 'extra_life')) {
+          await message.reply({ content: `💖 <@${message.author.id}> **Extra Life used!** Your mistake was forgiven — the streak is safe at **${count.toLocaleString()}**, next number is still **${(count + 1).toLocaleString()}.**` });
+          await message.react('💖').catch(console.error);
+          return;
+        }
+
         const punishmentNumber = Math.max(
           0,
           Math.min(

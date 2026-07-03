@@ -38,6 +38,7 @@ Earn and spend coins in the server economy.
 - 🥊 **Goon Squad** — your next failed `/rob` has no cooldown (25,000 coins)
 - 🛡️ **Gambling Insurance** — your next lost bet is 50% refunded, any game (30,000 coins)
 - 🔁 **Second Chance** — if `/crash` busts below 1.5x, your bet is refunded (40,000 coins)
+- 💖 **Extra Life** — your next mistake in the counting game is forgiven instead of resetting the streak (35,000 coins)
 
 **⚡ Instant:**
 - ⏩ **Time Skip** — instantly reset your `/daily`, `/work`, or `/beg` cooldown (35,000 coins)

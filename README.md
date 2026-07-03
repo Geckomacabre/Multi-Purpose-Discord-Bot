@@ -61,7 +61,7 @@ These were part of TMCBot before the YAGPDB port.
 
 | Feature | Description |
 |---|---|
-| **Counting** | Sequential number counting game per channel. Tracks high scores, punishes wrong numbers with a random count setback, catches edits/deletes, and responds to natural language queries like "what is the count". Configured with `/config counting`. |
+| **Counting** | Sequential number counting game per channel. Tracks high scores, punishes wrong numbers with a random count setback, catches edits/deletes, and responds to natural language queries like "what is the count". Configured with `/config counting`. Buying 💖 **Extra Life** from the shop forgives your next mistake instead of setting the streak back. |
 
 ---
 
@@ -362,6 +362,7 @@ All economy commands are under `/economy`.
 | 🥊 Goon Squad | One-shot: your next failed `/rob` has no cooldown (keeps 7 days) | 25,000 |
 | 🛡️ Gambling Insurance | One-shot: your next lost bet is 50% refunded (keeps 7 days) | 30,000 |
 | 🔁 Second Chance | One-shot: a `/crash` bust below 1.5x refunds your bet (keeps 7 days) | 40,000 |
+| 💖 Extra Life | One-shot: your next mistake in counting is forgiven instead of resetting the streak (keeps 7 days) | 35,000 |
 | ⏩ Time Skip | Instant: reset your `/daily`, `/work`, or `/beg` cooldown | 35,000 |
 | 📦 Mystery Box | Instant: 60% coins (2k–8k), 25% a random boost, 10% nothing, 5% 50k jackpot | 10,000 |
 
