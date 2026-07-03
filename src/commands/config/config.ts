@@ -82,8 +82,19 @@ const ConfigCommand: Command = {
         .addBooleanOption(o => o.setName('deletes').setDescription('Log message deletes'))
         .addBooleanOption(o => o.setName('bans').setDescription('Log bans/unbans'))
         .addBooleanOption(o => o.setName('nicknames').setDescription('Log nickname changes'))
-        .addBooleanOption(o => o.setName('roles').setDescription('Log role changes')))
+        .addBooleanOption(o => o.setName('roles').setDescription('Log role changes'))
+        .addBooleanOption(o => o.setName('commands').setDescription('Log every slash command members use — helps track down raid bots')))
       .addSubcommand(s => s.setName('view').setDescription('View current log settings')))
+
+    // ── Antiphishing ──────────────────────────────────────────────────────────
+    .addSubcommandGroup(g => g.setName('antiphishing').setDescription('Configure phishing and raid link protection')
+      .addSubcommand(s => s.setName('toggle').setDescription('Enable or disable antiphishing entirely')
+        .addBooleanOption(o => o.setName('enabled').setDescription('Enabled').setRequired(true)))
+      .addSubcommand(s => s.setName('invites').setDescription('Toggle auto-removal of Discord invite links (the #1 raid-spam vector)')
+        .addBooleanOption(o => o.setName('enabled').setDescription('Enabled').setRequired(true)))
+      .addSubcommand(s => s.setName('lookalike').setDescription('Toggle detection of typosquat domains impersonating Discord/Steam/Epic')
+        .addBooleanOption(o => o.setName('enabled').setDescription('Enabled').setRequired(true)))
+      .addSubcommand(s => s.setName('view').setDescription('View current antiphishing settings')))
 
     // ── Streaming ─────────────────────────────────────────────────────────────
     .addSubcommandGroup(g => g.setName('streaming').setDescription('Configure streaming announcements')
@@ -265,6 +276,7 @@ const ConfigCommand: Command = {
         const bans    = interaction.options.getBoolean('bans');    if (bans    !== null) fields.log_bans            = bans    ? 1 : 0;
         const nicks   = interaction.options.getBoolean('nicknames'); if (nicks !== null) fields.log_nickname_changes = nicks  ? 1 : 0;
         const roles   = interaction.options.getBoolean('roles');   if (roles   !== null) fields.log_role_changes    = roles   ? 1 : 0;
+        const cmds    = interaction.options.getBoolean('commands'); if (cmds   !== null) fields.log_commands        = cmds    ? 1 : 0;
         await db.updateLogConfig(interaction.guildId!, fields);
         await interaction.editReply('✅ Log events updated.');
       } else {
@@ -280,7 +292,34 @@ const ConfigCommand: Command = {
           { name: 'Bans',    value: cfg.log_bans ? '✅' : '❌', inline: true },
           { name: 'Nicknames', value: cfg.log_nickname_changes ? '✅' : '❌', inline: true },
           { name: 'Roles',   value: cfg.log_role_changes ? '✅' : '❌', inline: true },
+          { name: 'Commands', value: cfg.log_commands ? '✅' : '❌', inline: true },
         )] });
+      }
+      return;
+    }
+
+    // ── Antiphishing ──────────────────────────────────────────────────────────
+    if (group === 'antiphishing') {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      if (sub === 'toggle') {
+        const enabled = interaction.options.getBoolean('enabled', true);
+        await db.updateAntiphishingConfig(interaction.guildId!, { enabled: enabled ? 1 : 0 });
+        await interaction.editReply(`✅ Antiphishing ${enabled ? 'enabled' : 'disabled'}.`);
+      } else if (sub === 'invites') {
+        const enabled = interaction.options.getBoolean('enabled', true);
+        await db.updateAntiphishingConfig(interaction.guildId!, { block_invites: enabled ? 1 : 0 });
+        await interaction.editReply(`✅ Invite link removal ${enabled ? 'enabled' : 'disabled'}.`);
+      } else if (sub === 'lookalike') {
+        const enabled = interaction.options.getBoolean('enabled', true);
+        await db.updateAntiphishingConfig(interaction.guildId!, { block_lookalike: enabled ? 1 : 0 });
+        await interaction.editReply(`✅ Lookalike domain detection ${enabled ? 'enabled' : 'disabled'}.`);
+      } else {
+        const cfg = await db.getAntiphishingConfig(interaction.guildId!);
+        await interaction.editReply({ embeds: [new EmbedBuilder().setColor(Colors.Blue).setTitle('Antiphishing Settings').addFields(
+          { name: 'Enabled',            value: cfg.enabled ? '✅' : '❌', inline: true },
+          { name: 'Block Invite Links', value: cfg.block_invites ? '✅' : '❌', inline: true },
+          { name: 'Block Lookalikes',   value: cfg.block_lookalike ? '✅' : '❌', inline: true },
+        ).setFooter({ text: 'Known phishing domains (sinking.yachts feed) are always blocked while enabled — alerts post to your modlog channel.' })] });
       }
       return;
     }

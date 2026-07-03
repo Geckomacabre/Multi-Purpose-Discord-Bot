@@ -1,4 +1,4 @@
-import { EmbedBuilder, GuildMember, Message, TextChannel, PermissionFlagsBits } from 'discord.js';
+import { ChatInputCommandInteraction, EmbedBuilder, GuildMember, Message, TextChannel, PermissionFlagsBits } from 'discord.js';
 import { EventModule } from '../feature';
 import { getLogConfig } from '../../utils/db.js';
 
@@ -6,6 +6,8 @@ const WINDOW_MS = 10_000;       // 10-second sliding window for cross-channel sp
 const THRESHOLD = 3;            // more than 3 channels triggers action
 const RAPID_WINDOW_MS = 5_000;  // 5-second window for rapid-fire detection
 const RAPID_THRESHOLD = 3;      // 3+ messages in 5 seconds triggers action
+const CMD_RAPID_WINDOW_MS = 8_000; // 8-second window for rapid slash-command usage
+const CMD_RAPID_THRESHOLD = 6;     // 6+ commands in 8 seconds — normal users don't do this, raid scripts do
 const MSG_HISTORY_MS = 60 * 1000; // 1 minute — how far back to purge on spam
 const TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
@@ -15,6 +17,7 @@ type UserTrack = {
   imageChannels: Map<string, number>;
   messageChannels: Map<string, Set<string>>;
   recentMessages: number[];
+  recentCommands: number[];
   msgHistory: TrackedMsg[];
 };
 
@@ -24,7 +27,7 @@ const tracker = new Map<string, Map<string, UserTrack>>();
 function getTrack(guildId: string, userId: string): UserTrack {
   if (!tracker.has(guildId)) tracker.set(guildId, new Map());
   const guild = tracker.get(guildId)!;
-  if (!guild.has(userId)) guild.set(userId, { imageChannels: new Map(), messageChannels: new Map(), recentMessages: [], msgHistory: [] });
+  if (!guild.has(userId)) guild.set(userId, { imageChannels: new Map(), messageChannels: new Map(), recentMessages: [], recentCommands: [], msgHistory: [] });
   return guild.get(userId)!;
 }
 
@@ -77,7 +80,6 @@ async function punish(
   reason: string,
   db: any,
   msgHistory: TrackedMsg[],
-  triggeringMsg: Message,
 ) {
   const guildId = member.guild.id;
 
@@ -156,6 +158,31 @@ async function punish(
   }
 }
 
+// Called from onInteraction.ts for every chat command — not a ClientEvents event,
+// so it's a plain exported function rather than an EventModule handler. A raid
+// script hammering slash commands trips the same timeout+purge+log pipeline as
+// message spam. Returns true if the user was just punished (caller should abort).
+export async function checkCommandSpam(interaction: ChatInputCommandInteraction, db: any): Promise<boolean> {
+  if (!interaction.guildId) return false;
+  const member = interaction.member as GuildMember | null;
+  if (!member) return false;
+  if (member.permissions.has(PermissionFlagsBits.ManageMessages)) return false;
+
+  const now = Date.now();
+  const track = getTrack(interaction.guildId, interaction.user.id);
+  track.recentCommands.push(now);
+  track.recentCommands = track.recentCommands.filter(ts => now - ts <= CMD_RAPID_WINDOW_MS);
+
+  if (track.recentCommands.length < CMD_RAPID_THRESHOLD) return false;
+
+  const count = track.recentCommands.length;
+  const history = [...track.msgHistory];
+  track.recentCommands = [];
+  track.msgHistory = [];
+  await punish(member, `Command spam: ${count} slash commands in ${CMD_RAPID_WINDOW_MS / 1000} seconds`, db, history);
+  return true;
+}
+
 const spamDetectModule: EventModule = {
   name: 'spamdetect',
   handlers: {
@@ -184,7 +211,7 @@ const spamDetectModule: EventModule = {
         const history = [...track.msgHistory];
         track.recentMessages = [];
         track.msgHistory = [];
-        await punish(member, `Rapid-fire spam: ${count} messages in 5 seconds`, db, history, msg);
+        await punish(member, `Rapid-fire spam: ${count} messages in 5 seconds`, db, history);
         return;
       }
 
@@ -203,7 +230,7 @@ const spamDetectModule: EventModule = {
           const history = [...track.msgHistory];
           track.imageChannels.clear();
           track.msgHistory = [];
-          await punish(member, `Image spam: posted images in ${channelList} within 10 seconds`, db, history, msg);
+          await punish(member, `Image spam: posted images in ${channelList} within 10 seconds`, db, history);
           return;
         }
       }
@@ -232,7 +259,7 @@ const spamDetectModule: EventModule = {
         const history = [...track.msgHistory];
         track.messageChannels.clear();
         track.msgHistory = [];
-        await punish(member, `Message spam: sent the same message in ${channelList} within 10 seconds`, db, history, msg);
+        await punish(member, `Message spam: sent the same message in ${channelList} within 10 seconds`, db, history);
       }
     },
   },

@@ -84,6 +84,15 @@ export type ILogConfig = {
   log_server_updates: number;
   log_channel_changes: number;
   ignored_channels: string;
+  command_log_channel_id: string | null;
+  log_commands: number;
+};
+
+export type IAntiphishingConfig = {
+  guild_id: string;
+  enabled: number;
+  block_invites: number;
+  block_lookalike: number;
 };
 
 export type IAutorole = {
@@ -544,6 +553,15 @@ export async function initDb() {
   try { await db`ALTER TABLE log_config ADD COLUMN voice_log_channel_id TEXT`; } catch {}
   try { await db`ALTER TABLE log_config ADD COLUMN server_log_channel_id TEXT`; } catch {}
   try { await db`ALTER TABLE log_config ADD COLUMN log_voice_events INTEGER NOT NULL DEFAULT 1`; } catch {}
+  try { await db`ALTER TABLE log_config ADD COLUMN command_log_channel_id TEXT`; } catch {}
+  try { await db`ALTER TABLE log_config ADD COLUMN log_commands INTEGER NOT NULL DEFAULT 1`; } catch {}
+
+  await db`CREATE TABLE IF NOT EXISTS antiphishing_config (
+    guild_id        TEXT PRIMARY KEY,
+    enabled         INTEGER NOT NULL DEFAULT 1,
+    block_invites   INTEGER NOT NULL DEFAULT 1,
+    block_lookalike INTEGER NOT NULL DEFAULT 1
+  )`;
 
   await db`CREATE TABLE IF NOT EXISTS autoroles (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1153,7 +1171,7 @@ export async function removeGuild(guild_id: string) {
     'welcome_config', 'stat_channels', 'giveaways', 'reaction_roles',
     'topic_channels', 'topics', 'starboard_config', 'starboard_posts',
     'tags', 'music_config', 'news_config', 'verify_config',
-    'streamvc_config', 'streamvc_approvers',
+    'streamvc_config', 'streamvc_approvers', 'antiphishing_config',
   ]) {
     await db`DELETE FROM ${db(table)} WHERE guild_id = ${guild_id}`.catch(() => {});
   }
@@ -1377,6 +1395,24 @@ export async function updateLogConfig(guild_id: string, fields: Partial<Omit<ILo
   if (fields.voice_log_channel_id !== undefined) await db`UPDATE log_config SET voice_log_channel_id = ${fields.voice_log_channel_id} WHERE guild_id = ${guild_id}`;
   if (fields.server_log_channel_id !== undefined) await db`UPDATE log_config SET server_log_channel_id = ${fields.server_log_channel_id} WHERE guild_id = ${guild_id}`;
   if (fields.ignored_channels !== undefined) await db`UPDATE log_config SET ignored_channels = ${fields.ignored_channels} WHERE guild_id = ${guild_id}`;
+  if (fields.command_log_channel_id !== undefined) await db`UPDATE log_config SET command_log_channel_id = ${fields.command_log_channel_id} WHERE guild_id = ${guild_id}`;
+  if (fields.log_commands !== undefined) await db`UPDATE log_config SET log_commands = ${fields.log_commands} WHERE guild_id = ${guild_id}`;
+}
+
+// ─── Antiphishing ─────────────────────────────────────────────────────────────
+
+export async function getAntiphishingConfig(guild_id: string): Promise<IAntiphishingConfig> {
+  const [row] = await db`SELECT * FROM antiphishing_config WHERE guild_id = ${guild_id}`;
+  if (row) return row as IAntiphishingConfig;
+  return { guild_id, enabled: 1, block_invites: 1, block_lookalike: 1 };
+}
+
+export async function updateAntiphishingConfig(guild_id: string, fields: Partial<Omit<IAntiphishingConfig, 'guild_id'>>): Promise<void> {
+  await ensureConfig(guild_id);
+  await db`INSERT OR IGNORE INTO antiphishing_config (guild_id) VALUES (${guild_id})`;
+  if (fields.enabled !== undefined) await db`UPDATE antiphishing_config SET enabled = ${fields.enabled} WHERE guild_id = ${guild_id}`;
+  if (fields.block_invites !== undefined) await db`UPDATE antiphishing_config SET block_invites = ${fields.block_invites} WHERE guild_id = ${guild_id}`;
+  if (fields.block_lookalike !== undefined) await db`UPDATE antiphishing_config SET block_lookalike = ${fields.block_lookalike} WHERE guild_id = ${guild_id}`;
 }
 
 // ─── Autorole ─────────────────────────────────────────────────────────────────

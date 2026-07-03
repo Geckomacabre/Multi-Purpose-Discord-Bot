@@ -239,6 +239,14 @@ All actions are logged to the modlog channel and stored as cases.
 
 ---
 
+## 🚨 Raid Detection
+
+- `/raidguard recent [minutes] [max_age_days]` — List recently joined accounts, newest first (default: last 5 minutes, no age filter) — pulls live, works even right after a restart
+- **Automatic alert** — if 5+ accounts under 3 days old join within 60 seconds, a `🚨 Possible Raid Detected` message posts to your modlog with everyone involved, ready to feed into `/ban`
+- **Command spam auto-timeout** — 6+ slash commands in 8 seconds (the signature of a raid script) triggers the same 24-hour timeout + message purge as regular spam detection
+
+---
+
 ## 🎟️ Ticket Management
 
 These commands work **inside an active ticket channel**.
@@ -268,6 +276,23 @@ These commands work **inside an active ticket channel**.
 - `/modconfig modlog [channel]` — Set the channel where all mod actions are logged (omit to clear)
 - `/modconfig dm enabled:` — Toggle whether punished users receive a DM about their case
 - `/modconfig view` — View current mod settings
+
+### Antiphishing
+- `/config antiphishing toggle enabled:` — Enable or disable antiphishing entirely
+- `/config antiphishing invites enabled:` — Toggle auto-removal of Discord invite links
+- `/config antiphishing lookalike enabled:` — Toggle typosquat domain detection (e.g. `discocd.gift`)
+- `/config antiphishing view` — View current antiphishing settings
+
+All on by default. Known phishing domains are always blocked while antiphishing is enabled; removals post an alert to your modlog channel.
+
+### Server Logging
+- `/config logs channel [channel]` — Set the fallback log channel (omit to clear)
+- `/config logs toggle enabled:` — Enable or disable logging entirely
+- `/config logs events [joins] [leaves] [edits] [deletes] [bans] [nicknames] [roles] [commands]` — Toggle individual log types, including **every slash command members use**
+- `/config logs ignore channel:` — Stop message logs for one channel
+- `/config logs view` — View current log settings
+
+Per-category channels (member/message/voice/server/command) can be set individually from the Web Dashboard.
 
 ### Birthday System
 - `/birthdayconfig channel [channel]` — Set the birthday announcement channel

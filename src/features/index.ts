@@ -28,6 +28,7 @@ import spamDetectModule from './spamdetect';
 import mediaguessModule, { startMediaGames } from './mediaguess';
 import streamVcModule from './streamvc';
 import { startLottery } from './lottery';
+import raidguardModule from './raidguard';
 
 const features = [
   countingModule,
@@ -52,6 +53,7 @@ const features = [
   spamDetectModule,
   mediaguessModule,
   streamVcModule,
+  raidguardModule,
 ];
 
 export function registerFeatures(bot: Client) {

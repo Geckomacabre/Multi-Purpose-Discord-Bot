@@ -1,8 +1,8 @@
-import { Colors, EmbedBuilder, GuildChannel, TextChannel } from 'discord.js';
+import { ChatInputCommandInteraction, Colors, EmbedBuilder, GuildChannel, TextChannel } from 'discord.js';
 import { EventModule } from '../feature';
 import type * as Db from '../../utils/db';
 
-type LogCategory = 'member' | 'message' | 'voice' | 'server';
+type LogCategory = 'member' | 'message' | 'voice' | 'server' | 'command';
 
 function resolveChannelId(cfg: Db.ILogConfig, category: LogCategory): string | null {
   switch (category) {
@@ -10,6 +10,7 @@ function resolveChannelId(cfg: Db.ILogConfig, category: LogCategory): string | n
     case 'message': return cfg.message_log_channel_id || cfg.channel_id || null;
     case 'voice':   return cfg.voice_log_channel_id || cfg.channel_id || null;
     case 'server':  return cfg.server_log_channel_id || cfg.channel_id || null;
+    case 'command': return cfg.command_log_channel_id || cfg.channel_id || null;
   }
 }
 
@@ -21,6 +22,43 @@ async function getLogChannel(bot: any, channelId: string | null): Promise<TextCh
   } catch {
     return null;
   }
+}
+
+// Renders a chat command invocation into a short "/command sub opt:val" string for logging.
+function describeCommand(interaction: ChatInputCommandInteraction): string {
+  const parts = [interaction.commandName];
+  const group = interaction.options.getSubcommandGroup(false);
+  if (group) parts.push(group);
+  const sub = interaction.options.getSubcommand(false);
+  if (sub) parts.push(sub);
+  let cmd = `/${parts.join(' ')}`;
+  const opts = (interaction.options as any).data as Array<{ name: string; value?: unknown; options?: unknown[] }> | undefined;
+  const flat = (opts ?? []).flatMap(function walk(o: any): any[] {
+    return o.options ? o.options.flatMap(walk) : [o];
+  });
+  const optStr = flat
+    .filter(o => o.value !== undefined)
+    .map(o => `${o.name}:${String(o.value).slice(0, 80)}`)
+    .join(' ');
+  if (optStr) cmd += ` ${optStr}`;
+  return cmd.slice(0, 400);
+}
+
+// Called from onInteraction.ts for every successfully-dispatched slash command —
+// not tied to a ClientEvents event, so it's a plain exported function rather than
+// an EventModule handler.
+export async function logCommandUsage(interaction: ChatInputCommandInteraction, db: typeof Db): Promise<void> {
+  if (!interaction.guildId) return;
+  const cfg = await db.getLogConfig(interaction.guildId);
+  if (!cfg?.log_commands) return;
+  const ch = await getLogChannel(interaction.client, resolveChannelId(cfg, 'command'));
+  if (!ch) return;
+  const embed = new EmbedBuilder()
+    .setColor(Colors.Grey)
+    .setDescription(`<@${interaction.user.id}> used \`${describeCommand(interaction)}\` in <#${interaction.channelId}>`)
+    .setFooter({ text: `${interaction.user.tag} • ${interaction.user.id}` })
+    .setTimestamp();
+  await ch.send({ embeds: [embed] }).catch(() => {});
 }
 
 const logsModule: EventModule = {

@@ -90,6 +90,13 @@ Each moderation action is its own top-level command. Action commands are hidden 
 | `/modconfig dm <enabled>` | Toggle whether punished users are DM'd. |
 | `/modconfig view` | View current moderation settings. |
 
+#### Raid Detection
+| Command | Description |
+|---|---|
+| `/raidguard recent [minutes] [max_age_days]` | List recently joined accounts, newest first — pulls straight from live member data (not a log, so it works even right after a restart). Defaults to the last 5 minutes with no age filter. |
+
+Also runs automatically: if **5+ accounts under 3 days old** join within a 60-second window, a `🚨 Possible Raid Detected` alert posts to your modlog (or member-log) channel listing everyone involved with clickable mentions and account ages — ready to feed straight into `/ban`. Re-alerts are throttled to once per 5 minutes per server so an active raid doesn't spam the channel.
+
 #### AutoMod
 | Command | Description |
 |---|---|
@@ -103,11 +110,11 @@ Each moderation action is its own top-level command. Action commands are hidden 
 |---|---|
 | `/config logs channel` | Set the channel for server logs. |
 | `/config logs toggle` | Enable or disable logging entirely. |
-| `/config logs events` | Choose which events to log: joins, leaves, edits, deletes, bans, nicknames, roles. |
+| `/config logs events` | Choose which events to log: joins, leaves, edits, deletes, bans, nicknames, roles, **commands**. |
 | `/config logs ignore` | Toggle ignoring a channel from message logs. |
 | `/config logs view` | View current log settings. |
 
-Logged events: member join/leave, message edit/delete, bans/unbans, nickname changes, role changes.
+Logged events: member join/leave, message edit/delete, bans/unbans, nickname changes, role changes, and (when enabled) **every slash command used** — who ran it, what command/subcommand/options, and which channel. Handy for tracing what a raid account did before it got banned. Per-category channels (member/message/voice/server/command) can be set individually from the [Web Dashboard](#web-dashboard); `/config logs channel` sets the fallback used when a category has no dedicated channel.
 
 #### Role Management
 
@@ -199,7 +206,29 @@ A locked voice channel (e.g. a streamer's private VC). Setting the channel **aut
 | `/config serverstats channels list` | List all stat channels. |
 
 #### AntiPhishing
-No configuration needed — active automatically. Detects and deletes messages containing known phishing domains using the [sinking.yachts](https://phish.sinking.yachts) API. Domain list refreshes every 30 minutes.
+Active automatically (enabled by default) — no setup required, but everything is toggleable. Three layers of protection, all gated behind a **Manage Messages** staff bypass so mods/admins can still post links freely:
+
+1. **Known phishing domains** — deletes messages linking known phishing sites using the [sinking.yachts](https://phish.sinking.yachts) API. Domain list refreshes every 30 minutes.
+2. **Lookalike/typosquat domains** — catches zero-day scam links that haven't hit the blocklist yet (the exact window a raid exploits) by flagging domains within edit-distance 2 of `discord.com`, `discordapp.com`, `steamcommunity.com`, `steampowered.com`, or `epicgames.com` — e.g. `discocd.gift`.
+3. **Discord invite links** — auto-removes `discord.gg/*` and `discord.com/invite/*` links, the single most common raid-spam payload.
+
+Every removal posts an alert (domain/code, user, channel) to your modlog channel so you have a record to act on.
+
+| Command | Description |
+|---|---|
+| `/config antiphishing toggle <enabled>` | Enable or disable antiphishing entirely. |
+| `/config antiphishing invites <enabled>` | Toggle invite-link auto-removal. |
+| `/config antiphishing lookalike <enabled>` | Toggle typosquat domain detection. |
+| `/config antiphishing view` | View current antiphishing settings. |
+
+#### Spam Detection
+Always active, no configuration needed. Detects and auto-punishes (24-hour timeout + purges the offender's last hour of messages across every channel) any of:
+- **Rapid-fire messages** — 3+ messages in 5 seconds.
+- **Cross-channel image spam** — posting images/videos in more than 3 different channels within 10 seconds.
+- **Cross-channel message spam** — posting the identical message in more than 3 different channels within 10 seconds.
+- **Command spam** — 6+ slash commands in 8 seconds, the signature of a raid script hammering the bot rather than a human clicking through the UI.
+
+Members with **Manage Messages** are exempt (staff/bots running legitimate bulk actions won't get caught). Every trigger posts a detailed report — reason, action taken, and a list of every purged message — to your configured member/message log channels and modlog.
 
 #### Utility
 | Command | Description |

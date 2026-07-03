@@ -46,6 +46,13 @@ const LOG_GROUPS: LogGroup[] = [
       { key: 'log_server_updates',  label: 'Server Settings Changed' },
     ],
   },
+  {
+    label: 'Command Logs',
+    channelField: 'command_log_channel_id',
+    flags: [
+      { key: 'log_commands', label: 'Slash Command Used (track raid bots / suspicious activity)' },
+    ],
+  },
 ];
 
 const ALL_FLAGS = LOG_GROUPS.flatMap(g => g.flags);
@@ -113,6 +120,7 @@ export async function handleLogsSave(guildId: string, body: any): Promise<void> 
     message_log_channel_id: body.message_log_channel_id || null,
     voice_log_channel_id: body.voice_log_channel_id || null,
     server_log_channel_id: body.server_log_channel_id || null,
+    command_log_channel_id: body.command_log_channel_id || null,
   };
   for (const { key } of ALL_FLAGS) {
     (update as any)[key] = body[key] === '1' ? 1 : 0;
