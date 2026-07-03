@@ -6,7 +6,7 @@ import {
 import { Command } from '../../interfaces/command';
 import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplier, recordGameResult } from '../../utils/db';
 import { awardBonusXp } from '../../utils/xpBonus.js';
-import { randInt, rand, getHouseCut } from '../../utils/random.js';
+import { randInt } from '../../utils/random.js';
 import { cv2Err } from '../../utils/components.js';
 import { newDeck, shuffleDeck, handStr, bjHandValue, type Card } from '../../utils/cards.js';
 import { applyLossInsurance, insuranceLine } from '../../utils/gamble.js';
@@ -102,26 +102,13 @@ const Blackjack: Command = {
       }).catch(() => {});
     }
 
-    function playDealer(rigged = false): void {
-      const pv = bjHandValue(playerHand);
-      while (bjHandValue(dealerHand) < 17) {
-        if (rigged) {
-          // House cut, applied BEFORE the cards are shown: stack the shoe in
-          // the dealer's favor on each hit — prefer a card that beats the
-          // player outright, else one that keeps the dealer alive. The final
-          // hands always justify the outcome the player sees.
-          const pick = (test: (total: number) => boolean) =>
-            deck.findIndex((c, i) => i >= di && test(bjHandValue([...dealerHand, c])));
-          let idx = pick(t => t >= 17 && t <= 21 && t > pv);
-          if (idx === -1) idx = pick(t => t <= 21);
-          if (idx > di) [deck[di], deck[idx]] = [deck[idx]!, deck[di]!];
-        }
-        dealerHand.push(draw());
-      }
+    // Fair shoe: the dealer draws straight off the shuffled deck, stands on 17+.
+    function playDealer(): void {
+      while (bjHandValue(dealerHand) < 17) dealerHand.push(draw());
     }
 
     async function resolveStand(): Promise<void> {
-      playDealer(rand() < getHouseCut(activeBet));
+      playDealer();
       const pv = bjHandValue(playerHand);
       const dv = bjHandValue(dealerHand);
       const winPayout = Math.floor(activeBet * luckMult);

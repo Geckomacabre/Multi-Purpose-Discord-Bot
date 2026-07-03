@@ -6,7 +6,7 @@ import {
 import { Command } from '../../interfaces/command';
 import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplier, recordGameResult } from '../../utils/db';
 import { awardBonusXp } from '../../utils/xpBonus.js';
-import { randInt, rand, getHouseCut } from '../../utils/random.js';
+
 import { cv2Err } from '../../utils/components.js';
 import { newDeck, shuffleDeck, cardStr, evaluatePokerHand, type Card } from '../../utils/cards.js';
 import { applyLossInsurance, insuranceLine } from '../../utils/gamble.js';
@@ -90,17 +90,9 @@ const Poker: Command = {
       if (btn.customId === 'poker_draw') {
         collector.stop('draw');
 
-        // Replace non-held cards. The house cut is applied HERE, before the
-        // hand is shown: re-deal the replacements until the hand doesn't pay,
-        // so the displayed cards always justify the outcome. A paying hand the
-        // player locked in by holding all five cards can't be taken away.
-        const slots = hand.map((_, i) => i).filter(i => !held[i]);
-        const rig = slots.length > 0 && rand() < getHouseCut(bet);
-        let pool = deck.slice(di);
-        for (let attempt = 0; ; attempt++) {
-          slots.forEach((slot, j) => { hand[slot] = pool[j]!; });
-          if (!rig || evaluatePokerHand(hand).multiplier === 0 || attempt >= 30) break;
-          pool = shuffleDeck(pool);
+        // Replace non-held cards straight off the shuffled deck — fair draw.
+        for (let i = 0; i < 5; i++) {
+          if (!held[i]) hand[i] = draw();
         }
 
         const result = evaluatePokerHand(hand);

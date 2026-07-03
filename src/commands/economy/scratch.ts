@@ -6,20 +6,23 @@ import {
 import { Command } from '../../interfaces/command';
 import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplier, recordGameResult } from '../../utils/db';
 import { awardBonusXp } from '../../utils/xpBonus.js';
-import { rand, randInt, getHouseCut } from '../../utils/random.js';
+import { randInt } from '../../utils/random.js';
 import { cv2Err } from '../../utils/components.js';
 import { applyLossInsurance, insuranceLine } from '../../utils/gamble.js';
 
+// Paytable tuned to ~99% RTP with a 52% hit rate: you need FOUR of the same
+// symbol among the 9 cells. 4 cherries = money back; everything rarer profits.
 const SYMBOLS = [
-  { emoji: '🍒', mult: 1.0,  weight: 30 },
-  { emoji: '🍋', mult: 1.5,  weight: 25 },
-  { emoji: '🍊', mult: 2.0,  weight: 20 },
-  { emoji: '🍇', mult: 3.0,  weight: 12 },
-  { emoji: '⭐', mult: 5.0,  weight: 8  },
-  { emoji: '💎', mult: 10.0, weight: 5  },
+  { emoji: '🍒', mult: 1,  weight: 30 },
+  { emoji: '🍋', mult: 2,  weight: 25 },
+  { emoji: '🍊', mult: 3,  weight: 20 },
+  { emoji: '🍇', mult: 6,  weight: 12 },
+  { emoji: '⭐', mult: 12, weight: 8  },
+  { emoji: '💎', mult: 25, weight: 5  },
 ];
+const MATCH_NEEDED = 4;
 const TOTAL_WEIGHT = SYMBOLS.reduce((s, sym) => s + sym.weight, 0);
-const LEGEND = '*🍒×3=1x | 🍋×3=1.5x | 🍊×3=2x | 🍇×3=3x | ⭐×3=5x | 💎×3=10x*';
+const LEGEND = '*Match 4+: 🍒 1x | 🍋 2x | 🍊 3x | 🍇 6x | ⭐ 12x | 💎 25x*';
 
 function pickSymbol(): string {
   let r = randInt(1, TOTAL_WEIGHT);
@@ -27,13 +30,8 @@ function pickSymbol(): string {
   return SYMBOLS[0]!.emoji;
 }
 
-function generateGrid(forceLoss = false): string[] {
-  if (!forceLoss) return Array.from({ length: 9 }, () => pickSymbol());
-  // Keep re-rolling until the grid has no 3-of-a-kind — house cut is invisible
-  let grid: string[];
-  do { grid = Array.from({ length: 9 }, () => pickSymbol()); }
-  while (checkWin(grid) !== null);
-  return grid;
+function generateGrid(): string[] {
+  return Array.from({ length: 9 }, () => pickSymbol());
 }
 
 function buildGrid(symbols: string[], revealed: boolean[]): ActionRowBuilder<ButtonBuilder>[] {
@@ -58,7 +56,7 @@ function checkWin(symbols: string[]): { emoji: string; count: number; mult: numb
   for (const s of symbols) counts.set(s, (counts.get(s) ?? 0) + 1);
   let best: { emoji: string; count: number; mult: number } | null = null;
   for (const [emoji, count] of counts) {
-    if (count < 3) continue;
+    if (count < MATCH_NEEDED) continue;
     const mult = SYMBOLS.find(s => s.emoji === emoji)?.mult ?? 0;
     if (!best || mult > best.mult) best = { emoji, count, mult };
   }
@@ -115,12 +113,12 @@ const Scratch: Command = {
 
     await adjustBalance(guildId, userId, -bet);
 
-    const symbols = generateGrid(rand() < getHouseCut(bet));
+    const symbols = generateGrid();
     const revealed = new Array<boolean>(9).fill(false);
 
     await interaction.deferReply();
     const msg = await interaction.editReply({
-      content: `🎟️ **Scratch Card** — ${cfg.currency_symbol} ${bet.toLocaleString()}\nClick cells to reveal! Match 3 of the same symbol to win.\n${LEGEND}`,
+      content: `🎟️ **Scratch Card** — ${cfg.currency_symbol} ${bet.toLocaleString()}\nClick cells to reveal! Match **4** of the same symbol to win.\n${LEGEND}`,
       components: buildGrid(symbols, revealed),
     });
 

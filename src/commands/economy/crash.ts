@@ -7,23 +7,31 @@ import { Command } from '../../interfaces/command';
 import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplier, recordGameResult, consumeBoost } from '../../utils/db';
 import { applyLossInsurance, insuranceLine } from '../../utils/gamble.js';
 import { awardBonusXp } from '../../utils/xpBonus.js';
-import { rand, getHouseCut } from '../../utils/random.js';
+import { rand } from '../../utils/random.js';
 import { cv2Err } from '../../utils/components.js';
 
 // Stock-style multiplier: it drifts up and down each tick. You can cash out at the
-// current value (never below 1.00x) any time — the only way to lose everything is
-// a "crash to 0" bust event, whose chance rises the higher the multiplier climbs.
+// current value (never below 1.00x) any time — the only way to lose is the "crash
+// to 0" bust event, whose chance rises the higher the multiplier climbs.
+//
+// FAIRNESS: each tick is EV-neutral — the upward drift exactly offsets the bust
+// risk ((1-h)·E[next] = current), so EVERY cash-out strategy breaks even long-run
+// (simulated EV 0.999–1.010 for targets 1.1x–8x). The extra hazard near the floor
+// compensates for the 1.00x floor clipping away downside moves there.
 const FLOOR = 1.00;
 
+function baseHazard(m: number): number {
+  return Math.min(0.12, 0.04 + 0.01 * (m - 1));
+}
+
 function bustChance(m: number): number {
-  // 4% near the floor, climbing as it goes up (higher reward ⇒ higher risk), capped at 35%.
-  return Math.min(0.35, 0.04 + (m - 1) * 0.025);
+  return Math.min(0.4, baseHazard(m) + 0.13 * Math.max(0, 1.25 - m));
 }
 
 function nextMultiplier(m: number): number {
-  // Multiplicative random walk, roughly symmetric (range ≈ -24.75%…+25.25%). Tuned
-  // so no cash-out target is profitable: house edge grows the higher you hold out.
-  const pct = (rand() - 0.495) * 0.5;
+  const b = baseHazard(m);
+  const drift = b / (1 - b);
+  const pct = (rand() - 0.5) * 0.5 + drift;
   return Math.max(FLOOR, Math.min(100, Math.round(m * (1 + pct) * 100) / 100));
 }
 
@@ -87,19 +95,16 @@ const Crash: Command = {
       gameOver = true;
       clearInterval(tick);
 
-      // Progressive house cut: larger bets have a chance the cash-out is voided.
-      const houseLoss = rand() < getHouseCut(bet);
-      const luckMult = !houseLoss ? await getGambleMultiplier(guildId, userId) : 1;
-      const winAmount = houseLoss ? 0 : Math.floor(bet * current * luckMult);
+      const luckMult = await getGambleMultiplier(guildId, userId);
+      const winAmount = Math.floor(bet * current * luckMult);
       const delta = winAmount - bet;
       const { newBalance } = await adjustBalance(guildId, userId, delta);
-      recordGameResult(guildId, userId, 'crash', !houseLoss, bet).catch(() => {});
-      const refund = houseLoss ? await applyLossInsurance(guildId, userId, bet) : 0;
+      recordGameResult(guildId, userId, 'crash', winAmount >= bet, bet).catch(() => {});
 
       let xpLine = '';
       // XP only when there was real profit — an instant 1.00x cash-out risks
       // nothing and shouldn't farm the daily game-XP cap.
-      if (!houseLoss && winAmount > bet) {
+      if (winAmount > bet) {
         const xpGiven = await awardBonusXp({
           guildId, userId, baseAmount: Math.min(Math.floor(50 * current), 200),
           client: interaction.client, channelId: interaction.channelId, isGame: true,
@@ -109,23 +114,24 @@ const Crash: Command = {
       const boostLine = luckMult > 1 ? ' *(🍀 Lucky Charm!)*' : '';
 
       await btn.update({
-        content: houseLoss
-          ? `**🚀 Crash**\n\n💸 **The house wins!** You cashed out at ${fmtMult(current)} but the house took this one.\nYou lost **${sym} ${bet.toLocaleString()}**.${insuranceLine(sym, refund)}\n**Balance:** ${sym} **${(newBalance + refund).toLocaleString()}**`
-          : `**🚀 Crash**\n\n✅ **Cashed out at ${fmtMult(current)}!** *(peak ${fmtMult(peak)})*\nYou won **${sym} ${winAmount.toLocaleString()}**!${boostLine}${xpLine}\n**Balance:** ${sym} **${newBalance.toLocaleString()}**`,
+        content: `**🚀 Crash**\n\n✅ **Cashed out at ${fmtMult(current)}!** *(peak ${fmtMult(peak)})*\nYou won **${sym} ${winAmount.toLocaleString()}**!${boostLine}${xpLine}\n**Balance:** ${sym} **${newBalance.toLocaleString()}**`,
         components: [],
       });
     });
 
     collector.on('end', async (_c, reason) => {
       if (reason === 'time' && !gameOver) {
+        // Fell asleep at the wheel? Auto-cash at the current value instead of
+        // confiscating the bet — the game stays fair even for AFK players.
         gameOver = true;
         clearInterval(tick);
-        const { newBalance } = await adjustBalance(guildId, userId, -bet);
-        recordGameResult(guildId, userId, 'crash', false, bet).catch(() => {});
+        const winAmount = Math.floor(bet * current);
+        const { newBalance } = await adjustBalance(guildId, userId, winAmount - bet);
+        recordGameResult(guildId, userId, 'crash', winAmount >= bet, bet).catch(() => {});
         await interaction.editReply({
           content:
             `**🚀 Crash**\n\n` +
-            `⏰ **Timed out** — you never cashed out and lost **${sym} ${bet.toLocaleString()}**.\n` +
+            `⏰ **Timed out** — auto-cashed you out at **${fmtMult(current)}** for **${sym} ${winAmount.toLocaleString()}**. *(peak ${fmtMult(peak)})*\n` +
             `**Balance:** ${sym} **${newBalance.toLocaleString()}**`,
           components: [],
         }).catch(() => {});

@@ -5,7 +5,7 @@ import {
 import { Command } from '../../interfaces/command';
 import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplier, recordGameResult } from '../../utils/db';
 import { awardBonusXp } from '../../utils/xpBonus.js';
-import { rand, randInt, getHouseCut } from '../../utils/random.js';
+import { rand, randInt } from '../../utils/random.js';
 import { cv2Err, IS_CV2 } from '../../utils/components.js';
 import { applyLossInsurance, insuranceLine } from '../../utils/gamble.js';
 
@@ -26,7 +26,7 @@ const Flip: Command = {
       await interaction.reply(cv2Err(`❌ Not enough ${cfg.currency_name}. Your balance: **${cfg.currency_symbol} ${eco.balance.toLocaleString()}**.`)); return;
     }
     const sym = cfg.currency_symbol;
-    const win = rand() < 0.5 && rand() >= getHouseCut(bet);
+    const win = rand() < 0.5; // true 50/50 — no house edge
     const luckMult = win ? await getGambleMultiplier(guildId, userId) : 1;
     const winDelta = win ? Math.floor(bet * luckMult) : -bet;
     const { newBalance } = await adjustBalance(guildId, userId, winDelta);

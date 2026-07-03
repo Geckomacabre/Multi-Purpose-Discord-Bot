@@ -5,7 +5,7 @@ import {
 import { Command } from '../../interfaces/command';
 import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplier, recordGameResult } from '../../utils/db';
 import { awardBonusXp } from '../../utils/xpBonus.js';
-import { randInt, rand, getHouseCut } from '../../utils/random.js';
+import { randInt } from '../../utils/random.js';
 import { cv2Err, IS_CV2 } from '../../utils/components.js';
 import { applyLossInsurance, insuranceLine } from '../../utils/gamble.js';
 
@@ -65,13 +65,8 @@ const Roulette: Command = {
       }
     };
     if (type === 'number') multiplier = 36;
-    // Apply house cut before showing result: re-spin to a losing number so the display is honest
-    if (wouldWin(result) && rand() < getHouseCut(bet)) {
-      for (let i = 0; i < 50; i++) {
-        const candidate = randInt(1, 36);
-        if (!wouldWin(candidate)) { result = candidate; break; }
-      }
-    }
+    // 36 numbers, no zero pocket — even-money bets are a true 50/50 and
+    // single numbers pay 35:1 at 1-in-36 odds. Exactly fair.
     const isRed = RED.has(result);
     const colorEmoji = isRed ? '🔴' : '⚫';
     const colorName  = isRed ? 'Red' : 'Black';

@@ -5,7 +5,7 @@ import {
 import { Command } from '../../interfaces/command';
 import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplier, recordGameResult } from '../../utils/db';
 import { awardBonusXp } from '../../utils/xpBonus.js';
-import { randInt, rand, getHouseCut } from '../../utils/random.js';
+import { randInt } from '../../utils/random.js';
 import { cv2Err, IS_CV2 } from '../../utils/components.js';
 import { applyLossInsurance, insuranceLine } from '../../utils/gamble.js';
 
@@ -27,11 +27,7 @@ const HighRoll: Command = {
     }
     const sym = cfg.currency_symbol;
     const playerRoll = randInt(1, 100);
-    let botRoll = randInt(1, 100);
-    // Apply house cut before showing result: boost bot roll so the displayed numbers tell the true story
-    if (playerRoll > botRoll && rand() < getHouseCut(bet)) {
-      botRoll = randInt(playerRoll, 100); // bot wins or ties
-    }
+    const botRoll = randInt(1, 100);
     const win = playerRoll > botRoll, tie = playerRoll === botRoll;
     const luckMult = win ? await getGambleMultiplier(guildId, userId) : 1;
     const { newBalance } = await adjustBalance(guildId, userId, win ? Math.floor(bet * luckMult) : tie ? 0 : -bet);

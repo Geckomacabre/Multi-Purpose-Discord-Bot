@@ -51,16 +51,16 @@ Every day, one random member wins **50,000 coins** automatically! You're entered
 
 ## 🎰 Gambling
 
-All gambling games award **bonus XP** on wins (capped at 1,000 XP/day across all games).
+All games are **statistically fair** — no hidden house edge, every game pays out ~100% over time. All gambling games award **bonus XP** on wins (capped at 1,000 XP/day across all games).
 
-- `/flip bet:` — Coin flip. 50/50 — win doubles your bet
-- `/highroll bet:` — Roll 1–100 against the bot. Higher roll wins
-- `/slots bet:` — 3-reel slot machine. Match 3 symbols to win (🍒×1.5x up to 7️⃣×10x)
-- `/roulette bet: type:` — Bet on Red/Black, Even/Odd, Low/High (all 2x), or a single number 1–36 (35x)
-- `/crash bet:` — Ride a stock-style multiplier that swings **up and down** each tick. Click **Cash Out** to bank the current value (always at least 1×) — but the price can **crash to 0** at any moment and wipe your bet, and the higher it climbs the likelier that gets
+- `/flip bet:` — Coin flip. True 50/50 — win doubles your bet
+- `/highroll bet:` — Roll 1–100 against the bot. Higher roll wins, ties refund your bet
+- `/slots bet:` — 3-reel slot machine. **Pairs pay** (🍒½x 🍋1x 🔔1.5x 💎2x 7️⃣3x) and **triples pay big** (🍒4x 🍋7x 🔔12x 💎25x 7️⃣75x) — you hit something 60% of spins
+- `/roulette bet: type:` — Bet on Red/Black, Even/Odd, Low/High (all 2x), or a single number 1–36 (35x). No zero pocket — true odds
+- `/crash bet:` — Ride a stock-style multiplier that swings **up and down** each tick. Click **Cash Out** to bank the current value (always at least 1×) — but the price can **crash to 0** at any moment and wipe your bet, and the higher it climbs the likelier that gets. If you time out, you're auto-cashed at the current value
 - `/blackjack bet:` — Classic blackjack vs the dealer. Hit, Stand, or Double Down. Blackjack pays 1.5x
 - `/poker bet:` — **Jacks or Better** video poker. Pick which cards to hold, draw the rest, and get paid on your hand (Royal Flush = 250x)
-- `/scratch bet:` — Buy a scratch card. Click tiles to reveal 9 symbols — match 3 of any kind to win (🍒×1x up to 💎×10x)
+- `/scratch bet:` — Buy a scratch card. Click tiles to reveal 9 symbols — match **4+** of a kind to win (🍒1x 🍋2x 🍊3x 🍇6x ⭐12x 💎25x)
 
 ---
 

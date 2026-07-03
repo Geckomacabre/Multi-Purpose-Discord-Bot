@@ -298,10 +298,10 @@ All economy commands are under `/economy`.
 | `/economy leaderboard [limit]` | Show the richest users in the server. |
 | `/flip <bet>` | Bet on a coin flip — win doubles your bet (50/50). Lucky Charm boosts wins 1.5×. |
 | `/highroll <bet>` | Roll 1–100 against the bot — higher roll wins; ties refund your bet. |
-| `/slots <bet>` | Spin the slot machine — match 3 symbols to win. Payouts: 🍒×3=1.5× \| 🍋×3=2× \| 🔔×3=3× \| 💎×3=5× \| 7️⃣×3=10×. |
-| `/scratch <bet>` | Buy a scratch card — reveal 9 symbols, match 3 to win (pure RNG, up to 10×). |
-| `/roulette <bet> <type>` | Bet on Red/Black, Even/Odd, Low/High (2×), or a single number 1–36 (35×). |
-| `/crash <bet>` | Ride a stock-style multiplier that swings up and down — cash out at any value above 1×, but it can crash to 0 and wipe your bet. |
+| `/slots <bet>` | Spin the slot machine — pairs pay (🍒½× 🍋1× 🔔1.5× 💎2× 7️⃣3×), triples pay big (🍒4× 🍋7× 🔔12× 💎25× 7️⃣75×). ~60% hit rate. |
+| `/scratch <bet>` | Buy a scratch card — reveal 9 symbols, match **4+** of a kind to win (🍒1× 🍋2× 🍊3× 🍇6× ⭐12× 💎25×). |
+| `/roulette <bet> <type>` | Bet on Red/Black, Even/Odd, Low/High (2×), or a single number 1–36 (35×). No zero pocket — exactly fair odds. |
+| `/crash <bet>` | Ride a stock-style multiplier that swings up and down — cash out at any value above 1×, but it can crash to 0 and wipe your bet. Times out? You're auto-cashed at the current value. |
 | `/blackjack <bet>` | Classic blackjack — Hit, Stand, or Double Down. Blackjack pays 1.5×. |
 | `/poker <bet>` | Jacks or Better video poker. Royal Flush = 250×. |
 | `/rob <user>` | Attempt to rob another user (50/50). On success a **random amount** — anywhere from 1 up to their entire balance — is stolen. 30-min cooldown on fail, 1-hour on success. |
