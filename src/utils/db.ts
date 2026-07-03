@@ -1041,6 +1041,7 @@ export async function initDb() {
     started_at   INTEGER NOT NULL,
     last_hint_at INTEGER NOT NULL DEFAULT 0
   )`;
+  try { await db`ALTER TABLE mediaguess_rounds ADD COLUMN user_hints TEXT NOT NULL DEFAULT '{}'`; } catch {}
 
   await db`CREATE TABLE IF NOT EXISTS economy_protection (
     guild_id   TEXT NOT NULL,
@@ -1154,20 +1155,22 @@ export type IMediaGuessRound = {
   type: string;
   media: string;       // JSON-serialized MediaEntry
   hint_order: string;  // JSON-serialized number[]
-  hints_used: number;
+  hints_used: number;  // vestigial — hints are per-user now, see user_hints
   message_id: string | null;
   started_at: number;
-  last_hint_at: number;
+  last_hint_at: number; // vestigial — no cooldown anymore
+  user_hints: string;   // JSON-serialized { [userId]: hintsRevealedToThatUser }
 };
 
 export async function saveMediaGuessRound(row: IMediaGuessRound): Promise<void> {
   await db`
-    INSERT INTO mediaguess_rounds (channel_id, guild_id, type, media, hint_order, hints_used, message_id, started_at, last_hint_at)
-    VALUES (${row.channel_id}, ${row.guild_id}, ${row.type}, ${row.media}, ${row.hint_order}, ${row.hints_used}, ${row.message_id}, ${row.started_at}, ${row.last_hint_at})
+    INSERT INTO mediaguess_rounds (channel_id, guild_id, type, media, hint_order, hints_used, message_id, started_at, last_hint_at, user_hints)
+    VALUES (${row.channel_id}, ${row.guild_id}, ${row.type}, ${row.media}, ${row.hint_order}, ${row.hints_used}, ${row.message_id}, ${row.started_at}, ${row.last_hint_at}, ${row.user_hints})
     ON CONFLICT(channel_id) DO UPDATE SET
       guild_id = excluded.guild_id, type = excluded.type, media = excluded.media,
       hint_order = excluded.hint_order, hints_used = excluded.hints_used,
-      message_id = excluded.message_id, started_at = excluded.started_at, last_hint_at = excluded.last_hint_at
+      message_id = excluded.message_id, started_at = excluded.started_at, last_hint_at = excluded.last_hint_at,
+      user_hints = excluded.user_hints
   `;
 }
 

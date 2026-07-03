@@ -253,16 +253,18 @@ Members with **Manage Messages** are exempt (staff/bots running legitimate bulk 
 
 #### Guessing Games
 
-Channel-based movie and TV show guessing games.
+Channel-based movie and TV show guessing games. Each round posts with **💡 Hint** and **⏭️ Vote Skip** buttons — the slash commands below do the exact same thing, just pick whichever's faster.
 
 | Command | Description |
 |---|---|
-| `/hint` | Reveal the next clue for the active guessing game (5 hints per round: year, genre, cast, screenshot, synopsis) |
-| `/voteskip` | Vote to skip the current round (2 votes needed) |
+| `/hint` (or 💡 **Hint** button) | Reveal your **own** next clue, privately — no one else sees it (up to 5 per round: info card, masked title, anagram, extra scene, description). No cooldown — request as many as you want, as fast as you want. Each hint you personally use lowers the XP you get *if you* guess correctly (150 XP at 0 hints, −25 per hint, 50 floor) — guess it cold and you keep the full reward. |
+| `/voteskip` (or ⏭️ **Vote Skip** button) | Vote to skip the current round (2 votes needed, locked out for the first 5 minutes so everyone gets a fair shot — a "Vote Skip Available" notice posts once it opens up) |
 | `/mediaguess setup <type> <channel>` | *(Admin)* Set up the movie or TV show game channel and start the first round |
 | `/mediaguess stop` | *(Admin)* Stop the game in this channel and remove its config |
 | `/mediaguess skip` | *(Admin)* Force-skip the current round without a vote |
 | `/mediaguess info` | *(Admin)* View game configuration and active round status |
+
+The hint sequence is shuffled once per round and shared by everyone — no one gets an easier or harder order, only how many of *your own* you've revealed is private.
 
 Powered by the **TMDB API** — add `TMDB_API_KEY=your_key` to `.env` (free key at [themoviedb.org](https://www.themoviedb.org/settings/api)). No local database needed; titles and metadata are fetched live from thousands of popular movies and shows (1975 to present). Scene stills are sourced from **MovieStillsDB** (genuine publicity/production stills with no title overlay), falling back to TMDB backdrops when a title isn't available there. Repeats are suppressed per channel for 6 hours.
 
@@ -345,7 +347,7 @@ All economy commands are under `/economy`.
 |---|---|---|
 | 🔮 XP Surge | 2× XP from all sources for 1 hour | 25,000 |
 | 🍀 Lucky Charm | 1.5× gambling winnings for 30 minutes | 30,000 |
-| ⚡ Hint Rush | No hint cooldown in the guessing games for 15 minutes | 75,000 |
+| ⚡ Hint Rush | No XP penalty for hints used in the guessing games, for 15 minutes | 75,000 |
 | 💼 Overtime Permit | Half `/work` cooldown (30 min) for 4 hours | 20,000 |
 | 🧲 Coin Magnet | 1.5× coins from `/work`, `/daily`, `/beg` for 24 hours | 40,000 |
 | 🎟️ Loaded Dice | Double your chance in the next daily lottery draw | 15,000 |

@@ -1,9 +1,9 @@
-import { Client } from 'discord.js';
+import { ButtonInteraction, Client, MessageFlags } from 'discord.js';
 import { EventModule } from '../feature';
-import { activeGames, checkGuess, resolveGame, restoreActiveGames, startGame } from '../../utils/mediagame';
+import { activeGames, castVoteSkip, checkGuess, requestHint, resolveGame, restoreActiveGames, startGame } from '../../utils/mediagame';
 import { awardBonusXp } from '../../utils/xpBonus';
 import * as db from '../../utils/db';
-import { recordGameResult } from '../../utils/db';
+import { getActiveBoost, recordGameResult } from '../../utils/db';
 
 // Patterns that indicate normal chat rather than a guess attempt.
 // Movie/show titles virtually never match these.
@@ -34,6 +34,18 @@ function looksLikeChat(text: string): boolean {
   return CHAT_PATTERNS.some(p => p.test(t));
 }
 
+// Full XP is 150 for a guess with zero hints; each hint used docks 25, down to
+// a 50 floor. Buying ⚡ Hint Rush from the shop waives the penalty entirely.
+const BASE_HINT_XP = 150;
+const XP_PER_HINT = 25;
+const MIN_HINT_XP = 50;
+
+async function correctGuessXp(guildId: string, userId: string, hintsUsed: number): Promise<number> {
+  const rush = await getActiveBoost(guildId, userId, 'guesscd').catch(() => null);
+  if (rush) return BASE_HINT_XP;
+  return Math.max(MIN_HINT_XP, BASE_HINT_XP - hintsUsed * XP_PER_HINT);
+}
+
 const mediaguessModule: EventModule = {
   name: 'mediaguess',
   handlers: {
@@ -54,10 +66,12 @@ const mediaguessModule: EventModule = {
         if (state.answered) return;
         state.answered = true;
 
+        const hintsUsed = state.userHints.get(message.author.id) ?? 0;
+        const baseAmount = await correctGuessXp(message.guildId, message.author.id, hintsUsed);
         const xpGained = await awardBonusXp({
           guildId: message.guildId,
           userId: message.author.id,
-          baseAmount: 150,
+          baseAmount,
           client: bot,
           channelId: message.channelId,
           isGame: true,
@@ -76,6 +90,26 @@ const mediaguessModule: EventModule = {
       } else if (result === 'close') {
         await message.react('❗').catch(() => {});
       }
+    },
+
+    interactionCreate: async ({ data: [interaction] }) => {
+      if (!interaction.isButton()) return;
+      const btn = interaction as ButtonInteraction;
+      if (btn.customId !== 'mg_hint' && btn.customId !== 'mg_voteskip') return;
+
+      if (btn.customId === 'mg_hint') {
+        const payload = requestHint(btn.channelId, btn.user.id);
+        if (!payload) {
+          await btn.reply({ content: '❌ There is no active guessing game in this channel.', flags: MessageFlags.Ephemeral });
+          return;
+        }
+        await btn.reply({ ...payload, flags: MessageFlags.Ephemeral } as any);
+        return;
+      }
+
+      // mg_voteskip
+      const { content, ephemeral } = await castVoteSkip(btn.channelId, btn.user.id, btn.client);
+      await btn.reply({ content, flags: ephemeral ? MessageFlags.Ephemeral : undefined });
     },
   },
 };

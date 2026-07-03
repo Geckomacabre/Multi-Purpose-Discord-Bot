@@ -1,4 +1,4 @@
-import { Client, EmbedBuilder, TextChannel } from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, Client, EmbedBuilder, TextChannel } from 'discord.js';
 import * as db from './db.js';
 
 const TMDB_BASE = 'https://api.themoviedb.org/3';
@@ -31,13 +31,12 @@ export interface GameState {
   channelId: string;
   type: MediaType;
   media: MediaEntry;
-  hintsUsed: number;
-  hintOrder: number[]; // shuffled indices into HINT_TYPES, randomised per round
+  hintOrder: number[]; // shuffled indices into HINT_TYPES, randomised per round — same order for everyone, kept fair
+  userHints: Map<string, number>; // userId -> hints revealed to that user so far (hints are private and per-user, no cooldown)
   voteskips: Set<string>;
   messageId: string | null;
   startedAt: number;
   answered: boolean;
-  lastHintAt: number;
 }
 
 export const activeGames = new Map<string, GameState>();
@@ -45,6 +44,7 @@ export const activeGames = new Map<string, GameState>();
 // /voteskip is locked out for the first 5 minutes of a round — gives people
 // a fair shot before the round can be cut short.
 export const VOTESKIP_DELAY_MS = 5 * 60_000;
+export const VOTES_NEEDED = 2;
 
 // channelId -> pending "skip now available" announcement timer, so it can be
 // cancelled if the round resolves (correct guess, admin skip, stop) before
@@ -88,10 +88,11 @@ function persistRound(state: GameState): void {
     type: state.type,
     media: JSON.stringify(state.media),
     hint_order: JSON.stringify(state.hintOrder),
-    hints_used: state.hintsUsed,
+    hints_used: 0, // vestigial column — hints are per-user now, see user_hints
     message_id: state.messageId,
     started_at: state.startedAt,
-    last_hint_at: state.lastHintAt,
+    last_hint_at: 0, // vestigial column — no cooldown anymore
+    user_hints: JSON.stringify(Object.fromEntries(state.userHints)),
   }).catch(() => {});
 }
 
@@ -106,13 +107,12 @@ export async function restoreActiveGames(client: Client): Promise<void> {
         channelId: row.channel_id,
         type: row.type as MediaType,
         media: JSON.parse(row.media),
-        hintsUsed: row.hints_used,
         hintOrder: JSON.parse(row.hint_order),
+        userHints: new Map(Object.entries(JSON.parse(row.user_hints || '{}'))),
         voteskips: new Set(),
         messageId: row.message_id,
         startedAt: row.started_at,
         answered: false,
-        lastHintAt: row.last_hint_at,
       };
       activeGames.set(row.channel_id, state);
       scheduleSkipAnnouncement(state, client);
@@ -622,26 +622,24 @@ export interface HintPayload {
   embeds?: EmbedBuilder[];
 }
 
-export function buildNextHint(channelId: string, requesterName: string, skipCooldown = false): HintPayload | null {
+// Hints are per-user and private — everyone follows the same shuffled
+// hintOrder (fair: no one gets an easier sequence), but each person's own
+// count of how many they've revealed is tracked separately, and there's no
+// cooldown — request as many as you want, as fast as you want. The tradeoff
+// lives in the correct-guess XP reward, not a request-time gate.
+export function requestHint(channelId: string, userId: string): HintPayload | null {
   const state = activeGames.get(channelId);
   if (!state || state.answered) return null;
 
   const maxHints = state.hintOrder.length;
-  if (state.hintsUsed >= maxHints) {
-    return { content: `❌ All ${maxHints} hints have been used! Keep guessing or \`/voteskip\`.` };
+  const used = state.userHints.get(userId) ?? 0;
+  if (used >= maxHints) {
+    return { content: `❌ You've used all ${maxHints} hints for this round! Keep guessing or \`/voteskip\`.` };
   }
 
-  const HINT_COOLDOWN_MS = 60_000;
-  const elapsed = Date.now() - state.lastHintAt;
-  if (!skipCooldown && state.lastHintAt > 0 && elapsed < HINT_COOLDOWN_MS) {
-    const secsLeft = Math.ceil((HINT_COOLDOWN_MS - elapsed) / 1000);
-    return { content: `⏳ Hints are on cooldown — next hint available in **${secsLeft}s**. *(skip with ⚡ Hint Rush from \`/shop\`)*` };
-  }
-
-  state.lastHintAt = Date.now();
-  state.hintsUsed++;
+  const n = used + 1;
+  state.userHints.set(userId, n);
   persistRound(state);
-  const n = state.hintsUsed;
   const { media, type } = state;
   const label = type === 'movie' ? 'Movie' : 'TV Show';
   const hintIdx = state.hintOrder[n - 1]!;
@@ -650,7 +648,7 @@ export function buildNextHint(channelId: string, requesterName: string, skipCool
   const embed = new EmbedBuilder()
     .setColor(HINT_COLOR)
     .setTitle(`💡 ${label} Hint #${n} (${hintType})`)
-    .setFooter({ text: `Requested by ${requesterName} (${n}/${maxHints})` });
+    .setFooter({ text: `${n}/${maxHints} hints used — only you can see this · costs XP if you guess correctly` });
 
   switch (hintIdx) {
     case 0: {
@@ -710,6 +708,18 @@ export function buildNextHint(channelId: string, requesterName: string, skipCool
 
 // ─── Game lifecycle ───────────────────────────────────────────────────────────
 
+// customIds are plain (no channel/round id encoded) — the button handler looks
+// up activeGames by the channel the interaction fired in, and a channel only
+// ever has one active round, so nothing extra needs to survive in the id.
+// That also means these buttons keep working indefinitely, including across
+// restarts, without any collector/timeout tied to the message.
+function buildRoundButtons(): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId('mg_hint').setLabel('Hint').setEmoji('💡').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('mg_voteskip').setLabel('Vote Skip').setEmoji('⏭️').setStyle(ButtonStyle.Secondary),
+  );
+}
+
 export async function startGame(
   guildId: string,
   channelId: string,
@@ -734,14 +744,14 @@ export async function startGame(
     .setTitle(label)
     .setDescription(
       `**Can you guess the ${typeStr} from this still?**\n\n` +
-      `Type your answer in chat!\n` +
-      `> \`/hint\` — Reveal a clue *(5 available)*\n` +
-      `> \`/voteskip\` — Vote to skip *(2 votes needed, available after 5 min)*`,
+      `Type your answer in chat, or use the buttons below!\n` +
+      `> 💡 **Hint** / \`/hint\` — Reveal your own clue *(private, unlimited — but costs XP)*\n` +
+      `> ⏭️ **Vote Skip** / \`/voteskip\` — Vote to skip *(2 votes needed, available after 5 min)*`,
     )
     .setImage(media.stills[0]!)
     .setFooter({ text: 'Good luck! 🍿' });
 
-  const msg = await channel.send({ embeds: [embed] }).catch(() => null);
+  const msg = await channel.send({ embeds: [embed], components: [buildRoundButtons()] }).catch(() => null);
   if (!msg) return;
 
   const state: GameState = {
@@ -749,13 +759,12 @@ export async function startGame(
     channelId,
     type,
     media,
-    hintsUsed: 0,
     hintOrder: buildHintOrder(media),
+    userHints: new Map(),
     voteskips: new Set(),
     messageId: msg.id,
     startedAt: Date.now(),
     answered: false,
-    lastHintAt: 0,
   };
   activeGames.set(channelId, state);
   persistRound(state);
@@ -778,6 +787,13 @@ export async function resolveGame(
   const channel = client.channels.cache.get(state.channelId) as TextChannel | undefined;
   if (!channel) return;
 
+  // Strip the buttons off the original round message so a stale Hint/Vote Skip
+  // click can't land on a round that's already over.
+  if (state.messageId) {
+    const roundMsg = await channel.messages.fetch(state.messageId).catch(() => null);
+    if (roundMsg) await roundMsg.edit({ components: [] }).catch(() => {});
+  }
+
   if (reason === 'correct' && winner) {
     // Show the display name as plain text (not a <@id> mention) so it reads
     // correctly in mobile push notifications, which don't resolve raw mentions.
@@ -796,4 +812,36 @@ export async function resolveGame(
       await startGame(state.guildId, state.channelId, state.type, client);
     }
   }, 10000);
+}
+
+// Shared by /voteskip and the "⏭️ Vote Skip" button so both go through
+// identical logic (delay gate, duplicate-vote check, threshold resolve).
+export async function castVoteSkip(
+  channelId: string, userId: string, client: Client,
+): Promise<{ content: string; ephemeral: boolean }> {
+  const state = activeGames.get(channelId);
+  if (!state || state.answered) {
+    return { content: '❌ There is no active guessing game in this channel.', ephemeral: true };
+  }
+
+  const remainingDelay = VOTESKIP_DELAY_MS - (Date.now() - state.startedAt);
+  if (remainingDelay > 0) {
+    const mins = Math.ceil(remainingDelay / 60_000);
+    return { content: `⏳ Vote skip isn't available yet — everyone gets a fair shot first. Try again in **${mins} minute${mins !== 1 ? 's' : ''}**.`, ephemeral: true };
+  }
+
+  if (state.voteskips.has(userId)) {
+    return { content: '❌ You have already voted to skip this round.', ephemeral: true };
+  }
+
+  state.voteskips.add(userId);
+  const votes = state.voteskips.size;
+
+  if (votes >= VOTES_NEEDED) {
+    state.answered = true; // lock before any await to prevent race with correct guess
+    await resolveGame(state, client, null, 'skip');
+    return { content: `⏭️ **${votes}/${VOTES_NEEDED}** skip votes — skipping this round!`, ephemeral: false };
+  }
+  const remaining = VOTES_NEEDED - votes;
+  return { content: `🗳️ Skip vote recorded: **${votes}/${VOTES_NEEDED}**. Need **${remaining}** more vote${remaining !== 1 ? 's' : ''} to skip.`, ephemeral: false };
 }

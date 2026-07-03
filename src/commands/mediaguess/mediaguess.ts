@@ -117,10 +117,10 @@ const MediaGuess: Command = {
       const tvState = cfg?.tv_channel_id ? activeGames.get(cfg.tv_channel_id) : null;
 
       const movieStatus = movieState
-        ? `Active — ${movieState.hintsUsed}/5 hints used, ${movieState.voteskips.size}/2 skip votes`
+        ? `Active — ${movieState.userHints.size} player(s) have used hints, ${movieState.voteskips.size}/2 skip votes`
         : (cfg?.movie_channel_id ? 'Channel set but no active round' : 'Not configured');
       const tvStatus = tvState
-        ? `Active — ${tvState.hintsUsed}/5 hints used, ${tvState.voteskips.size}/2 skip votes`
+        ? `Active — ${tvState.userHints.size} player(s) have used hints, ${tvState.voteskips.size}/2 skip votes`
         : (cfg?.tv_channel_id ? 'Channel set but no active round' : 'Not configured');
 
       const embed = new EmbedBuilder()
