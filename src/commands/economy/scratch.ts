@@ -15,14 +15,14 @@ import { applyLossInsurance, insuranceLine } from '../../utils/gamble.js';
 const SYMBOLS = [
   { emoji: '🍒', mult: 1,  weight: 30 },
   { emoji: '🍋', mult: 2,  weight: 25 },
-  { emoji: '🍊', mult: 3,  weight: 20 },
+  { emoji: '🔔', mult: 3,  weight: 20 }, // was 🍊 — too easily confused with 🍋 at small size
   { emoji: '🍇', mult: 6,  weight: 12 },
   { emoji: '⭐', mult: 12, weight: 8  },
   { emoji: '💎', mult: 25, weight: 5  },
 ];
 const MATCH_NEEDED = 4;
 const TOTAL_WEIGHT = SYMBOLS.reduce((s, sym) => s + sym.weight, 0);
-const LEGEND = '*Match 4+: 🍒 1x | 🍋 2x | 🍊 3x | 🍇 6x | ⭐ 12x | 💎 25x*';
+const LEGEND = '*Match 4+: 🍒 1x | 🍋 2x | 🔔 3x | 🍇 6x | ⭐ 12x | 💎 25x*';
 
 function pickSymbol(): string {
   let r = randInt(1, TOTAL_WEIGHT);
