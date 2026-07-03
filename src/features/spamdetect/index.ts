@@ -4,19 +4,26 @@ import { getLogConfig } from '../../utils/db.js';
 
 const WINDOW_MS = 10_000;       // 10-second sliding window for cross-channel spam
 const THRESHOLD = 3;            // more than 3 channels triggers action
-const RAPID_WINDOW_MS = 5_000;  // 5-second window for rapid-fire detection
-const RAPID_THRESHOLD = 3;      // 3+ messages in 5 seconds triggers action
+// Two separate signals for same-channel flooding, so a fast typer sending several
+// *different* real messages isn't treated the same as a bot/paste spamming one line
+// over and over. Either one firing is enough to punish.
+const RAPID_WINDOW_MS = 6_000;      // window for the raw flood-rate safety net
+const RAPID_THRESHOLD = 8;          // 8+ messages in 6s — not achievable by hand typing distinct content
+const DUPLICATE_WINDOW_MS = 10_000; // window for repeated-content detection
+const DUPLICATE_THRESHOLD = 4;      // the *same* message 4+ times — the actual signature of spam
 const CMD_RAPID_WINDOW_MS = 8_000; // 8-second window for rapid slash-command usage
 const CMD_RAPID_THRESHOLD = 6;     // 6+ commands in 8 seconds — normal users don't do this, raid scripts do
 const MSG_HISTORY_MS = 60 * 1000; // 1 minute — how far back to purge on spam
 const TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
 type TrackedMsg = { id: string; channelId: string; timestamp: number };
+type TrackedContent = { content: string; timestamp: number };
 
 type UserTrack = {
   imageChannels: Map<string, number>;
   messageChannels: Map<string, Set<string>>;
   recentMessages: number[];
+  recentContents: TrackedContent[];
   recentCommands: number[];
   msgHistory: TrackedMsg[];
 };
@@ -27,7 +34,7 @@ const tracker = new Map<string, Map<string, UserTrack>>();
 function getTrack(guildId: string, userId: string): UserTrack {
   if (!tracker.has(guildId)) tracker.set(guildId, new Map());
   const guild = tracker.get(guildId)!;
-  if (!guild.has(userId)) guild.set(userId, { imageChannels: new Map(), messageChannels: new Map(), recentMessages: [], recentCommands: [], msgHistory: [] });
+  if (!guild.has(userId)) guild.set(userId, { imageChannels: new Map(), messageChannels: new Map(), recentMessages: [], recentContents: [], recentCommands: [], msgHistory: [] });
   return guild.get(userId)!;
 }
 
@@ -203,15 +210,33 @@ const spamDetectModule: EventModule = {
       track.msgHistory.push({ id: msg.id, channelId, timestamp: now });
       track.msgHistory = track.msgHistory.filter(m => now - m.timestamp <= MSG_HISTORY_MS);
 
-      // ── Rapid-fire detection ──────────────────────────────────────────────────
+      // ── Rapid-fire / repeated-content detection ──────────────────────────────
+      // Raw flood rate is a safety net (an enthusiastic person typing distinct
+      // messages back to back can hit 3-4 in a few seconds — that's not spam).
+      // The stronger signal is the *same* message posted over and over, which is
+      // what real spam bots and copy-paste raids actually do.
       track.recentMessages.push(now);
       track.recentMessages = track.recentMessages.filter(ts => now - ts <= RAPID_WINDOW_MS);
-      if (track.recentMessages.length >= RAPID_THRESHOLD) {
-        const count = track.recentMessages.length;
+
+      const normalizedContent = msg.content.trim().toLowerCase().replace(/\s+/g, ' ');
+      track.recentContents.push({ content: normalizedContent, timestamp: now });
+      track.recentContents = track.recentContents.filter(c => now - c.timestamp <= DUPLICATE_WINDOW_MS);
+      const duplicateCount = normalizedContent.length >= 2
+        ? track.recentContents.filter(c => c.content === normalizedContent).length
+        : 0;
+
+      const isFlooding = track.recentMessages.length >= RAPID_THRESHOLD;
+      const isRepeating = duplicateCount >= DUPLICATE_THRESHOLD;
+
+      if (isFlooding || isRepeating) {
+        const reason = isRepeating
+          ? `Repeated-message spam: sent the same message ${duplicateCount} times within ${DUPLICATE_WINDOW_MS / 1000} seconds`
+          : `Rapid-fire spam: ${track.recentMessages.length} messages in ${RAPID_WINDOW_MS / 1000} seconds`;
         const history = [...track.msgHistory];
         track.recentMessages = [];
+        track.recentContents = [];
         track.msgHistory = [];
-        await punish(member, `Rapid-fire spam: ${count} messages in 5 seconds`, db, history);
+        await punish(member, reason, db, history);
         return;
       }
 

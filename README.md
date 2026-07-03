@@ -225,7 +225,8 @@ Every removal posts an alert (domain/code, user, channel) to your modlog channel
 
 #### Spam Detection
 Always active, no configuration needed. Detects and auto-punishes (24-hour timeout + purges the offender's last hour of messages across every channel) any of:
-- **Rapid-fire messages** — 3+ messages in 5 seconds.
+- **Repeated messages** — the *same* message sent 4+ times within 10 seconds (the actual signature of spam bots/copy-paste raids).
+- **Flood rate** — 8+ messages in 6 seconds regardless of content, as a safety net for pure flooding. Typing several quick, distinct messages back to back (an enthusiastic chatter, not a spammer) won't trigger this.
 - **Cross-channel image spam** — posting images/videos in more than 3 different channels within 10 seconds.
 - **Cross-channel message spam** — posting the identical message in more than 3 different channels within 10 seconds.
 - **Command spam** — 6+ slash commands in 8 seconds, the signature of a raid script hammering the bot rather than a human clicking through the UI.
