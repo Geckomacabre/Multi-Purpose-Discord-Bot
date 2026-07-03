@@ -109,14 +109,14 @@ A locked voice channel (like a streamer's private VC). Only members with the **r
 
 ---
 
-## 🎬 Movie & TV Guessing Games
+## 🎬🎮🎵 Guessing Games
 
-Channel-based guessing games — a still from a movie or show is posted and everyone guesses in chat. Each round has **💡 Hint** and **⏭️ Vote Skip** buttons right under it — the commands below work the same way, just pick whichever's faster.
+Four channel-based guessing games — 🎬 **Movie**, 📺 **TV Show**, 🎮 **Video Game**, 🎵 **Song** — each set up in its own channel. A still (or, for songs, a **30-second audio clip**) is posted and everyone guesses in chat. Each round has **💡 Hint** and **⏭️ Vote Skip** buttons right under it — the commands below work the same way, just pick whichever's faster.
 
 - **Just type your guess** in the game channel — no command needed
 - Bot reacts **❗** if you're close, **‼️** if you're very close
 - First to guess correctly wins up to **+150 XP** (counts toward daily XP cap) — the reward drops 25 XP for every hint *you personally* used (50 XP floor), so guessing without hints keeps the full reward
-- `/hint` (or the **Hint** button) — Reveal your own next clue **privately** (up to 5 per round: info card → masked title → anagram → extra scene → description). No cooldown, request as fast as you want — everyone follows the same shuffled order, but only you see how many you've used
+- `/hint` (or the **Hint** button) — Reveal your own next clue **privately** (up to 5 per round). No cooldown, request as fast as you want — everyone follows the same shuffled order, but only you see how many you've used. Movie/TV/game hints: info card → masked title → anagram → extra screenshot → description. Song hints: info (year/genre/duration) → masked title → anagram → **artist reveal** → **album art**
 - `/voteskip` (or the **Vote Skip** button) — Vote to skip the current round (2 votes needed, opens up 5 minutes into the round)
 
 ---
@@ -345,10 +345,10 @@ Per-category channels (member/message/voice/server/command) can be set individua
 - `/verify setup channel: member_role: [unverified_role] [title] [description]` — Post a verification button in a channel; members click it to receive their member role
 
 ### Guessing Games
-- `/mediaguess setup type: channel:` — Set up the movie or TV show game in a channel (starts the first round immediately)
+- `/mediaguess setup type: channel:` — Set up a movie, TV show, video game, or song game in a channel (starts the first round immediately). Video game needs `RAWG_API_KEY` set; songs need no key at all.
 - `/mediaguess stop` — Stop the game in the current channel and remove its config
 - `/mediaguess skip` — Force-skip the current round without needing 2 votes
-- `/mediaguess info` — View configured channels and current round status
+- `/mediaguess info` — View all four configured channels and their current round status
 
 ### Server Features
 - `/config` — Configure server-wide features (free games platforms, stat channels, and more)

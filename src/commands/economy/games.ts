@@ -17,6 +17,8 @@ const GAME_CHOICES = [
   { name: 'Scratch Card',     value: 'scratch'          },
   { name: 'Movie Guesser',    value: 'mediaguess_movie' },
   { name: 'TV Show Guesser',  value: 'mediaguess_tv'   },
+  { name: 'Game Guesser',     value: 'mediaguess_game' },
+  { name: 'Song Guesser',     value: 'mediaguess_music' },
 ] as const;
 
 const GAME_EMOJI: Record<string, string> = {
@@ -24,6 +26,7 @@ const GAME_EMOJI: Record<string, string> = {
   roulette: '🎡', crash: '🚀', blackjack: '🃏',
   poker: '♠️', scratch: '🎟️',
   mediaguess_movie: '🎬', mediaguess_tv: '📺',
+  mediaguess_game: '🎮', mediaguess_music: '🎵',
 };
 
 const Games: Command = {

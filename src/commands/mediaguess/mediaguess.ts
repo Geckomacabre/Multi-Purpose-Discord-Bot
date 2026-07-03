@@ -3,13 +3,23 @@ import {
   InteractionContextType, MessageFlags, PermissionFlagsBits, SlashCommandBuilder, TextChannel,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
-import { activeGames, resolveGame, startGame, cancelSkipTimer } from '../../utils/mediagame';
+import { activeGames, resolveGame, startGame, cancelSkipTimer, type MediaType } from '../../utils/mediagame';
 import * as db from '../../utils/db';
+
+const TYPE_LABEL: Record<MediaType, string> = { movie: 'Movie', tv: 'TV Show', game: 'Video Game', music: 'Song' };
+const TYPE_EMOJI: Record<MediaType, string> = { movie: '🎬', tv: '📺', game: '🎮', music: '🎵' };
+
+function configChannel(cfg: db.IMediaGuessConfig | null, type: MediaType): string | null {
+  return type === 'movie' ? cfg?.movie_channel_id ?? null
+    : type === 'tv' ? cfg?.tv_channel_id ?? null
+    : type === 'game' ? cfg?.game_channel_id ?? null
+    : cfg?.music_channel_id ?? null;
+}
 
 const MediaGuess: Command = {
   data: new SlashCommandBuilder()
     .setName('mediaguess')
-    .setDescription('Manage the movie & TV show guessing game')
+    .setDescription('Manage the movie, TV, game & music guessing games')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
     .setContexts([InteractionContextType.Guild])
@@ -20,7 +30,12 @@ const MediaGuess: Command = {
         .setName('type')
         .setDescription('Which game to configure')
         .setRequired(true)
-        .addChoices({ name: 'Movie', value: 'movie' }, { name: 'TV Show', value: 'tv' }),
+        .addChoices(
+          { name: 'Movie', value: 'movie' },
+          { name: 'TV Show', value: 'tv' },
+          { name: 'Video Game', value: 'game' },
+          { name: 'Song', value: 'music' },
+        ),
       )
       .addChannelOption(o => o
         .setName('channel')
@@ -47,8 +62,17 @@ const MediaGuess: Command = {
 
     // ── Setup ───────────────────────────────────────────────────────────────────
     if (sub === 'setup') {
-      const type = interaction.options.getString('type', true) as 'movie' | 'tv';
+      const type = interaction.options.getString('type', true) as MediaType;
       const channel = interaction.options.getChannel('channel', true) as TextChannel;
+
+      if ((type === 'movie' || type === 'tv') && !Bun.env.TMDB_API_KEY) {
+        await interaction.reply({ content: '❌ `TMDB_API_KEY` isn\'t set in the bot\'s environment — movie/TV guessing needs it. Ask whoever hosts the bot to add one (free at themoviedb.org).', flags: MessageFlags.Ephemeral });
+        return;
+      }
+      if (type === 'game' && !Bun.env.RAWG_API_KEY) {
+        await interaction.reply({ content: '❌ `RAWG_API_KEY` isn\'t set in the bot\'s environment — game guessing needs it. Ask whoever hosts the bot to add one (free at rawg.io/apidocs).', flags: MessageFlags.Ephemeral });
+        return;
+      }
 
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       await db.setMediaGuessConfig(guildId, type, channel.id);
@@ -64,8 +88,7 @@ const MediaGuess: Command = {
 
       await startGame(guildId, channel.id, type, interaction.client);
 
-      const typeStr = type === 'movie' ? 'Movie' : 'TV Show';
-      await interaction.editReply(`✅ **${typeStr}** guessing game configured in <#${channel.id}>. First round is live!`);
+      await interaction.editReply(`✅ **${TYPE_LABEL[type]}** guessing game configured in <#${channel.id}>. First round is live!`);
     }
 
     // ── Stop ────────────────────────────────────────────────────────────────────
@@ -76,12 +99,7 @@ const MediaGuess: Command = {
         return;
       }
 
-      const cfg = await db.getMediaGuessConfig(guildId);
-      if (cfg?.movie_channel_id === interaction.channelId) {
-        await db.setMediaGuessConfig(guildId, 'movie', null);
-      } else if (cfg?.tv_channel_id === interaction.channelId) {
-        await db.setMediaGuessConfig(guildId, 'tv', null);
-      }
+      await db.setMediaGuessConfig(guildId, state.type, null);
 
       state.answered = true;
       activeGames.delete(interaction.channelId);
@@ -110,30 +128,23 @@ const MediaGuess: Command = {
     else if (sub === 'info') {
       const cfg = await db.getMediaGuessConfig(guildId);
 
-      const movieChannel = cfg?.movie_channel_id ? `<#${cfg.movie_channel_id}>` : 'Not set';
-      const tvChannel = cfg?.tv_channel_id ? `<#${cfg.tv_channel_id}>` : 'Not set';
-
-      const movieState = cfg?.movie_channel_id ? activeGames.get(cfg.movie_channel_id) : null;
-      const tvState = cfg?.tv_channel_id ? activeGames.get(cfg.tv_channel_id) : null;
-
-      const movieStatus = movieState
-        ? `Active — ${movieState.userHints.size} player(s) have used hints, ${movieState.voteskips.size}/2 skip votes`
-        : (cfg?.movie_channel_id ? 'Channel set but no active round' : 'Not configured');
-      const tvStatus = tvState
-        ? `Active — ${tvState.userHints.size} player(s) have used hints, ${tvState.voteskips.size}/2 skip votes`
-        : (cfg?.tv_channel_id ? 'Channel set but no active round' : 'Not configured');
+      const fields = (['movie', 'tv', 'game', 'music'] as MediaType[]).flatMap(type => {
+        const channelId = configChannel(cfg, type);
+        const state = channelId ? activeGames.get(channelId) : null;
+        const status = state
+          ? `Active — ${state.userHints.size} player(s) have used hints, ${state.voteskips.size}/2 skip votes`
+          : (channelId ? 'Channel set but no active round' : 'Not configured');
+        return [
+          { name: `${TYPE_EMOJI[type]} ${TYPE_LABEL[type]} Channel`, value: channelId ? `<#${channelId}>` : 'Not set', inline: true },
+          { name: `${TYPE_LABEL[type]} Status`, value: status, inline: true },
+          { name: '​', value: '​', inline: true },
+        ];
+      });
 
       const embed = new EmbedBuilder()
         .setColor(Colors.Blurple)
-        .setTitle('🎬 Guessing Game Config')
-        .addFields(
-          { name: '🎬 Movie Channel', value: movieChannel, inline: true },
-          { name: 'Movie Status', value: movieStatus, inline: true },
-          { name: '​', value: '​', inline: true },
-          { name: '📺 TV Show Channel', value: tvChannel, inline: true },
-          { name: 'TV Status', value: tvStatus, inline: true },
-          { name: '​', value: '​', inline: true },
-        );
+        .setTitle('🎮 Guessing Game Config')
+        .addFields(fields);
 
       await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
     }

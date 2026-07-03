@@ -40,6 +40,8 @@ WEATHER_API_KEY=         # OpenWeatherMap key (/weather)
 REPORT_CHANNEL_ID=       # Fallback channel for /report when no modlog is set
 TENOR_API_KEY=           # GIF search (/gif) — free key at https://developers.google.com/tenor
 TMDB_API_KEY=            # Movie/TV guessing games — free key at https://www.themoviedb.org/settings/api
+RAWG_API_KEY=            # Video game guessing game — free key at https://rawg.io/apidocs
+# Song guessing uses Deezer's public API — no key needed, nothing to add here
 ```
 
 ### Running
@@ -253,20 +255,26 @@ Members with **Manage Messages** are exempt (staff/bots running legitimate bulk 
 
 #### Guessing Games
 
-Channel-based movie and TV show guessing games. Each round posts with **💡 Hint** and **⏭️ Vote Skip** buttons — the slash commands below do the exact same thing, just pick whichever's faster.
+Four channel-based guessing games — 🎬 **Movie**, 📺 **TV Show**, 🎮 **Video Game**, and 🎵 **Song** — each configured in its own channel. Each round posts with **💡 Hint** and **⏭️ Vote Skip** buttons — the slash commands below do the exact same thing, just pick whichever's faster.
 
 | Command | Description |
 |---|---|
-| `/hint` (or 💡 **Hint** button) | Reveal your **own** next clue, privately — no one else sees it (up to 5 per round: info card, masked title, anagram, extra scene, description). No cooldown — request as many as you want, as fast as you want. Each hint you personally use lowers the XP you get *if you* guess correctly (150 XP at 0 hints, −25 per hint, 50 floor) — guess it cold and you keep the full reward. |
+| `/hint` (or 💡 **Hint** button) | Reveal your **own** next clue, privately — no one else sees it (up to 5 per round). No cooldown — request as many as you want, as fast as you want. Each hint you personally use lowers the XP you get *if you* guess correctly (150 XP at 0 hints, −25 per hint, 50 floor) — guess it cold and you keep the full reward. |
 | `/voteskip` (or ⏭️ **Vote Skip** button) | Vote to skip the current round (2 votes needed, locked out for the first 5 minutes so everyone gets a fair shot — a "Vote Skip Available" notice posts once it opens up) |
-| `/mediaguess setup <type> <channel>` | *(Admin)* Set up the movie or TV show game channel and start the first round |
+| `/mediaguess setup <type> <channel>` | *(Admin)* Set up a movie, TV show, video game, or song game channel and start the first round |
 | `/mediaguess stop` | *(Admin)* Stop the game in this channel and remove its config |
 | `/mediaguess skip` | *(Admin)* Force-skip the current round without a vote |
-| `/mediaguess info` | *(Admin)* View game configuration and active round status |
+| `/mediaguess info` | *(Admin)* View configuration and active round status for all four game channels |
 
-The hint sequence is shuffled once per round and shared by everyone — no one gets an easier or harder order, only how many of *your own* you've revealed is private.
+The hint sequence is shuffled once per round and shared by everyone — no one gets an easier or harder order, only how many of *your own* you've revealed is private. Hint content adapts per type — movie/TV/game get an info card → masked title → anagram → another screenshot → description; songs get info (year/genre/duration, no artist yet) → masked title → anagram → **artist reveal** → **album art**.
 
-Powered by the **TMDB API** — add `TMDB_API_KEY=your_key` to `.env` (free key at [themoviedb.org](https://www.themoviedb.org/settings/api)). No local database needed; titles and metadata are fetched live from thousands of popular movies and shows (1975 to present). Scene stills are sourced from **MovieStillsDB** (genuine publicity/production stills with no title overlay), falling back to TMDB backdrops when a title isn't available there. Repeats are suppressed per channel for 6 hours.
+**Movie/TV** — Powered by the **TMDB API** (`TMDB_API_KEY` in `.env`, free at [themoviedb.org](https://www.themoviedb.org/settings/api)). Scene stills come from **MovieStillsDB** (genuine publicity/production stills, no title overlay), falling back to TMDB backdrops. Titles from 1975 to present only.
+
+**Video Game** — Powered by the **RAWG API** (`RAWG_API_KEY` in `.env`, free at [rawg.io/apidocs](https://rawg.io/apidocs)). Only games with a Metacritic score of 60+ are picked, so it's always something recognizable rather than an obscure indie title nobody's played.
+
+**Song** — Powered by **Deezer's public API** — no key needed at all. Rounds post the actual **30-second preview clip** as a playable Discord audio attachment (not an image) — pulled from Deezer's charts across a rotating mix of mainstream genres so it's always something current and recognizable, not deep-cuts.
+
+All four suppress repeats per channel for 6 hours.
 
 #### Fun
 
@@ -339,7 +347,7 @@ All economy commands are under `/economy`.
 | `/protection` | Hire mob protection for 5,000 coins — blocks rob attempts for 24 hours. |
 | `/shop browse` | View all shop items — boosts, one-shots, and instants. |
 | `/shop buy <item> [cooldown]` | Buy a shop item (the `cooldown` option is only for Time Skip). |
-| `/games leaderboard <game>` | Show the top players for a specific game (flip, highroll, slots, roulette, crash, blackjack, poker, scratch, movie guesser, TV guesser). |
+| `/games leaderboard <game>` | Show the top players for a specific game (flip, highroll, slots, roulette, crash, blackjack, poker, scratch, movie guesser, TV guesser, game guesser, song guesser). |
 
 **Shop items:**
 

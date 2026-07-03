@@ -1027,6 +1027,8 @@ export async function initDb() {
     movie_channel_id TEXT,
     tv_channel_id    TEXT
   )`;
+  try { await db`ALTER TABLE mediaguess_config ADD COLUMN game_channel_id TEXT`; } catch {}
+  try { await db`ALTER TABLE mediaguess_config ADD COLUMN music_channel_id TEXT`; } catch {}
 
   // Persists the in-progress round per channel so a bot restart resumes the
   // current round instead of discarding it and starting a new one.
@@ -1129,6 +1131,8 @@ export type IMediaGuessConfig = {
   guild_id: string;
   movie_channel_id: string | null;
   tv_channel_id: string | null;
+  game_channel_id: string | null;
+  music_channel_id: string | null;
 };
 
 export async function getMediaGuessConfig(guild_id: string): Promise<IMediaGuessConfig | null> {
@@ -1136,17 +1140,15 @@ export async function getMediaGuessConfig(guild_id: string): Promise<IMediaGuess
   return row ? (row as IMediaGuessConfig) : null;
 }
 
-export async function setMediaGuessConfig(guild_id: string, type: 'movie' | 'tv', channel_id: string | null): Promise<void> {
+const MEDIAGUESS_COLUMN: Record<'movie' | 'tv' | 'game' | 'music', string> = {
+  movie: 'movie_channel_id', tv: 'tv_channel_id', game: 'game_channel_id', music: 'music_channel_id',
+};
+
+export async function setMediaGuessConfig(guild_id: string, type: 'movie' | 'tv' | 'game' | 'music', channel_id: string | null): Promise<void> {
   await ensureConfig(guild_id);
-  if (type === 'movie') {
-    await db`INSERT INTO mediaguess_config (guild_id, movie_channel_id, tv_channel_id)
-      VALUES (${guild_id}, ${channel_id}, NULL)
-      ON CONFLICT(guild_id) DO UPDATE SET movie_channel_id = excluded.movie_channel_id`;
-  } else {
-    await db`INSERT INTO mediaguess_config (guild_id, movie_channel_id, tv_channel_id)
-      VALUES (${guild_id}, NULL, ${channel_id})
-      ON CONFLICT(guild_id) DO UPDATE SET tv_channel_id = excluded.tv_channel_id`;
-  }
+  const column = MEDIAGUESS_COLUMN[type];
+  await db`INSERT INTO mediaguess_config (guild_id, ${db(column)}) VALUES (${guild_id}, ${channel_id})
+    ON CONFLICT(guild_id) DO UPDATE SET ${db(column)} = excluded.${db(column)}`;
 }
 
 export type IMediaGuessRound = {
@@ -1184,7 +1186,9 @@ export async function deleteMediaGuessRound(channel_id: string): Promise<void> {
 }
 
 export async function getAllMediaGuessConfigs(): Promise<IMediaGuessConfig[]> {
-  const rows = await db`SELECT * FROM mediaguess_config WHERE movie_channel_id IS NOT NULL OR tv_channel_id IS NOT NULL`;
+  const rows = await db`SELECT * FROM mediaguess_config
+    WHERE movie_channel_id IS NOT NULL OR tv_channel_id IS NOT NULL
+       OR game_channel_id IS NOT NULL OR music_channel_id IS NOT NULL`;
   return rows as IMediaGuessConfig[];
 }
 
@@ -1220,7 +1224,7 @@ export async function removeGuild(guild_id: string) {
     'welcome_config', 'stat_channels', 'giveaways', 'reaction_roles',
     'topic_channels', 'topics', 'starboard_config', 'starboard_posts',
     'tags', 'music_config', 'news_config', 'verify_config',
-    'streamvc_config', 'streamvc_approvers', 'antiphishing_config', 'mediaguess_rounds',
+    'streamvc_config', 'streamvc_approvers', 'antiphishing_config', 'mediaguess_rounds', 'mediaguess_config',
   ]) {
     await db`DELETE FROM ${db(table)} WHERE guild_id = ${guild_id}`.catch(() => {});
   }

@@ -56,8 +56,10 @@ const mediaguessModule: EventModule = {
       const state = activeGames.get(message.channelId);
       if (!state || state.answered) return;
 
-      // Let normal conversation through without reacting
-      if (looksLikeChat(message.content)) return;
+      // Let normal conversation through without reacting — except for music,
+      // where real song titles ("Good 4 U", "Wow") collide with these chat
+      // heuristics often enough that skipping the filter is the safer call.
+      if (state.type !== 'music' && looksLikeChat(message.content)) return;
 
       const result = checkGuess(message.content.trim(), state.media.title);
 
@@ -116,22 +118,32 @@ const mediaguessModule: EventModule = {
 
 export default mediaguessModule;
 
-export async function startMediaGames(client: Client): Promise<void> {
-  if (!Bun.env.TMDB_API_KEY) {
-    console.warn('[mediaguess] TMDB_API_KEY not set — guessing games disabled');
+// Movie/TV need TMDB, games need RAWG — music (Deezer) needs no key at all.
+// Each type is gated independently so a missing key only disables that one
+// mode instead of blocking every guessing game in the server.
+async function startIfConfigured(guildId: string, channelId: string | null, type: 'movie' | 'tv' | 'game' | 'music', client: Client): Promise<void> {
+  if (!channelId || activeGames.has(channelId)) return;
+  if ((type === 'movie' || type === 'tv') && !Bun.env.TMDB_API_KEY) {
+    console.warn(`[mediaguess] TMDB_API_KEY not set — ${type} guessing disabled`);
     return;
   }
+  if (type === 'game' && !Bun.env.RAWG_API_KEY) {
+    console.warn('[mediaguess] RAWG_API_KEY not set — game guessing disabled');
+    return;
+  }
+  await startGame(guildId, channelId, type, client).catch(console.error);
+}
+
+export async function startMediaGames(client: Client): Promise<void> {
   // Resume any round that was still in progress before the restart, so
   // configured channels don't get force-reset to a brand new round.
   await restoreActiveGames(client);
 
   const configs = await db.getAllMediaGuessConfigs();
   for (const cfg of configs) {
-    if (cfg.movie_channel_id && !activeGames.has(cfg.movie_channel_id)) {
-      await startGame(cfg.guild_id, cfg.movie_channel_id, 'movie', client).catch(console.error);
-    }
-    if (cfg.tv_channel_id && !activeGames.has(cfg.tv_channel_id)) {
-      await startGame(cfg.guild_id, cfg.tv_channel_id, 'tv', client).catch(console.error);
-    }
+    await startIfConfigured(cfg.guild_id, cfg.movie_channel_id, 'movie', client);
+    await startIfConfigured(cfg.guild_id, cfg.tv_channel_id, 'tv', client);
+    await startIfConfigured(cfg.guild_id, cfg.game_channel_id, 'game', client);
+    await startIfConfigured(cfg.guild_id, cfg.music_channel_id, 'music', client);
   }
 }

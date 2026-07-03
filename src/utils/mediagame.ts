@@ -1,4 +1,4 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, Client, EmbedBuilder, TextChannel } from 'discord.js';
+import { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, Client, EmbedBuilder, TextChannel } from 'discord.js';
 import * as db from './db.js';
 
 const TMDB_BASE = 'https://api.themoviedb.org/3';
@@ -10,8 +10,14 @@ const MSDB_HEADERS = {
   'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
   'Accept-Language': 'en-US,en;q=0.5',
 };
+const RAWG_BASE = 'https://api.rawg.io/api';
+const DEEZER_BASE = 'https://api.deezer.com';
 
-export type MediaType = 'movie' | 'tv';
+export type MediaType = 'movie' | 'tv' | 'game' | 'music';
+
+export function typeNoun(type: MediaType): string {
+  return type === 'movie' ? 'movie' : type === 'tv' ? 'TV show' : type === 'game' ? 'video game' : 'song';
+}
 
 export interface MediaEntry {
   id: number;
@@ -19,11 +25,19 @@ export interface MediaEntry {
   title: string;
   year: number | null;
   genre: string | null;
-  director: string | null; // director for movies, creator for TV
+  // movie: director · tv: creator · game: developer(s) · music: artist name
+  director: string | null;
+  // movie/tv: cast · game: platforms · music: album title
   cast: string | null;
   synopsis: string | null;
+  // movie/tv: tagline (unused for hints) · music: formatted duration (e.g. "3:24"), shown in the info-card hint
   tagline: string | null;
+  // movie/tv/game: screenshots, revealed as the round image / "another scene" hint
+  // music: single-element array holding the album art, revealed only as the late "album art" hint — never shown upfront
   stills: string[];
+  // music only: direct URL to a 30-second preview clip, downloaded and re-posted as a native
+  // Discord attachment at round start (not linked directly — CDN URLs can expire/unfurl unreliably)
+  audioPreview?: string;
 }
 
 export interface GameState {
@@ -72,7 +86,7 @@ function scheduleSkipAnnouncement(state: GameState, client: Client): void {
     const embed = new EmbedBuilder()
       .setColor(HINT_COLOR)
       .setTitle('⏰ Vote Skip Available')
-      .setDescription(`The skip delay has elapsed! Anyone can now vote to skip this ${state.type === 'movie' ? 'movie' : 'TV show'} using \`/voteskip\` *(2 votes needed)*.`);
+      .setDescription(`The skip delay has elapsed! Anyone can now vote to skip this ${typeNoun(state.type)} using \`/voteskip\` *(2 votes needed)*.`);
     await channel.send({ embeds: [embed] }).catch(() => {});
   }, remaining);
   skipTimers.set(state.channelId, timer);
@@ -304,7 +318,15 @@ async function tmdbFetch(path: string): Promise<any> {
   return res.json();
 }
 
+// Dispatches to the right content source per type — TMDB for movie/tv (existing),
+// RAWG for video games, Deezer for music.
 async function fetchEntry(type: MediaType, excludeIds: Set<number>): Promise<MediaEntry | null> {
+  if (type === 'game') return fetchGameEntry(excludeIds);
+  if (type === 'music') return fetchMusicEntry(excludeIds);
+  return fetchMovieTvEntry(type, excludeIds);
+}
+
+async function fetchMovieTvEntry(type: 'movie' | 'tv', excludeIds: Set<number>): Promise<MediaEntry | null> {
   for (let attempt = 0; attempt < 5; attempt++) {
     try {
       const page = Math.floor(Math.random() * 100) + 1;
@@ -397,6 +419,151 @@ async function fetchEntry(type: MediaType, excludeIds: Set<number>): Promise<Med
       }
     } catch (err) {
       console.error(`[mediaguess] TMDB fetch error (attempt ${attempt + 1}):`, err);
+    }
+  }
+  return null;
+}
+
+// ─── RAWG API (video games) ────────────────────────────────────────────────────
+// Free tier, single API key (like TMDB) — no OAuth dance. Docs: https://rawg.io/apidocs
+
+async function rawgFetch(path: string): Promise<any> {
+  const key = Bun.env.RAWG_API_KEY;
+  if (!key) throw new Error('RAWG_API_KEY is not set');
+  const sep = path.includes('?') ? '&' : '?';
+  const res = await fetch(`${RAWG_BASE}${path}${sep}key=${key}`);
+  if (!res.ok) throw new Error(`RAWG ${res.status} ${path}`);
+  return res.json();
+}
+
+async function fetchGameEntry(excludeIds: Set<number>): Promise<MediaEntry | null> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      const page = Math.floor(Math.random() * 40) + 1;
+      // Popular, well-reviewed games only — an obscure 40-download indie title
+      // isn't a fair guess. metacritic>=60 plus sort-by-added (popularity proxy).
+      const list = await rawgFetch(`/games?page=${page}&page_size=40&ordering=-added&metacritic=60,100&dates=1990-01-01,2100-01-01`);
+
+      const results = ((list.results ?? []) as { id: number }[]).filter(r => !excludeIds.has(r.id));
+      if (!results.length) continue;
+
+      for (let i = results.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [results[i], results[j]] = [results[j]!, results[i]!];
+      }
+
+      for (const pick of results.slice(0, 8)) {
+        const d = await rawgFetch(`/games/${pick.id}`);
+
+        const title: string = d.name ?? '';
+        if (!title) continue;
+
+        const year: number | null = d.released ? parseInt(String(d.released).slice(0, 4)) : null;
+        if (year === null || year < 1990) continue;
+
+        // short_screenshots comes back on the detail response already; fall back
+        // to the dedicated screenshots endpoint if it's too thin.
+        let shots: string[] = ((d.short_screenshots ?? []) as { image: string }[])
+          .map(s => s.image)
+          .filter(url => !url.includes('no_screenshot'));
+        if (shots.length < 2) {
+          const extra = await rawgFetch(`/games/${pick.id}/screenshots`).catch(() => null);
+          if (extra?.results?.length) shots = (extra.results as { image: string }[]).map(s => s.image);
+        }
+        if (d.background_image && !shots.includes(d.background_image)) shots.unshift(d.background_image);
+        if (!shots.length) continue;
+
+        const genres = (d.genres as { name: string }[] | undefined) ?? [];
+        const genre: string | null = genres.length ? genres.map(g => g.name).join(', ') : null;
+
+        const developers = (d.developers as { name: string }[] | undefined) ?? [];
+        const director: string | null = developers.length ? developers.map(x => x.name).join(', ') : null;
+
+        const platforms = (d.platforms as { platform: { name: string } }[] | undefined) ?? [];
+        const cast: string | null = platforms.length
+          ? platforms.slice(0, 5).map(p => p.platform.name).join(', ')
+          : null;
+
+        return {
+          id: pick.id,
+          type: 'game',
+          title,
+          year,
+          genre,
+          director,
+          cast,
+          synopsis: (d.description_raw as string | undefined)?.trim() || null,
+          tagline: null,
+          stills: shots.slice(0, 8),
+        };
+      }
+    } catch (err) {
+      console.error(`[mediaguess] RAWG fetch error (attempt ${attempt + 1}):`, err);
+    }
+  }
+  return null;
+}
+
+// ─── Deezer API (music) ─────────────────────────────────────────────────────────
+// Fully public, zero auth needed at all. Charts give curated "currently popular"
+// tracks (same anti-obscurity reasoning as TMDB's "popular" endpoint / RAWG's
+// metacritic filter) across a rotating set of mainstream genres for variety.
+
+// Deezer genre IDs: 0=All (global chart), then a mainstream rotation. The chart
+// endpoint's response has no field naming the genre, so map it locally — verified
+// against GET /genre.
+const DEEZER_GENRE_NAMES: Record<number, string | null> = {
+  0: null, 132: 'Pop', 116: 'Rap/Hip Hop', 152: 'Rock', 113: 'Dance',
+  165: 'R&B', 85: 'Alternative', 106: 'Electro', 84: 'Country',
+};
+// 0 ("All" — the actual current top-100) appears 3x for extra weight vs. each genre chart once.
+const DEEZER_GENRES = [0, 0, 0, ...Object.keys(DEEZER_GENRE_NAMES).map(Number).filter(id => id !== 0)];
+
+function fmtDuration(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+async function fetchMusicEntry(excludeIds: Set<number>): Promise<MediaEntry | null> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      const genreId = DEEZER_GENRES[Math.floor(Math.random() * DEEZER_GENRES.length)];
+      const res = await fetch(`${DEEZER_BASE}/chart/${genreId}/tracks?limit=50`);
+      if (!res.ok) throw new Error(`Deezer ${res.status}`);
+      const list = await res.json() as any;
+
+      const results = ((list.data ?? []) as { id: number }[]).filter(r => !excludeIds.has(r.id));
+      if (!results.length) continue;
+
+      for (let i = results.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [results[i], results[j]] = [results[j]!, results[i]!];
+      }
+
+      for (const pick of results.slice(0, 8) as any[]) {
+        const title: string = pick.title_short || pick.title || '';
+        if (!title || !pick.preview) continue;
+
+        const albumArt: string | null = pick.album?.cover_xl ?? pick.album?.cover_big ?? null;
+        if (!albumArt) continue;
+
+        return {
+          id: pick.id,
+          type: 'music',
+          title,
+          year: null, // Deezer's chart/track objects don't include a release date without an extra album lookup
+          genre: DEEZER_GENRE_NAMES[genreId] ?? null,
+          director: pick.artist?.name ?? null, // artist
+          cast: pick.album?.title ?? null,     // album
+          synopsis: null,
+          tagline: pick.duration ? fmtDuration(pick.duration) : null,
+          stills: [albumArt],
+          audioPreview: pick.preview,
+        };
+      }
+    } catch (err) {
+      console.error(`[mediaguess] Deezer fetch error (attempt ${attempt + 1}):`, err);
     }
   }
   return null;
@@ -598,8 +765,13 @@ function anagramTitle(title: string): string {
 function buildHintOrder(media: MediaEntry): number[] {
   // Only include hint types that have usable data for this entry
   const available = [0, 1, 2]; // info, letters, anagram — always possible
-  if (media.stills.length >= 2) available.push(3); // another scene
-  if (media.synopsis)           available.push(4); // description
+  if (media.type === 'music') {
+    // Artist reveal + album art are always populated by fetchMusicEntry.
+    available.push(3, 4);
+  } else {
+    if (media.stills.length >= 2) available.push(3); // another scene
+    if (media.synopsis)           available.push(4); // description
+  }
   for (let i = available.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [available[i], available[j]] = [available[j]!, available[i]!];
@@ -609,12 +781,21 @@ function buildHintOrder(media: MediaEntry): number[] {
 
 // ─── Hint builder ─────────────────────────────────────────────────────────────
 
+// Slots 1 (masked title) and 2 (anagram) are pure string ops shared by every
+// type. Slots 0/3/4 mean different things for music — see requestHint().
 const HINT_TYPES = [
-  'Movie Information',
+  'Information',
   'Title Letters',
   'Anagram / Scrambled Letters',
   'Another Scene Clue',
   'Description',
+];
+const MUSIC_HINT_TYPES = [
+  'Information',
+  'Title Letters',
+  'Anagram / Scrambled Letters',
+  'Artist Reveal',
+  'Album Art',
 ];
 
 export interface HintPayload {
@@ -641,9 +822,9 @@ export function requestHint(channelId: string, userId: string): HintPayload | nu
   state.userHints.set(userId, n);
   persistRound(state);
   const { media, type } = state;
-  const label = type === 'movie' ? 'Movie' : 'TV Show';
+  const label = type === 'movie' ? 'Movie' : type === 'tv' ? 'TV Show' : type === 'game' ? 'Game' : 'Song';
   const hintIdx = state.hintOrder[n - 1]!;
-  const hintType = HINT_TYPES[hintIdx]!;
+  const hintType = (type === 'music' ? MUSIC_HINT_TYPES : HINT_TYPES)[hintIdx]!;
 
   const embed = new EmbedBuilder()
     .setColor(HINT_COLOR)
@@ -652,13 +833,19 @@ export function requestHint(channelId: string, userId: string): HintPayload | nu
 
   switch (hintIdx) {
     case 0: {
-      // Combined info card — year, genre, cast, director/creator
-      const directorLabel = type === 'movie' ? 'Director' : 'Creator';
       const lines: string[] = [];
-      if (media.year)     lines.push(`**Release Year:** ${media.year}`);
-      if (media.genre)    lines.push(`**Genre(s):** ${media.genre}`);
-      if (media.cast)     lines.push(`**Cast:** ${media.cast}`);
-      if (media.director) lines.push(`**${directorLabel}:** ${media.director}`);
+      if (type === 'music') {
+        // Deliberately no artist name here — that's its own later hint (slot 3).
+        if (media.year)    lines.push(`**Release Year:** ${media.year}`);
+        if (media.genre)   lines.push(`**Genre:** ${media.genre}`);
+        if (media.tagline) lines.push(`**Duration:** ${media.tagline}`);
+      } else {
+        const directorLabel = type === 'movie' ? 'Director' : type === 'tv' ? 'Creator' : 'Developer';
+        if (media.year)     lines.push(`**Release Year:** ${media.year}`);
+        if (media.genre)    lines.push(`**Genre(s):** ${media.genre}`);
+        if (media.cast)     lines.push(`**${type === 'game' ? 'Platforms' : 'Cast'}:** ${media.cast}`);
+        if (media.director) lines.push(`**${directorLabel}:** ${media.director}`);
+      }
       embed.setDescription(lines.join('\n') || 'No information available.');
       break;
     }
@@ -675,15 +862,26 @@ export function requestHint(channelId: string, userId: string): HintPayload | nu
       break;
     }
     case 3: {
+      if (type === 'music') {
+        embed.setDescription(`**Artist:** ${media.director ?? 'Unknown'}`);
+        break;
+      }
       const extra = media.stills[1];
       if (extra) {
-        embed.setDescription('Here is another scene from the movie!').setImage(extra);
+        const noun = type === 'game' ? 'the game' : type === 'movie' ? 'the movie' : 'the show';
+        embed.setDescription(`Here is another scene from ${noun}!`).setImage(extra);
       } else {
         embed.setDescription('No additional scene available for this one.');
       }
       break;
     }
     case 4: {
+      if (type === 'music') {
+        const art = media.stills[0];
+        if (art) embed.setDescription("Here's the album art!").setImage(art);
+        else embed.setDescription('No album art available for this one.');
+        break;
+      }
       if (!media.synopsis) {
         embed.setDescription('No description available for this one.');
         break;
@@ -720,6 +918,27 @@ function buildRoundButtons(): ActionRowBuilder<ButtonBuilder> {
   );
 }
 
+const TYPE_LABEL: Record<MediaType, string> = {
+  movie: '🎬 Movie Guessing Game', tv: '📺 TV Show Guessing Game',
+  game: '🎮 Video Game Guessing Game', music: '🎵 Song Guessing Game',
+};
+const TYPE_COLOR: Record<MediaType, number> = {
+  movie: 0xE50914, tv: 0x0099FF, game: 0x57F287, music: 0xFF2D78,
+};
+
+// Downloaded and re-attached rather than linked directly — the Deezer preview
+// URL is signed with an expiry, and re-uploading to Discord's own CDN means the
+// audio player in the round message keeps working indefinitely, restart or not.
+async function downloadPreview(url: string): Promise<Buffer | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    return Buffer.from(await res.arrayBuffer());
+  } catch {
+    return null;
+  }
+}
+
 export async function startGame(
   guildId: string,
   channelId: string,
@@ -728,7 +947,7 @@ export async function startGame(
 ): Promise<void> {
   const media = await fetchEntry(type, getExcludeIds(channelId));
   if (!media) {
-    console.warn(`[mediaguess] Could not fetch ${type} from TMDB — check TMDB_API_KEY`);
+    console.warn(`[mediaguess] Could not fetch ${type} — check TMDB_API_KEY/RAWG_API_KEY are set`);
     return;
   }
   recordShown(channelId, media.id);
@@ -736,22 +955,35 @@ export async function startGame(
   const channel = client.channels.cache.get(channelId) as TextChannel | undefined;
   if (!channel) return;
 
-  const typeStr = type === 'movie' ? 'movie' : 'TV show';
-  const label   = type === 'movie' ? '🎬 Movie Guessing Game' : '📺 TV Show Guessing Game';
+  const typeStr = typeNoun(type);
+  const isMusic = type === 'music';
 
   const embed = new EmbedBuilder()
-    .setColor(type === 'movie' ? 0xE50914 : 0x0099FF)
-    .setTitle(label)
+    .setColor(TYPE_COLOR[type])
+    .setTitle(TYPE_LABEL[type])
     .setDescription(
-      `**Can you guess the ${typeStr} from this still?**\n\n` +
+      `**Can you guess the ${typeStr} from this ${isMusic ? '30-second clip' : 'still'}?**\n\n` +
       `Type your answer in chat, or use the buttons below!\n` +
       `> 💡 **Hint** / \`/hint\` — Reveal your own clue *(private, unlimited — but costs XP)*\n` +
       `> ⏭️ **Vote Skip** / \`/voteskip\` — Vote to skip *(2 votes needed, available after 5 min)*`,
     )
-    .setImage(media.stills[0]!)
     .setFooter({ text: 'Good luck! 🍿' });
 
-  const msg = await channel.send({ embeds: [embed], components: [buildRoundButtons()] }).catch(() => null);
+  let msg;
+  if (isMusic) {
+    // No image upfront for music — the album art is a late hint, not a giveaway.
+    // discord.js infers the attachment's audio player from the file extension.
+    const buf = media.audioPreview ? await downloadPreview(media.audioPreview) : null;
+    if (!buf) {
+      console.warn('[mediaguess] Could not download Deezer preview clip — skipping this pick');
+      return;
+    }
+    const attachment = new AttachmentBuilder(buf, { name: 'preview.mp3' });
+    msg = await channel.send({ embeds: [embed], files: [attachment], components: [buildRoundButtons()] }).catch(() => null);
+  } else {
+    embed.setImage(media.stills[0]!);
+    msg = await channel.send({ embeds: [embed], components: [buildRoundButtons()] }).catch(() => null);
+  }
   if (!msg) return;
 
   const state: GameState = {
@@ -783,7 +1015,7 @@ export async function resolveGame(
   db.deleteMediaGuessRound(state.channelId).catch(() => {});
   cancelSkipTimer(state.channelId);
   state.answered = true;
-  const typeStr = state.type === 'movie' ? 'movie' : 'TV show';
+  const typeStr = typeNoun(state.type);
   const channel = client.channels.cache.get(state.channelId) as TextChannel | undefined;
   if (!channel) return;
 
