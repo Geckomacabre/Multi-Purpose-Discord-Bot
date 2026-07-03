@@ -82,11 +82,13 @@ const mediaguessModule: EventModule = {
         recordGameResult(message.guildId, message.author.id, `mediaguess_${state.type}`, true, 0).catch(() => {});
 
         await message.react('✅').catch(() => {});
-        if (xpGained > 0) {
+        // Music folds XP into resolveGame's structured embed instead of a
+        // separate reply — movie/tv/game keep the plain-text announcement.
+        if (state.type !== 'music' && xpGained > 0) {
           await message.reply(`+${xpGained} XP 🎉`).catch(() => {});
         }
         const winnerName = message.member?.displayName ?? message.author.globalName ?? message.author.username;
-        await resolveGame(state, bot, { id: message.author.id, name: winnerName }, 'correct');
+        await resolveGame(state, bot, { id: message.author.id, name: winnerName, xpGained }, 'correct');
       } else if (result === 'very_close') {
         await message.react('‼️').catch(() => {});
       } else if (result === 'close') {

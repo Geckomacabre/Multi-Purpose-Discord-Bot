@@ -1,4 +1,4 @@
-import { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, Client, EmbedBuilder, TextChannel } from 'discord.js';
+import { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, Client, Colors, EmbedBuilder, TextChannel } from 'discord.js';
 import * as db from './db.js';
 
 const TMDB_BASE = 'https://api.themoviedb.org/3';
@@ -1018,7 +1018,7 @@ export async function startGame(
       `> 💡 **Hint** / \`/hint\` — Reveal your own clue *(private, unlimited — but costs XP)*\n` +
       `> ⏭️ **Vote Skip** / \`/voteskip\` — Vote to skip *(2 votes needed, available after 5 min)*`,
     )
-    .setFooter({ text: 'Good luck! 🍿' });
+    .setFooter({ text: `Good luck! ${type === 'music' ? '🎧' : type === 'game' ? '🎮' : '🍿'}` });
 
   let msg;
   if (isMusic) {
@@ -1060,7 +1060,7 @@ export async function startGame(
 export async function resolveGame(
   state: GameState,
   client: Client,
-  winner: { id: string; name: string } | null,
+  winner: { id: string; name: string; xpGained?: number } | null,
   reason: 'correct' | 'skip',
 ): Promise<void> {
   // Atomic claim — delete first so any concurrent resolveGame call sees undefined and exits.
@@ -1073,30 +1073,43 @@ export async function resolveGame(
   const channel = client.channels.cache.get(state.channelId) as TextChannel | undefined;
   if (!channel) return;
 
-  // Strip the buttons off the original round message so a stale Hint/Vote Skip
-  // click can't land on a round that's already over.
+  // Delete the original round message — keeps the channel clean and means a
+  // stale Hint/Vote Skip click can't land on a round that's already over.
   if (state.messageId) {
     const roundMsg = await channel.messages.fetch(state.messageId).catch(() => null);
-    if (roundMsg) await roundMsg.edit({ components: [] }).catch(() => {});
+    if (roundMsg) await roundMsg.delete().catch(() => {});
   }
 
   if (reason === 'correct' && winner) {
-    // Show the display name as plain text (not a <@id> mention) so it reads
-    // correctly in mobile push notifications, which don't resolve raw mentions.
-    const byLine = state.type === 'music' && state.media.director ? ` by **${state.media.director}**` : '';
-    const winMsg = `🎉 **${winner.name}** got it! The ${typeStr} was **${state.media.title}**${byLine}!\n_Next round starting in 10 seconds…_`;
+    if (state.type === 'music') {
+      // Structured embed for music — Song/Artist/XP fields + album art
+      // thumbnail, matching the reference layout, plus the full clip
+      // attached as a bonus reveal now that the round's over (the 5-second
+      // public clip was only ever a snippet).
+      const xpLine = winner.xpGained
+        ? `+${winner.xpGained} XP`
+        : '+0 XP *(Daily XP cap reached)*';
+      const embed = new EmbedBuilder()
+        .setColor(Colors.Green)
+        .setTitle('🎉 Correct Guess!')
+        .setDescription(`🏆 **${winner.name}** guessed the song title!`)
+        .addFields(
+          { name: 'Song', value: state.media.title, inline: false },
+          { name: 'Artist', value: state.media.director ?? 'Unknown', inline: false },
+          { name: 'XP Awarded', value: xpLine, inline: false },
+        )
+        .setFooter({ text: '🎵 Next song will start in 10 seconds…' });
+      if (state.media.stills[0]) embed.setThumbnail(state.media.stills[0]);
 
-    // Bonus for music: reveal the full clip now that the round's over — the
-    // 5-second public clip was only ever a snippet.
-    if (state.type === 'music' && state.media.audioPreview) {
-      const full = await downloadPreview(state.media.audioPreview);
-      if (full) {
-        await channel.send({ content: winMsg, files: [new AttachmentBuilder(full, { name: 'full.mp3' })] }).catch(() => {});
-      } else {
-        await channel.send(winMsg).catch(() => {});
-      }
+      const full = state.media.audioPreview ? await downloadPreview(state.media.audioPreview) : null;
+      const files = full ? [new AttachmentBuilder(full, { name: 'full.mp3' })] : [];
+      await channel.send({ embeds: [embed], files }).catch(() => {});
     } else {
-      await channel.send(winMsg).catch(() => {});
+      // Show the display name as plain text (not a <@id> mention) so it reads
+      // correctly in mobile push notifications, which don't resolve raw mentions.
+      await channel
+        .send(`🎉 **${winner.name}** got it! The ${typeStr} was **${state.media.title}**!\n_Next round starting in 10 seconds…_`)
+        .catch(() => {});
     }
   } else {
     await channel
