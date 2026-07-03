@@ -58,6 +58,7 @@ const MediaGuess: Command = {
       if (existing) {
         existing.answered = true;
         activeGames.delete(channel.id);
+        await db.deleteMediaGuessRound(channel.id).catch(() => {});
       }
 
       await startGame(guildId, channel.id, type, interaction.client);
@@ -83,6 +84,7 @@ const MediaGuess: Command = {
 
       state.answered = true;
       activeGames.delete(interaction.channelId);
+      await db.deleteMediaGuessRound(interaction.channelId).catch(() => {});
 
       await interaction.reply({
         content: `🛑 Game stopped. The answer was **${state.media.title}**. Configure a new game with \`/mediaguess setup\`.`,

@@ -1028,6 +1028,20 @@ export async function initDb() {
     tv_channel_id    TEXT
   )`;
 
+  // Persists the in-progress round per channel so a bot restart resumes the
+  // current round instead of discarding it and starting a new one.
+  await db`CREATE TABLE IF NOT EXISTS mediaguess_rounds (
+    channel_id   TEXT PRIMARY KEY,
+    guild_id     TEXT NOT NULL,
+    type         TEXT NOT NULL,
+    media        TEXT NOT NULL,
+    hint_order   TEXT NOT NULL,
+    hints_used   INTEGER NOT NULL DEFAULT 0,
+    message_id   TEXT,
+    started_at   INTEGER NOT NULL,
+    last_hint_at INTEGER NOT NULL DEFAULT 0
+  )`;
+
   await db`CREATE TABLE IF NOT EXISTS economy_protection (
     guild_id   TEXT NOT NULL,
     user_id    TEXT NOT NULL,
@@ -1134,6 +1148,38 @@ export async function setMediaGuessConfig(guild_id: string, type: 'movie' | 'tv'
   }
 }
 
+export type IMediaGuessRound = {
+  channel_id: string;
+  guild_id: string;
+  type: string;
+  media: string;       // JSON-serialized MediaEntry
+  hint_order: string;  // JSON-serialized number[]
+  hints_used: number;
+  message_id: string | null;
+  started_at: number;
+  last_hint_at: number;
+};
+
+export async function saveMediaGuessRound(row: IMediaGuessRound): Promise<void> {
+  await db`
+    INSERT INTO mediaguess_rounds (channel_id, guild_id, type, media, hint_order, hints_used, message_id, started_at, last_hint_at)
+    VALUES (${row.channel_id}, ${row.guild_id}, ${row.type}, ${row.media}, ${row.hint_order}, ${row.hints_used}, ${row.message_id}, ${row.started_at}, ${row.last_hint_at})
+    ON CONFLICT(channel_id) DO UPDATE SET
+      guild_id = excluded.guild_id, type = excluded.type, media = excluded.media,
+      hint_order = excluded.hint_order, hints_used = excluded.hints_used,
+      message_id = excluded.message_id, started_at = excluded.started_at, last_hint_at = excluded.last_hint_at
+  `;
+}
+
+export async function getAllMediaGuessRounds(): Promise<IMediaGuessRound[]> {
+  const rows = await db`SELECT * FROM mediaguess_rounds`;
+  return rows as IMediaGuessRound[];
+}
+
+export async function deleteMediaGuessRound(channel_id: string): Promise<void> {
+  await db`DELETE FROM mediaguess_rounds WHERE channel_id = ${channel_id}`;
+}
+
 export async function getAllMediaGuessConfigs(): Promise<IMediaGuessConfig[]> {
   const rows = await db`SELECT * FROM mediaguess_config WHERE movie_channel_id IS NOT NULL OR tv_channel_id IS NOT NULL`;
   return rows as IMediaGuessConfig[];
@@ -1171,7 +1217,7 @@ export async function removeGuild(guild_id: string) {
     'welcome_config', 'stat_channels', 'giveaways', 'reaction_roles',
     'topic_channels', 'topics', 'starboard_config', 'starboard_posts',
     'tags', 'music_config', 'news_config', 'verify_config',
-    'streamvc_config', 'streamvc_approvers', 'antiphishing_config',
+    'streamvc_config', 'streamvc_approvers', 'antiphishing_config', 'mediaguess_rounds',
   ]) {
     await db`DELETE FROM ${db(table)} WHERE guild_id = ${guild_id}`.catch(() => {});
   }

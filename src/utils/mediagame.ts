@@ -1,4 +1,5 @@
 import { Client, EmbedBuilder, TextChannel } from 'discord.js';
+import * as db from './db.js';
 
 const TMDB_BASE = 'https://api.themoviedb.org/3';
 const IMG_BASE  = 'https://image.tmdb.org/t/p/w1280';
@@ -40,6 +41,51 @@ export interface GameState {
 }
 
 export const activeGames = new Map<string, GameState>();
+
+// Fire-and-forget persistence so a restart resumes the round instead of
+// discarding it — never awaited on the hot path, a missed write just means
+// the round falls back to a fresh start on the next restart.
+function persistRound(state: GameState): void {
+  db.saveMediaGuessRound({
+    channel_id: state.channelId,
+    guild_id: state.guildId,
+    type: state.type,
+    media: JSON.stringify(state.media),
+    hint_order: JSON.stringify(state.hintOrder),
+    hints_used: state.hintsUsed,
+    message_id: state.messageId,
+    started_at: state.startedAt,
+    last_hint_at: state.lastHintAt,
+  }).catch(() => {});
+}
+
+// Called once at startup, before any startGame() calls, so in-progress rounds
+// are resumed in place rather than replaced with a brand-new round.
+export async function restoreActiveGames(): Promise<void> {
+  const rows = await db.getAllMediaGuessRounds().catch(() => []);
+  for (const row of rows) {
+    try {
+      const state: GameState = {
+        guildId: row.guild_id,
+        channelId: row.channel_id,
+        type: row.type as MediaType,
+        media: JSON.parse(row.media),
+        hintsUsed: row.hints_used,
+        hintOrder: JSON.parse(row.hint_order),
+        voteskips: new Set(),
+        messageId: row.message_id,
+        startedAt: row.started_at,
+        answered: false,
+        lastHintAt: row.last_hint_at,
+      };
+      activeGames.set(row.channel_id, state);
+    } catch {
+      // Malformed row (e.g. old schema) — drop it rather than block the rest.
+      await db.deleteMediaGuessRound(row.channel_id).catch(() => {});
+    }
+  }
+  if (rows.length) console.log(`[mediaguess] Resumed ${activeGames.size} in-progress round(s) after restart`);
+}
 
 // ─── MovieStillsDB client ─────────────────────────────────────────────────────
 // Preferred image source: genuine publicity/production stills with no title
@@ -557,6 +603,7 @@ export function buildNextHint(channelId: string, requesterName: string, skipCool
 
   state.lastHintAt = Date.now();
   state.hintsUsed++;
+  persistRound(state);
   const n = state.hintsUsed;
   const { media, type } = state;
   const label = type === 'movie' ? 'Movie' : 'TV Show';
@@ -660,7 +707,7 @@ export async function startGame(
   const msg = await channel.send({ embeds: [embed] }).catch(() => null);
   if (!msg) return;
 
-  activeGames.set(channelId, {
+  const state: GameState = {
     guildId,
     channelId,
     type,
@@ -672,7 +719,9 @@ export async function startGame(
     startedAt: Date.now(),
     answered: false,
     lastHintAt: 0,
-  });
+  };
+  activeGames.set(channelId, state);
+  persistRound(state);
 }
 
 export async function resolveGame(
@@ -684,6 +733,7 @@ export async function resolveGame(
   // Atomic claim — delete first so any concurrent resolveGame call sees undefined and exits.
   if (activeGames.get(state.channelId) !== state) return;
   activeGames.delete(state.channelId);
+  db.deleteMediaGuessRound(state.channelId).catch(() => {});
   state.answered = true;
   const typeStr = state.type === 'movie' ? 'movie' : 'TV show';
   const channel = client.channels.cache.get(state.channelId) as TextChannel | undefined;

@@ -1,6 +1,6 @@
 import { Client } from 'discord.js';
 import { EventModule } from '../feature';
-import { activeGames, checkGuess, resolveGame, startGame } from '../../utils/mediagame';
+import { activeGames, checkGuess, resolveGame, restoreActiveGames, startGame } from '../../utils/mediagame';
 import { awardBonusXp } from '../../utils/xpBonus';
 import * as db from '../../utils/db';
 import { recordGameResult } from '../../utils/db';
@@ -87,6 +87,10 @@ export async function startMediaGames(client: Client): Promise<void> {
     console.warn('[mediaguess] TMDB_API_KEY not set — guessing games disabled');
     return;
   }
+  // Resume any round that was still in progress before the restart, so
+  // configured channels don't get force-reset to a brand new round.
+  await restoreActiveGames();
+
   const configs = await db.getAllMediaGuessConfigs();
   for (const cfg of configs) {
     if (cfg.movie_channel_id && !activeGames.has(cfg.movie_channel_id)) {
