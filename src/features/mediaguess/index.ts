@@ -100,12 +100,15 @@ const mediaguessModule: EventModule = {
       if (btn.customId !== 'mg_hint' && btn.customId !== 'mg_voteskip') return;
 
       if (btn.customId === 'mg_hint') {
-        const payload = requestHint(btn.channelId, btn.user.id);
+        // Deferred — the music "Extended Snippet" hint downloads and trims
+        // audio, which can take longer than Discord's 3-second interaction window.
+        await btn.deferReply({ flags: MessageFlags.Ephemeral });
+        const payload = await requestHint(btn.channelId, btn.user.id);
         if (!payload) {
-          await btn.reply({ content: '❌ There is no active guessing game in this channel.', flags: MessageFlags.Ephemeral });
+          await btn.editReply({ content: '❌ There is no active guessing game in this channel.' });
           return;
         }
-        await btn.reply({ ...payload, flags: MessageFlags.Ephemeral } as any);
+        await btn.editReply(payload as any);
         return;
       }
 

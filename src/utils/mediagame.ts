@@ -762,8 +762,8 @@ function buildHintOrder(media: MediaEntry): number[] {
   // Only include hint types that have usable data for this entry
   const available = [0, 1, 2]; // info, letters, anagram — always possible
   if (media.type === 'music') {
-    // Artist reveal + album art are always populated by fetchMusicEntry.
-    available.push(3, 4);
+    // Extended snippet + artist reveal + album art are always available for music.
+    available.push(3, 4, 5);
   } else {
     if (media.stills.length >= 2) available.push(3); // another scene
     if (media.synopsis)           available.push(4); // description
@@ -778,7 +778,8 @@ function buildHintOrder(media: MediaEntry): number[] {
 // ─── Hint builder ─────────────────────────────────────────────────────────────
 
 // Slots 1 (masked title) and 2 (anagram) are pure string ops shared by every
-// type. Slots 0/3/4 mean different things for music — see requestHint().
+// type. Slots 0/3/4 mean different things for music, which also gets a 6th
+// slot (5) that movie/tv/game never reach — see requestHint().
 const HINT_TYPES = [
   'Information',
   'Title Letters',
@@ -790,6 +791,7 @@ const MUSIC_HINT_TYPES = [
   'Information',
   'Title Letters',
   'Anagram / Scrambled Letters',
+  'Extended Snippet',
   'Artist Reveal',
   'Album Art',
 ];
@@ -797,14 +799,16 @@ const MUSIC_HINT_TYPES = [
 export interface HintPayload {
   content?: string;
   embeds?: EmbedBuilder[];
+  files?: AttachmentBuilder[];
 }
 
 // Hints are per-user and private — everyone follows the same shuffled
 // hintOrder (fair: no one gets an easier sequence), but each person's own
 // count of how many they've revealed is tracked separately, and there's no
 // cooldown — request as many as you want, as fast as you want. The tradeoff
-// lives in the correct-guess XP reward, not a request-time gate.
-export function requestHint(channelId: string, userId: string): HintPayload | null {
+// lives in the correct-guess XP reward, not a request-time gate. Async because
+// music's "Extended Snippet" hint (slot 3) has to re-download and trim audio.
+export async function requestHint(channelId: string, userId: string): Promise<HintPayload | null> {
   const state = activeGames.get(channelId);
   if (!state || state.answered) return null;
 
@@ -826,12 +830,13 @@ export function requestHint(channelId: string, userId: string): HintPayload | nu
     .setColor(HINT_COLOR)
     .setTitle(`💡 ${label} Hint #${n} (${hintType})`)
     .setFooter({ text: `${n}/${maxHints} hints used — only you can see this · costs XP if you guess correctly` });
+  let files: AttachmentBuilder[] | undefined;
 
   switch (hintIdx) {
     case 0: {
       const lines: string[] = [];
       if (type === 'music') {
-        // Deliberately no artist name here — that's its own later hint (slot 3).
+        // Deliberately no artist name here — that's its own later hint (slot 4).
         if (media.year)    lines.push(`**Release Year:** ${media.year}`);
         if (media.genre)   lines.push(`**Genre:** ${media.genre}`);
         if (media.tagline) lines.push(`**Duration:** ${media.tagline}`);
@@ -859,7 +864,16 @@ export function requestHint(channelId: string, userId: string): HintPayload | nu
     }
     case 3: {
       if (type === 'music') {
-        embed.setDescription(`**Artist:** ${media.director ?? 'Unknown'}`);
+        // A different, later window than the public round clip — new info,
+        // not just "the same intro but longer".
+        const full = media.audioPreview ? await downloadPreview(media.audioPreview) : null;
+        const clip = full ? await trimAudio(full, EXTENDED_CLIP_START_SEC, EXTENDED_CLIP_DURATION_SEC) : null;
+        if (clip) {
+          embed.setDescription(`Here's another ${EXTENDED_CLIP_DURATION_SEC}-second snippet, later in the track!`);
+          files = [new AttachmentBuilder(clip, { name: 'extended.mp3' })];
+        } else {
+          embed.setDescription('Could not grab an extended snippet for this one.');
+        }
         break;
       }
       const extra = media.stills[1];
@@ -873,9 +887,7 @@ export function requestHint(channelId: string, userId: string): HintPayload | nu
     }
     case 4: {
       if (type === 'music') {
-        const art = media.stills[0];
-        if (art) embed.setDescription("Here's the album art!").setImage(art);
-        else embed.setDescription('No album art available for this one.');
+        embed.setDescription(`**Artist:** ${media.director ?? 'Unknown'}`);
         break;
       }
       if (!media.synopsis) {
@@ -895,9 +907,16 @@ export function requestHint(channelId: string, userId: string): HintPayload | nu
       embed.setDescription(redacted.length > 4000 ? redacted.slice(0, 4000) + '…' : redacted);
       break;
     }
+    case 5: {
+      // Only reachable for music — movie/tv/game never have a 6th hint.
+      const art = media.stills[0];
+      if (art) embed.setDescription("Here's the album art!").setImage(art);
+      else embed.setDescription('No album art available for this one.');
+      break;
+    }
   }
 
-  return { embeds: [embed] };
+  return { embeds: [embed], files };
 }
 
 // ─── Game lifecycle ───────────────────────────────────────────────────────────
@@ -922,6 +941,13 @@ const TYPE_COLOR: Record<MediaType, number> = {
   movie: 0xE50914, tv: 0x0099FF, game: 0x57F287, music: 0xFF2D78,
 };
 
+// The public round clip is short on purpose — the rest of the song is a hint,
+// not a freebie. The "Extended Snippet" hint (music slot 3) reveals a longer,
+// different window later in the track, privately, if someone wants it.
+const ROUND_CLIP_SEC = 5;
+const EXTENDED_CLIP_START_SEC = 10;
+const EXTENDED_CLIP_DURATION_SEC = 10;
+
 // Downloaded and re-attached rather than linked directly — the Deezer preview
 // URL is signed with an expiry, and re-uploading to Discord's own CDN means the
 // audio player in the round message keeps working indefinitely, restart or not.
@@ -930,6 +956,35 @@ async function downloadPreview(url: string): Promise<Buffer | null> {
     const res = await fetch(url);
     if (!res.ok) return null;
     return Buffer.from(await res.arrayBuffer());
+  } catch {
+    return null;
+  }
+}
+
+// Trims an MP3 buffer to [startSec, startSec+durationSec) via ffmpeg (already a
+// production dependency for the /music voice system). For short trims of a
+// longer input, ffmpeg often stops reading stdin before we finish writing —
+// that's a normal broken pipe, not a real failure, so it's swallowed here
+// rather than surfacing as an unhandled rejection.
+async function trimAudio(buffer: Buffer, startSec: number, durationSec: number): Promise<Buffer | null> {
+  try {
+    const proc = Bun.spawn(
+      ['ffmpeg', '-y', '-f', 'mp3', '-i', 'pipe:0', '-ss', String(startSec), '-t', String(durationSec),
+        '-acodec', 'libmp3lame', '-ab', '128k', '-f', 'mp3', 'pipe:1'],
+      { stdin: 'pipe', stdout: 'pipe', stderr: 'ignore' },
+    );
+    (async () => {
+      try {
+        proc.stdin.write(buffer);
+        await proc.stdin.end();
+      } catch {
+        // broken pipe — ffmpeg already has what it needs
+      }
+    })();
+    const out = await new Response(proc.stdout).arrayBuffer();
+    const code = await proc.exited;
+    if (code !== 0 || out.byteLength === 0) return null;
+    return Buffer.from(out);
   } catch {
     return null;
   }
@@ -958,7 +1013,7 @@ export async function startGame(
     .setColor(TYPE_COLOR[type])
     .setTitle(TYPE_LABEL[type])
     .setDescription(
-      `**Can you guess the ${typeStr} from this ${isMusic ? '30-second clip' : 'still'}?**\n\n` +
+      `**Can you guess the ${typeStr} from this ${isMusic ? `${ROUND_CLIP_SEC}-second clip` : 'still'}?**\n\n` +
       `Type your answer in chat, or use the buttons below!\n` +
       `> 💡 **Hint** / \`/hint\` — Reveal your own clue *(private, unlimited — but costs XP)*\n` +
       `> ⏭️ **Vote Skip** / \`/voteskip\` — Vote to skip *(2 votes needed, available after 5 min)*`,
@@ -968,10 +1023,13 @@ export async function startGame(
   let msg;
   if (isMusic) {
     // No image upfront for music — the album art is a late hint, not a giveaway.
+    // Only the first ROUND_CLIP_SEC seconds are posted publicly — the full clue
+    // needs to come from guessing, not from getting the whole song for free.
     // discord.js infers the attachment's audio player from the file extension.
-    const buf = media.audioPreview ? await downloadPreview(media.audioPreview) : null;
+    const full = media.audioPreview ? await downloadPreview(media.audioPreview) : null;
+    const buf = full ? await trimAudio(full, 0, ROUND_CLIP_SEC) : null;
     if (!buf) {
-      console.warn('[mediaguess] Could not download Deezer preview clip — skipping this pick');
+      console.warn('[mediaguess] Could not download/trim Deezer preview clip — skipping this pick');
       return;
     }
     const attachment = new AttachmentBuilder(buf, { name: 'preview.mp3' });
@@ -1025,9 +1083,21 @@ export async function resolveGame(
   if (reason === 'correct' && winner) {
     // Show the display name as plain text (not a <@id> mention) so it reads
     // correctly in mobile push notifications, which don't resolve raw mentions.
-    await channel
-      .send(`🎉 **${winner.name}** got it! The ${typeStr} was **${state.media.title}**!\n_Next round starting in 10 seconds…_`)
-      .catch(() => {});
+    const byLine = state.type === 'music' && state.media.director ? ` by **${state.media.director}**` : '';
+    const winMsg = `🎉 **${winner.name}** got it! The ${typeStr} was **${state.media.title}**${byLine}!\n_Next round starting in 10 seconds…_`;
+
+    // Bonus for music: reveal the full clip now that the round's over — the
+    // 5-second public clip was only ever a snippet.
+    if (state.type === 'music' && state.media.audioPreview) {
+      const full = await downloadPreview(state.media.audioPreview);
+      if (full) {
+        await channel.send({ content: winMsg, files: [new AttachmentBuilder(full, { name: 'full.mp3' })] }).catch(() => {});
+      } else {
+        await channel.send(winMsg).catch(() => {});
+      }
+    } else {
+      await channel.send(winMsg).catch(() => {});
+    }
   } else {
     await channel
       .send(`⏭️ Skipped! The ${typeStr} was **${state.media.title}**.\n_Next round starting in 10 seconds…_`)

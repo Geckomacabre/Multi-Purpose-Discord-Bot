@@ -266,13 +266,13 @@ Four channel-based guessing games — 🎬 **Movie**, 📺 **TV Show**, 🎮 **V
 | `/mediaguess skip` | *(Admin)* Force-skip the current round without a vote |
 | `/mediaguess info` | *(Admin)* View configuration and active round status for all four game channels |
 
-The hint sequence is shuffled once per round and shared by everyone — no one gets an easier or harder order, only how many of *your own* you've revealed is private. Hint content adapts per type — movie/TV/game get an info card → masked title → anagram → another screenshot → description; songs get info (year/genre/duration, no artist yet) → masked title → anagram → **artist reveal** → **album art**.
+The hint sequence is shuffled once per round and shared by everyone — no one gets an easier or harder order, only how many of *your own* you've revealed is private. Hint content adapts per type — movie/TV/game get 5 hints (info card → masked title → anagram → another screenshot → description); songs get 6 (info with year/genre/duration but no artist yet → masked title → anagram → **extended snippet** *(a different 10-second clip, later in the track)* → **artist reveal** → **album art**).
 
 **Movie/TV** — Powered by the **TMDB API** (`TMDB_API_KEY` in `.env`, free at [themoviedb.org](https://www.themoviedb.org/settings/api)). Scene stills come from **MovieStillsDB** (genuine publicity/production stills, no title overlay), falling back to TMDB backdrops. Titles from 1975 to present only.
 
 **Video Game** — Powered by the **RAWG API** (`RAWG_API_KEY` in `.env`, free at [rawg.io/apidocs](https://rawg.io/apidocs)). Only games with a Metacritic score of 60+ are picked, so it's always something recognizable rather than an obscure indie title nobody's played.
 
-**Song** — Powered by **Deezer's public API** — no key needed at all. Rounds post the actual **30-second preview clip** as a playable Discord audio attachment (not an image) — pulled from Deezer's charts across a rotating mix of mainstream genres so it's always something current and recognizable, not deep-cuts.
+**Song** — Powered by **Deezer's public API** — no key needed at all. Rounds post just the **first 5 seconds** of the track as a playable Discord audio attachment (not an image) — the rest is locked behind guessing or the Extended Snippet hint. Once someone guesses correctly, the full 30-second preview posts as a bonus reveal. Pulled from Deezer's charts across a rotating mix of mainstream genres so it's always something current and recognizable, not deep-cuts.
 
 All four suppress repeats per channel for 6 hours.
 
@@ -519,7 +519,7 @@ Community text snippets. Anyone can create a tag; the owner (or a mod) can edit/
 
 Full-featured music player. Supports YouTube, Spotify, SoundCloud, Apple Music, and more via `discord-player`.
 
-**Requires:** `ffmpeg` installed and available on your system PATH.
+**Requires:** `ffmpeg` installed and available on your system PATH. (Also used by the Song guessing game to trim clips — see [Guessing Games](#guessing-games).)
 
 | Command | Description |
 |---|---|

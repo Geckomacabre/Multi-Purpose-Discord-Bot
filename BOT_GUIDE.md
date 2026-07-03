@@ -111,12 +111,12 @@ A locked voice channel (like a streamer's private VC). Only members with the **r
 
 ## 🎬🎮🎵 Guessing Games
 
-Four channel-based guessing games — 🎬 **Movie**, 📺 **TV Show**, 🎮 **Video Game**, 🎵 **Song** — each set up in its own channel. A still (or, for songs, a **30-second audio clip**) is posted and everyone guesses in chat. Each round has **💡 Hint** and **⏭️ Vote Skip** buttons right under it — the commands below work the same way, just pick whichever's faster.
+Four channel-based guessing games — 🎬 **Movie**, 📺 **TV Show**, 🎮 **Video Game**, 🎵 **Song** — each set up in its own channel. A still (or, for songs, a **5-second audio clip**) is posted and everyone guesses in chat. Each round has **💡 Hint** and **⏭️ Vote Skip** buttons right under it — the commands below work the same way, just pick whichever's faster.
 
 - **Just type your guess** in the game channel — no command needed
 - Bot reacts **❗** if you're close, **‼️** if you're very close
-- First to guess correctly wins up to **+150 XP** (counts toward daily XP cap) — the reward drops 25 XP for every hint *you personally* used (50 XP floor), so guessing without hints keeps the full reward
-- `/hint` (or the **Hint** button) — Reveal your own next clue **privately** (up to 5 per round). No cooldown, request as fast as you want — everyone follows the same shuffled order, but only you see how many you've used. Movie/TV/game hints: info card → masked title → anagram → extra screenshot → description. Song hints: info (year/genre/duration) → masked title → anagram → **artist reveal** → **album art**
+- First to guess correctly wins up to **+150 XP** (counts toward daily XP cap) — the reward drops 25 XP for every hint *you personally* used (50 XP floor), so guessing without hints keeps the full reward. For songs, the **full 30-second clip** posts as a bonus once someone wins the round
+- `/hint` (or the **Hint** button) — Reveal your own next clue **privately** (up to 5 per round, 6 for songs). No cooldown, request as fast as you want — everyone follows the same shuffled order, but only you see how many you've used. Movie/TV/game hints: info card → masked title → anagram → extra screenshot → description. Song hints: info (year/genre/duration) → masked title → anagram → **extended snippet** *(a different 10-second clip, later in the track)* → **artist reveal** → **album art**
 - `/voteskip` (or the **Vote Skip** button) — Vote to skip the current round (2 votes needed, opens up 5 minutes into the round)
 
 ---

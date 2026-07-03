@@ -13,12 +13,15 @@ const Hint: Command = {
     .setContexts([InteractionContextType.Guild]),
 
   async run(interaction: ChatInputCommandInteraction) {
-    const payload = requestHint(interaction.channelId, interaction.user.id);
+    // Deferred — the music "Extended Snippet" hint downloads and trims audio,
+    // which can take longer than Discord's 3-second interaction window.
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const payload = await requestHint(interaction.channelId, interaction.user.id);
     if (!payload) {
-      await interaction.reply({ content: '❌ There is no active guessing game in this channel.', flags: MessageFlags.Ephemeral });
+      await interaction.editReply({ content: '❌ There is no active guessing game in this channel.' });
       return;
     }
-    await interaction.reply({ ...payload, flags: MessageFlags.Ephemeral } as any);
+    await interaction.editReply(payload as any);
   },
 };
 
