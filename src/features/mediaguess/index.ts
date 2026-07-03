@@ -89,7 +89,7 @@ export async function startMediaGames(client: Client): Promise<void> {
   }
   // Resume any round that was still in progress before the restart, so
   // configured channels don't get force-reset to a brand new round.
-  await restoreActiveGames();
+  await restoreActiveGames(client);
 
   const configs = await db.getAllMediaGuessConfigs();
   for (const cfg of configs) {

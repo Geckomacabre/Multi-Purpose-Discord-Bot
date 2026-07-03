@@ -3,7 +3,7 @@ import {
   InteractionContextType, MessageFlags, PermissionFlagsBits, SlashCommandBuilder, TextChannel,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
-import { activeGames, resolveGame, startGame } from '../../utils/mediagame';
+import { activeGames, resolveGame, startGame, cancelSkipTimer } from '../../utils/mediagame';
 import * as db from '../../utils/db';
 
 const MediaGuess: Command = {
@@ -59,6 +59,7 @@ const MediaGuess: Command = {
         existing.answered = true;
         activeGames.delete(channel.id);
         await db.deleteMediaGuessRound(channel.id).catch(() => {});
+        cancelSkipTimer(channel.id);
       }
 
       await startGame(guildId, channel.id, type, interaction.client);
@@ -85,6 +86,7 @@ const MediaGuess: Command = {
       state.answered = true;
       activeGames.delete(interaction.channelId);
       await db.deleteMediaGuessRound(interaction.channelId).catch(() => {});
+      cancelSkipTimer(interaction.channelId);
 
       await interaction.reply({
         content: `🛑 Game stopped. The answer was **${state.media.title}**. Configure a new game with \`/mediaguess setup\`.`,

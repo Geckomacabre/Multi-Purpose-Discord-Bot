@@ -42,6 +42,42 @@ export interface GameState {
 
 export const activeGames = new Map<string, GameState>();
 
+// /voteskip is locked out for the first 5 minutes of a round — gives people
+// a fair shot before the round can be cut short.
+export const VOTESKIP_DELAY_MS = 5 * 60_000;
+
+// channelId -> pending "skip now available" announcement timer, so it can be
+// cancelled if the round resolves (correct guess, admin skip, stop) before
+// the delay elapses.
+const skipTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+export function cancelSkipTimer(channelId: string): void {
+  const t = skipTimers.get(channelId);
+  if (t) { clearTimeout(t); skipTimers.delete(channelId); }
+}
+
+// Schedules the "Vote Skip Available" announcement for whenever the delay
+// actually elapses relative to when the round STARTED — safe to call again
+// after a restart (restoreActiveGames) since it's based on state.startedAt,
+// not "now".
+function scheduleSkipAnnouncement(state: GameState, client: Client): void {
+  cancelSkipTimer(state.channelId);
+  const remaining = VOTESKIP_DELAY_MS - (Date.now() - state.startedAt);
+  if (remaining <= 0) return; // already past the delay — /voteskip works immediately, no announcement needed
+  const timer = setTimeout(async () => {
+    skipTimers.delete(state.channelId);
+    if (activeGames.get(state.channelId) !== state || state.answered) return;
+    const channel = client.channels.cache.get(state.channelId) as TextChannel | undefined;
+    if (!channel) return;
+    const embed = new EmbedBuilder()
+      .setColor(HINT_COLOR)
+      .setTitle('⏰ Vote Skip Available')
+      .setDescription(`The skip delay has elapsed! Anyone can now vote to skip this ${state.type === 'movie' ? 'movie' : 'TV show'} using \`/voteskip\` *(2 votes needed)*.`);
+    await channel.send({ embeds: [embed] }).catch(() => {});
+  }, remaining);
+  skipTimers.set(state.channelId, timer);
+}
+
 // Fire-and-forget persistence so a restart resumes the round instead of
 // discarding it — never awaited on the hot path, a missed write just means
 // the round falls back to a fresh start on the next restart.
@@ -61,7 +97,7 @@ function persistRound(state: GameState): void {
 
 // Called once at startup, before any startGame() calls, so in-progress rounds
 // are resumed in place rather than replaced with a brand-new round.
-export async function restoreActiveGames(): Promise<void> {
+export async function restoreActiveGames(client: Client): Promise<void> {
   const rows = await db.getAllMediaGuessRounds().catch(() => []);
   for (const row of rows) {
     try {
@@ -79,6 +115,7 @@ export async function restoreActiveGames(): Promise<void> {
         lastHintAt: row.last_hint_at,
       };
       activeGames.set(row.channel_id, state);
+      scheduleSkipAnnouncement(state, client);
     } catch {
       // Malformed row (e.g. old schema) — drop it rather than block the rest.
       await db.deleteMediaGuessRound(row.channel_id).catch(() => {});
@@ -699,7 +736,7 @@ export async function startGame(
       `**Can you guess the ${typeStr} from this still?**\n\n` +
       `Type your answer in chat!\n` +
       `> \`/hint\` — Reveal a clue *(5 available)*\n` +
-      `> \`/voteskip\` — Vote to skip *(2 votes needed)*`,
+      `> \`/voteskip\` — Vote to skip *(2 votes needed, available after 5 min)*`,
     )
     .setImage(media.stills[0]!)
     .setFooter({ text: 'Good luck! 🍿' });
@@ -722,6 +759,7 @@ export async function startGame(
   };
   activeGames.set(channelId, state);
   persistRound(state);
+  scheduleSkipAnnouncement(state, client);
 }
 
 export async function resolveGame(
@@ -734,6 +772,7 @@ export async function resolveGame(
   if (activeGames.get(state.channelId) !== state) return;
   activeGames.delete(state.channelId);
   db.deleteMediaGuessRound(state.channelId).catch(() => {});
+  cancelSkipTimer(state.channelId);
   state.answered = true;
   const typeStr = state.type === 'movie' ? 'movie' : 'TV show';
   const channel = client.channels.cache.get(state.channelId) as TextChannel | undefined;

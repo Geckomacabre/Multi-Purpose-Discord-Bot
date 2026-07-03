@@ -3,14 +3,14 @@ import {
   InteractionContextType, MessageFlags, SlashCommandBuilder,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
-import { activeGames, resolveGame } from '../../utils/mediagame';
+import { activeGames, resolveGame, VOTESKIP_DELAY_MS } from '../../utils/mediagame';
 
 const VOTES_NEEDED = 2;
 
 const VoteSkip: Command = {
   data: new SlashCommandBuilder()
     .setName('voteskip')
-    .setDescription('Vote to skip the current guessing game (2 votes needed)')
+    .setDescription('Vote to skip the current guessing game (2 votes needed, available 5 min into the round)')
     .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
     .setContexts([InteractionContextType.Guild]),
 
@@ -18,6 +18,16 @@ const VoteSkip: Command = {
     const state = activeGames.get(interaction.channelId);
     if (!state || state.answered) {
       await interaction.reply({ content: '❌ There is no active guessing game in this channel.', flags: MessageFlags.Ephemeral });
+      return;
+    }
+
+    const remainingDelay = VOTESKIP_DELAY_MS - (Date.now() - state.startedAt);
+    if (remainingDelay > 0) {
+      const mins = Math.ceil(remainingDelay / 60_000);
+      await interaction.reply({
+        content: `⏳ Vote skip isn't available yet — everyone gets a fair shot first. Try again in **${mins} minute${mins !== 1 ? 's' : ''}**.`,
+        flags: MessageFlags.Ephemeral,
+      });
       return;
     }
 
