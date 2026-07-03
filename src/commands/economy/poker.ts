@@ -1,25 +1,20 @@
 import {
   ActionRowBuilder, ApplicationIntegrationType, ButtonBuilder, ButtonStyle,
-  ChatInputCommandInteraction, ComponentType, InteractionContextType, MessageFlags,
+  ChatInputCommandInteraction, Colors, ComponentType, InteractionContextType,
   SlashCommandBuilder,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
 import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplier, recordGameResult } from '../../utils/db';
 import { awardBonusXp } from '../../utils/xpBonus.js';
-
 import { cv2Err } from '../../utils/components.js';
 import { newDeck, shuffleDeck, cardStr, evaluatePokerHand, type Card } from '../../utils/cards.js';
-import { applyLossInsurance, insuranceLine } from '../../utils/gamble.js';
+import { applyLossInsurance, insuranceLine, buildGamePanel } from '../../utils/gamble.js';
 
 const PAYTABLE =
   '**Paytable** (multiplier × bet):\n' +
   '`Royal Flush 250x | Straight Flush 50x | Four of a Kind 25x`\n' +
   '`Full House 9x | Flush 6x | Straight 4x | Three of a Kind 3x`\n' +
   '`Two Pair 2x | Jacks or Better 1x`';
-
-function cardLabel(card: Card, held: boolean): string {
-  return held ? `[${cardStr(card)}]` : cardStr(card);
-}
 
 function buildHoldRows(hand: Card[], held: boolean[]): ActionRowBuilder<ButtonBuilder>[] {
   const cardRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -70,13 +65,12 @@ const Poker: Command = {
     const held: boolean[] = new Array(5).fill(false);
     const sym = cfg.currency_symbol;
 
-    const msg = await interaction.editReply({
-      content:
-        `**🃏 Video Poker** — Bet: ${sym} ${bet.toLocaleString()}\n\n` +
+    const msg = await interaction.editReply(buildGamePanel(
+      `**🃏 Video Poker** — Bet: ${sym} ${bet.toLocaleString()}\n\n` +
         `${heldSummary(hand, held)}\n\n` +
         `Toggle cards to **Hold**, then click **Draw** to replace the rest.\n${PAYTABLE}`,
-      components: buildHoldRows(hand, held),
-    });
+      Colors.Blurple, buildHoldRows(hand, held),
+    ));
 
     const collector = msg.createMessageComponentCollector({
       componentType: ComponentType.Button,
@@ -112,40 +106,37 @@ const Poker: Command = {
           xpLine = xpGiven > 0 ? ` +**${xpGiven} XP**!` : '';
         }
 
-        await interaction.editReply({
-          content:
-            `**🃏 Video Poker** — Bet: ${sym} ${bet.toLocaleString()}\n\n` +
+        await interaction.editReply(buildGamePanel(
+          `**🃏 Video Poker** — Bet: ${sym} ${bet.toLocaleString()}\n\n` +
             `${hand.map(cardStr).join('  ')}\n\n` +
             (isWin
               ? `✅ **${result.name}!** You won **${sym} ${winAmount.toLocaleString()}**! *(${result.multiplier}x${luckMult > 1 ? ' 🍀' : ''})*${xpLine}`
               : `❌ **${result.name}** — You lost **${sym} ${bet.toLocaleString()}**.${insuranceLine(sym, refund)}`) +
             `\n**Balance:** ${sym} **${(newBalance + refund).toLocaleString()}**\n${PAYTABLE}`,
-          components: [],
-        }).catch(() => {});
+          isWin ? Colors.Green : Colors.Red,
+        )).catch(() => {});
         return;
       }
 
       // Toggle hold
       const idx = parseInt(btn.customId.split('_')[2] ?? '0');
       held[idx] = !held[idx];
-      await interaction.editReply({
-        content:
-          `**🃏 Video Poker** — Bet: ${sym} ${bet.toLocaleString()}\n\n` +
+      await interaction.editReply(buildGamePanel(
+        `**🃏 Video Poker** — Bet: ${sym} ${bet.toLocaleString()}\n\n` +
           `${heldSummary(hand, held)}\n\n` +
           `Toggle cards to **Hold**, then click **Draw** to replace the rest.\n${PAYTABLE}`,
-        components: buildHoldRows(hand, held),
-      }).catch(() => {});
+        Colors.Blurple, buildHoldRows(hand, held),
+      )).catch(() => {});
     });
 
     collector.on('end', async (_c, reason) => {
       if (reason === 'time') {
-        await interaction.editReply({
-          content:
-            `**🃏 Video Poker** — Bet: ${sym} ${bet.toLocaleString()}\n\n` +
+        await interaction.editReply(buildGamePanel(
+          `**🃏 Video Poker** — Bet: ${sym} ${bet.toLocaleString()}\n\n` +
             `${hand.map(cardStr).join('  ')}\n\n` +
             `⏰ Timed out — you lost **${sym} ${bet.toLocaleString()}**.`,
-          components: [],
-        }).catch(() => {});
+          Colors.Red,
+        )).catch(() => {});
         await adjustBalance(guildId, userId, -bet);
       }
     });

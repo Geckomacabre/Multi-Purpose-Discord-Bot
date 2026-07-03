@@ -1,14 +1,14 @@
 import {
   ActionRowBuilder, ApplicationIntegrationType, ButtonBuilder, ButtonStyle,
-  ChatInputCommandInteraction, ComponentType, InteractionContextType,
-  MessageFlags, SlashCommandBuilder,
+  ChatInputCommandInteraction, Colors, ComponentType, InteractionContextType,
+  SlashCommandBuilder,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
 import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplier, recordGameResult } from '../../utils/db';
 import { awardBonusXp } from '../../utils/xpBonus.js';
 import { randInt } from '../../utils/random.js';
 import { cv2Err } from '../../utils/components.js';
-import { applyLossInsurance, insuranceLine } from '../../utils/gamble.js';
+import { applyLossInsurance, insuranceLine, buildGamePanel } from '../../utils/gamble.js';
 
 // Paytable tuned to ~99% RTP with a 52% hit rate: you need FOUR of the same
 // symbol among the 9 cells. 4 cherries = money back; everything rarer profits.
@@ -67,7 +67,7 @@ async function resolveGame(
   symbols: string[], bet: number,
   guildId: string, userId: string, cfg: Awaited<ReturnType<typeof getEconomyConfig>>,
   client: ChatInputCommandInteraction['client'], channelId: string,
-): Promise<{ content: string }> {
+): Promise<{ content: string; win: boolean }> {
   const win = checkWin(symbols);
   const sym = cfg.currency_symbol;
   let line = '';
@@ -90,7 +90,7 @@ async function resolveGame(
     line = `\n😢 No match — better luck next time!${insuranceLine(sym, refund)}`;
   }
   const eco2 = await getOrCreateEconomy(guildId, userId);
-  return { content: `🎟️ **Scratch Card** — ${sym} ${bet.toLocaleString()}${line}\n**Balance:** ${sym} ${eco2.balance.toLocaleString()}\n${LEGEND}` };
+  return { content: `🎟️ **Scratch Card** — ${sym} ${bet.toLocaleString()}${line}\n**Balance:** ${sym} ${eco2.balance.toLocaleString()}\n${LEGEND}`, win: !!win };
 }
 
 const Scratch: Command = {
@@ -117,10 +117,10 @@ const Scratch: Command = {
     const revealed = new Array<boolean>(9).fill(false);
 
     await interaction.deferReply();
-    const msg = await interaction.editReply({
-      content: `🎟️ **Scratch Card** — ${cfg.currency_symbol} ${bet.toLocaleString()}\nClick cells to reveal! Match **4** of the same symbol to win.\n${LEGEND}`,
-      components: buildGrid(symbols, revealed),
-    });
+    const msg = await interaction.editReply(buildGamePanel(
+      `🎟️ **Scratch Card** — ${cfg.currency_symbol} ${bet.toLocaleString()}\nClick cells to reveal! Match **4** of the same symbol to win.\n${LEGEND}`,
+      Colors.Blurple, buildGrid(symbols, revealed),
+    ));
 
     const collector = msg.createMessageComponentCollector({
       componentType: ComponentType.Button,
@@ -135,18 +135,21 @@ const Scratch: Command = {
 
       if (revealed.every(r => r)) {
         collector.stop('done');
-        const { content } = await resolveGame(symbols, bet, guildId, userId, cfg, interaction.client, interaction.channelId);
-        await interaction.editReply({ content, components: buildGrid(symbols, revealed) }).catch(() => {});
+        const { content, win } = await resolveGame(symbols, bet, guildId, userId, cfg, interaction.client, interaction.channelId);
+        await interaction.editReply(buildGamePanel(content, win ? Colors.Green : Colors.Red, buildGrid(symbols, revealed))).catch(() => {});
       } else {
-        await interaction.editReply({ components: buildGrid(symbols, revealed) }).catch(() => {});
+        await interaction.editReply(buildGamePanel(
+          `🎟️ **Scratch Card** — ${cfg.currency_symbol} ${bet.toLocaleString()}\nClick cells to reveal! Match **4** of the same symbol to win.\n${LEGEND}`,
+          Colors.Blurple, buildGrid(symbols, revealed),
+        )).catch(() => {});
       }
     });
 
     collector.on('end', async (_c, reason) => {
       if (reason !== 'done') {
         revealed.fill(true);
-        const { content } = await resolveGame(symbols, bet, guildId, userId, cfg, interaction.client, interaction.channelId);
-        await interaction.editReply({ content: `*(Timed out — auto-revealed)*\n${content}`, components: buildGrid(symbols, revealed) }).catch(() => {});
+        const { content, win } = await resolveGame(symbols, bet, guildId, userId, cfg, interaction.client, interaction.channelId);
+        await interaction.editReply(buildGamePanel(`*(Timed out — auto-revealed)*\n${content}`, win ? Colors.Green : Colors.Red, buildGrid(symbols, revealed))).catch(() => {});
       }
     });
   },

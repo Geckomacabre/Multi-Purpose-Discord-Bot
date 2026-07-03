@@ -1,6 +1,6 @@
 import {
   ActionRowBuilder, ApplicationIntegrationType, ButtonBuilder, ButtonStyle,
-  ChatInputCommandInteraction, ComponentType, InteractionContextType, MessageFlags,
+  ChatInputCommandInteraction, Colors, ComponentType, InteractionContextType,
   SlashCommandBuilder,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
@@ -9,12 +9,12 @@ import { awardBonusXp } from '../../utils/xpBonus.js';
 import { randInt } from '../../utils/random.js';
 import { cv2Err } from '../../utils/components.js';
 import { newDeck, shuffleDeck, handStr, bjHandValue, type Card } from '../../utils/cards.js';
-import { applyLossInsurance, insuranceLine } from '../../utils/gamble.js';
+import { applyLossInsurance, insuranceLine, buildGamePanel } from '../../utils/gamble.js';
 
 type Outcome = 'win' | 'blackjack' | 'push' | 'lose';
 
-function buildButtons(canDouble: boolean, sym: string, bet: number): ActionRowBuilder<ButtonBuilder>[] {
-  return [new ActionRowBuilder<ButtonBuilder>().addComponents(
+function buildButtons(canDouble: boolean, sym: string, bet: number): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId('bj_hit').setLabel('Hit').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId('bj_stand').setLabel('Stand').setStyle(ButtonStyle.Danger),
     new ButtonBuilder()
@@ -22,7 +22,7 @@ function buildButtons(canDouble: boolean, sym: string, bet: number): ActionRowBu
       .setLabel(`Double Down (${sym} ${bet.toLocaleString()})`)
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(!canDouble),
-  )];
+  );
 }
 
 function gameContent(
@@ -94,12 +94,12 @@ const Blackjack: Command = {
       }
 
       const icon = outcome === 'win' || outcome === 'blackjack' ? '✅' : outcome === 'push' ? '🤝' : '❌';
-      await interaction.editReply({
-        content:
-          gameContent(playerHand, dealerHand, activeBet, sym, false) +
+      const color = outcome === 'win' || outcome === 'blackjack' ? Colors.Green : outcome === 'push' ? Colors.Yellow : Colors.Red;
+      await interaction.editReply(buildGamePanel(
+        gameContent(playerHand, dealerHand, activeBet, sym, false) +
           `\n\n${icon} ${msg}${insuranceLine(sym, refund)}${xpLine}\n**Balance:** ${sym} **${(newBalance + refund).toLocaleString()}**`,
-        components: [],
-      }).catch(() => {});
+        color,
+      )).catch(() => {});
     }
 
     // Fair shoe: the dealer draws straight off the shuffled deck, stands on 17+.
@@ -140,10 +140,10 @@ const Blackjack: Command = {
       return;
     }
 
-    const msg = await interaction.editReply({
-      content: gameContent(playerHand, dealerHand, activeBet, sym, true),
-      components: buildButtons(true, sym, activeBet),
-    });
+    const msg = await interaction.editReply(buildGamePanel(
+      gameContent(playerHand, dealerHand, activeBet, sym, true),
+      Colors.Blurple, buildButtons(true, sym, activeBet),
+    ));
 
     const collector = msg.createMessageComponentCollector({
       componentType: ComponentType.Button,
@@ -163,7 +163,7 @@ const Blackjack: Command = {
       if (btn.customId === 'bj_double') {
         const eco2 = await getOrCreateEconomy(guildId, userId);
         if (eco2.balance < activeBet) {
-          await interaction.followUp({ content: `❌ Not enough ${cfg.currency_name} to double down.`, flags: MessageFlags.Ephemeral });
+          await interaction.followUp(cv2Err(`❌ Not enough ${cfg.currency_name} to double down.`));
           return;
         }
         activeBet *= 2;
@@ -181,10 +181,10 @@ const Blackjack: Command = {
         collector.stop('stand');
         await resolveStand();
       } else {
-        await interaction.editReply({
-          content: gameContent(playerHand, dealerHand, activeBet, sym, true),
-          components: buildButtons(false, sym, activeBet),
-        }).catch(() => {});
+        await interaction.editReply(buildGamePanel(
+          gameContent(playerHand, dealerHand, activeBet, sym, true),
+          Colors.Blurple, buildButtons(false, sym, activeBet),
+        )).catch(() => {});
       }
     });
 
