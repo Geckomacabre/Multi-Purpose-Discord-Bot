@@ -116,6 +116,12 @@ const Music: Command = {
             leaveOnEnd: true,
             leaveOnEndCooldown: 30000,
           },
+          // discord-player defaults to Discord's DAVE E2EE voice protocol, which
+          // requires the @snazzah/davey native package — not something we ship,
+          // and not needed for a bot streaming into a channel (DAVE is for
+          // encrypted calls between real users). Without it, connecting throws
+          // an uncaught exception that kills the voice connection entirely.
+          connectionOptions: { daveEncryption: false },
         });
         const q = useQueue(interaction.guildId!);
         if (q && q.tracks.size > 0) {
