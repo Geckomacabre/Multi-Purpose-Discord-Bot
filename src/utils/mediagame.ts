@@ -461,15 +461,11 @@ async function fetchGameEntry(excludeIds: Set<number>): Promise<MediaEntry | nul
         const year: number | null = d.released ? parseInt(String(d.released).slice(0, 4)) : null;
         if (year === null || year < 1990) continue;
 
-        // short_screenshots comes back on the detail response already; fall back
-        // to the dedicated screenshots endpoint if it's too thin.
-        let shots: string[] = ((d.short_screenshots ?? []) as { image: string }[])
-          .map(s => s.image)
-          .filter(url => !url.includes('no_screenshot'));
-        if (shots.length < 2) {
-          const extra = await rawgFetch(`/games/${pick.id}/screenshots`).catch(() => null);
-          if (extra?.results?.length) shots = (extra.results as { image: string }[]).map(s => s.image);
-        }
+        // The /games/{id} detail response doesn't actually include screenshots
+        // (verified live — short_screenshots isn't present there despite some
+        // docs implying it is), so the dedicated endpoint is the only source.
+        const shotsRes = await rawgFetch(`/games/${pick.id}/screenshots`).catch(() => null);
+        const shots: string[] = (shotsRes?.results as { image: string }[] | undefined)?.map(s => s.image) ?? [];
         if (d.background_image && !shots.includes(d.background_image)) shots.unshift(d.background_image);
         if (!shots.length) continue;
 
