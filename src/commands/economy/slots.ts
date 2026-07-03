@@ -1,13 +1,13 @@
 import {
-  ActionRowBuilder, ApplicationIntegrationType, ButtonBuilder, ButtonStyle,
-  ChatInputCommandInteraction, ComponentType, InteractionContextType,
-  SlashCommandBuilder,
+  ApplicationIntegrationType, ButtonBuilder, ButtonStyle,
+  ChatInputCommandInteraction, Colors, ComponentType, ContainerBuilder,
+  InteractionContextType, SlashCommandBuilder, TextDisplayBuilder,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
 import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplier, recordGameResult } from '../../utils/db';
 import { awardBonusXp } from '../../utils/xpBonus.js';
 import { randInt } from '../../utils/random.js';
-import { cv2Err } from '../../utils/components.js';
+import { cv2Err, IS_CV2 } from '../../utils/components.js';
 import { applyLossInsurance, insuranceLine } from '../../utils/gamble.js';
 
 const REEL = ['🍒','🍒','🍒','🍒','🍒','🍋','🍋','🍋','🍋','🔔','🔔','🔔','💎','💎','7️⃣'];
@@ -19,20 +19,29 @@ const LEGEND = '*Pairs: 🍒 ½x | 🍋 1x | 🔔 1.5x | 💎 2x | 7️⃣ 3x �
 
 function spinReel() { return REEL[randInt(0, REEL.length - 1)]!; }
 
-function buildSpinAgainRow(disabled = false): ActionRowBuilder<ButtonBuilder>[] {
-  return [new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId('slots_again').setLabel('🔄 Spin Again').setStyle(ButtonStyle.Primary).setDisabled(disabled),
-  )];
+// Builds the CV2 card, with the "Spin Again" button nested inside the same
+// container so the panel keeps its accent-colored, boxed look.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function buildPanel(content: string, accentColor: number, disabled = false): any {
+  const container = new ContainerBuilder()
+    .setAccentColor(accentColor)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(content))
+    .addActionRowComponents(row => row.addComponents(
+      new ButtonBuilder().setCustomId('slots_again').setLabel('🔄 Spin Again').setStyle(ButtonStyle.Primary).setDisabled(disabled),
+    ));
+  return { flags: IS_CV2, components: [container] };
 }
 
-// Resolves a single spin (bet already validated by the caller) and returns the
-// message content to display — factored out so both the initial command and
-// the "Spin Again" button reuse identical logic.
+type SpinResult = { content: string; accentColor: number };
+
+// Resolves a single spin (bet already validated by the caller) — factored
+// out so both the initial command and the "Spin Again" button reuse
+// identical logic.
 async function playSpin(
   bet: number, guildId: string, userId: string,
   cfg: Awaited<ReturnType<typeof getEconomyConfig>>,
   client: ChatInputCommandInteraction['client'], channelId: string,
-): Promise<string> {
+): Promise<SpinResult> {
   const sym = cfg.currency_symbol;
   const reels = [spinReel(), spinReel(), spinReel()];
 
@@ -73,7 +82,9 @@ async function playSpin(
       ? `**${multiplier}x** — you won **${sym} ${winnings.toLocaleString()}**!${luckMult > 1 ? ' *(🍀 Lucky Charm!)*' : ''}`
       : `**${multiplier}x** — you got **${sym} ${winnings.toLocaleString()}** back.`;
 
-  return `**🎰 Slots** — Bet: ${sym} ${bet.toLocaleString()}\n${reels.join(' ｜ ')}\n${label}\n${resultLine}\n**Balance:** ${sym} **${(newBalance + refund).toLocaleString()}**\n${LEGEND}${xpLine}`;
+  const content = `**🎰 Slots** — Bet: ${sym} ${bet.toLocaleString()}\n${reels.join(' ｜ ')}\n${label}\n${resultLine}\n**Balance:** ${sym} **${(newBalance + refund).toLocaleString()}**\n${LEGEND}${xpLine}`;
+  const accentColor = profit ? Colors.Gold : multiplier > 0 ? Colors.Yellow : Colors.Red;
+  return { content, accentColor };
 }
 
 const Slots: Command = {
@@ -94,8 +105,8 @@ const Slots: Command = {
     }
 
     await interaction.deferReply();
-    const content = await playSpin(bet, guildId, userId, cfg, interaction.client, interaction.channelId);
-    const msg = await interaction.editReply({ content, components: buildSpinAgainRow() });
+    let last = await playSpin(bet, guildId, userId, cfg, interaction.client, interaction.channelId);
+    const msg = await interaction.editReply(buildPanel(last.content, last.accentColor));
 
     // Keeps the whole session in one message instead of a new one per spin.
     // idle-based so an actively-playing user isn't cut off after a fixed
@@ -112,19 +123,21 @@ const Slots: Command = {
       const eco2 = await getOrCreateEconomy(guildId, userId);
       if (eco2.balance < bet) {
         collector.stop('broke');
-        await btn.editReply({
-          content: `❌ Not enough ${cfg.currency_name} to spin again — need **${cfg.currency_symbol} ${bet.toLocaleString()}**, you have **${cfg.currency_symbol} ${eco2.balance.toLocaleString()}**.`,
-          components: [],
-        }).catch(() => {});
+        // Not cv2Err() — that bakes in the Ephemeral flag, which can't apply
+        // after deferUpdate() already committed to a public message edit.
+        const container = new ContainerBuilder().setAccentColor(Colors.Red).addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`❌ Not enough ${cfg.currency_name} to spin again — need **${cfg.currency_symbol} ${bet.toLocaleString()}**, you have **${cfg.currency_symbol} ${eco2.balance.toLocaleString()}**.`),
+        );
+        await btn.editReply({ flags: IS_CV2, components: [container] }).catch(() => {});
         return;
       }
-      const nextContent = await playSpin(bet, guildId, userId, cfg, interaction.client, interaction.channelId);
-      await btn.editReply({ content: nextContent, components: buildSpinAgainRow() }).catch(() => {});
+      last = await playSpin(bet, guildId, userId, cfg, interaction.client, interaction.channelId);
+      await btn.editReply(buildPanel(last.content, last.accentColor)).catch(() => {});
     });
 
     collector.on('end', async (_c, reason) => {
       if (reason === 'broke') return;
-      await interaction.editReply({ components: buildSpinAgainRow(true) }).catch(() => {});
+      await interaction.editReply(buildPanel(last.content, last.accentColor, true)).catch(() => {});
     });
   },
 };
