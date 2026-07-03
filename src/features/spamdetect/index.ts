@@ -16,7 +16,7 @@ const CMD_RAPID_THRESHOLD = 6;     // 6+ commands in 8 seconds — normal users 
 const MSG_HISTORY_MS = 60 * 1000; // 1 minute — how far back to purge on spam
 const TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
-type TrackedMsg = { id: string; channelId: string; timestamp: number };
+type TrackedMsg = { id: string; channelId: string; timestamp: number; content: string };
 type TrackedContent = { content: string; timestamp: number };
 
 type UserTrack = {
@@ -82,6 +82,15 @@ async function purgeHistory(member: GuildMember, history: TrackedMsg[]): Promise
   return deleted;
 }
 
+// Flattens whitespace, escapes backticks, and truncates for safe display inside
+// a code span in an embed. Attachment-only messages have no text.
+function sanitizeForLog(content: string): string {
+  const flat = content.replace(/\s+/g, ' ').trim();
+  if (!flat) return '*(no text — attachment/embed only)*';
+  const clipped = flat.length > 120 ? `${flat.slice(0, 120)}…` : flat;
+  return `\`${clipped.replace(/`/g, "'")}\``;
+}
+
 async function punish(
   member: GuildMember,
   reason: string,
@@ -97,6 +106,14 @@ async function punish(
 
   // purge last hour of messages
   const deleted = await purgeHistory(member, msgHistory);
+
+  // A representative message to show in the summary embeds — most recent one
+  // that actually has text (falls back to the newest overall if all were
+  // attachment-only).
+  const sample = [...deleted].sort((a, b) => b.timestamp - a.timestamp).find(m => m.content.trim().length > 0) ?? deleted[deleted.length - 1];
+  const sampleField = sample
+    ? [{ name: 'Sample Message', value: sanitizeForLog(sample.content) }]
+    : [];
 
   const [logCfg, modCfg] = await Promise.all([
     getLogConfig(guildId),
@@ -117,6 +134,7 @@ async function punish(
           { name: 'Action', value: '24-hour timeout', inline: true },
           { name: 'Reason', value: reason },
           { name: 'Messages Purged', value: `${deleted.length} messages deleted (last hour)`, inline: true },
+          ...sampleField,
         )
         .setTimestamp();
       await ch.send({ embeds: [embed] });
@@ -132,7 +150,7 @@ async function punish(
       // Build a summary; Discord embed values max 1024 chars each
       const lines = deleted
         .sort((a, b) => a.timestamp - b.timestamp)
-        .map(m => `<t:${Math.floor(m.timestamp / 1000)}:T> <#${m.channelId}> — \`${m.id}\``)
+        .map(m => `<t:${Math.floor(m.timestamp / 1000)}:T> <#${m.channelId}> — ${sanitizeForLog(m.content)}`)
         .join('\n');
 
       const truncated = lines.length > 4000 ? lines.slice(0, 4000) + '\n…(truncated)' : lines;
@@ -158,6 +176,7 @@ async function punish(
           { name: 'User', value: `<@${member.id}> (${member.user.tag})`, inline: true },
           { name: 'Action', value: '24-hour timeout', inline: true },
           { name: 'Reason', value: reason },
+          ...sampleField,
         )
         .setTimestamp();
       await modCh.send({ content: `🚨 Spam detected — please review <@${member.id}>.`, embeds: [embed] });
@@ -207,7 +226,7 @@ const spamDetectModule: EventModule = {
       const channelId = msg.channelId;
 
       // Track every message for history-based purge (keep last hour)
-      track.msgHistory.push({ id: msg.id, channelId, timestamp: now });
+      track.msgHistory.push({ id: msg.id, channelId, timestamp: now, content: msg.content ?? '' });
       track.msgHistory = track.msgHistory.filter(m => now - m.timestamp <= MSG_HISTORY_MS);
 
       // ── Rapid-fire / repeated-content detection ──────────────────────────────
