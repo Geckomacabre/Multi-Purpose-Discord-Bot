@@ -802,11 +802,18 @@ export interface HintPayload {
   files?: AttachmentBuilder[];
 }
 
+// Coins per hint scale with how many the user has already taken this round
+// (hint #1 costs HINT_COST_PER_LEVEL, #2 costs double, etc.) — a flat per-request
+// tax rather than a penalty on the eventual correct-guess reward, so a correct
+// guess always pays full XP regardless of how many hints were used.
+const HINT_COST_PER_LEVEL = 25;
+
 // Hints are per-user and private — everyone follows the same shuffled
 // hintOrder (fair: no one gets an easier sequence), but each person's own
 // count of how many they've revealed is tracked separately, and there's no
-// cooldown — request as many as you want, as fast as you want. The tradeoff
-// lives in the correct-guess XP reward, not a request-time gate. Async because
+// cooldown — request as many as you want, as fast as you want, as long as you
+// can pay. The tradeoff is a coin cost charged at request time (waived by the
+// ⚡ Hint Rush boost), not a hit to the eventual correct-guess XP. Async because
 // music's "Extended Snippet" hint (slot 3) has to re-download and trim audio.
 export async function requestHint(channelId: string, userId: string): Promise<HintPayload | null> {
   const state = activeGames.get(channelId);
@@ -819,6 +826,21 @@ export async function requestHint(channelId: string, userId: string): Promise<Hi
   }
 
   const n = used + 1;
+  const cost = HINT_COST_PER_LEVEL * n;
+  const rush = await db.getActiveBoost(state.guildId, userId, 'guesscd').catch(() => null);
+  let costNote: string;
+  if (rush) {
+    costNote = 'free — ⚡ Hint Rush active';
+  } else {
+    const cfg = await db.getEconomyConfig(state.guildId);
+    const eco = await db.getOrCreateEconomy(state.guildId, userId);
+    if (eco.balance < cost) {
+      return { content: `❌ This hint costs **${cfg.currency_symbol} ${cost.toLocaleString()}** — you only have **${cfg.currency_symbol} ${eco.balance.toLocaleString()}**. Earn more with \`/work\` or \`/daily\`.` };
+    }
+    await db.adjustBalance(state.guildId, userId, -cost);
+    costNote = `${cfg.currency_symbol} ${cost.toLocaleString()}`;
+  }
+
   state.userHints.set(userId, n);
   persistRound(state);
   const { media, type } = state;
@@ -829,7 +851,7 @@ export async function requestHint(channelId: string, userId: string): Promise<Hi
   const embed = new EmbedBuilder()
     .setColor(HINT_COLOR)
     .setTitle(`💡 ${label} Hint #${n} (${hintType})`)
-    .setFooter({ text: `${n}/${maxHints} hints used — only you can see this · costs XP if you guess correctly` });
+    .setFooter({ text: `${n}/${maxHints} hints used — only you can see this · this hint cost ${costNote}` });
   let files: AttachmentBuilder[] | undefined;
 
   switch (hintIdx) {
@@ -1015,7 +1037,7 @@ export async function startGame(
     .setDescription(
       `**Can you guess the ${typeStr} from this ${isMusic ? `${ROUND_CLIP_SEC}-second clip` : 'still'}?**\n\n` +
       `Type your answer in chat, or use the buttons below!\n` +
-      `> 💡 **Hint** / \`/hint\` — Reveal your own clue *(private, unlimited — but costs XP)*\n` +
+      `> 💡 **Hint** / \`/hint\` — Reveal your own clue *(private, unlimited — but costs coins)*\n` +
       `> ⏭️ **Vote Skip** / \`/voteskip\` — Vote to skip *(2 votes needed, available after 5 min)*`,
     )
     .setFooter({ text: `Good luck! ${type === 'music' ? '🎧' : type === 'game' ? '🎮' : '🍿'}` });

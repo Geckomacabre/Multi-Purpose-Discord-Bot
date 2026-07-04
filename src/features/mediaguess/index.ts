@@ -3,7 +3,7 @@ import { EventModule } from '../feature';
 import { activeGames, castVoteSkip, checkGuess, requestHint, resolveGame, restoreActiveGames, startGame } from '../../utils/mediagame';
 import { awardBonusXp } from '../../utils/xpBonus';
 import * as db from '../../utils/db';
-import { getActiveBoost, recordGameResult } from '../../utils/db';
+import { recordGameResult } from '../../utils/db';
 
 // Patterns that indicate normal chat rather than a guess attempt.
 // Movie/show titles virtually never match these.
@@ -34,17 +34,9 @@ function looksLikeChat(text: string): boolean {
   return CHAT_PATTERNS.some(p => p.test(t));
 }
 
-// Full XP is 150 for a guess with zero hints; each hint used docks 25, down to
-// a 50 floor. Buying ⚡ Hint Rush from the shop waives the penalty entirely.
-const BASE_HINT_XP = 150;
-const XP_PER_HINT = 25;
-const MIN_HINT_XP = 50;
-
-async function correctGuessXp(guildId: string, userId: string, hintsUsed: number): Promise<number> {
-  const rush = await getActiveBoost(guildId, userId, 'guesscd').catch(() => null);
-  if (rush) return BASE_HINT_XP;
-  return Math.max(MIN_HINT_XP, BASE_HINT_XP - hintsUsed * XP_PER_HINT);
-}
+// Hints cost coins at request time (see requestHint() in mediagame.ts), so a
+// correct guess always pays the full reward regardless of hints used.
+const CORRECT_GUESS_XP = 150;
 
 const mediaguessModule: EventModule = {
   name: 'mediaguess',
@@ -68,12 +60,10 @@ const mediaguessModule: EventModule = {
         if (state.answered) return;
         state.answered = true;
 
-        const hintsUsed = state.userHints.get(message.author.id) ?? 0;
-        const baseAmount = await correctGuessXp(message.guildId, message.author.id, hintsUsed);
         const xpGained = await awardBonusXp({
           guildId: message.guildId,
           userId: message.author.id,
-          baseAmount,
+          baseAmount: CORRECT_GUESS_XP,
           client: bot,
           channelId: message.channelId,
           isGame: true,

@@ -27,7 +27,7 @@ const SHOP_ITEMS = [
   },
   {
     id: 'no_cooldown', name: 'Hint Rush', emoji: '⚡', kind: 'boost',
-    description: 'Guess correctly with **no XP penalty** for hints used, in the guessing games, for **15 minutes**',
+    description: '**Free hints** in the guessing games (movie/TV/game/song) for **15 minutes**',
     price: 75_000, type: 'guesscd', multiplier: 1.0, durationMs: HOUR / 4,
   },
   {
@@ -136,7 +136,7 @@ const Shop: Command = {
             .addChoices(
               { name: '🔮 XP Surge — 2× XP for 1 hour (25,000)', value: 'xp_surge' },
               { name: '🍀 Lucky Charm — 1.5× gambling wins 30 min (30,000)', value: 'lucky_charm' },
-              { name: '⚡ Hint Rush — no hint XP penalty 15 min (75,000)', value: 'no_cooldown' },
+              { name: '⚡ Hint Rush — free hints in guessing games 15 min (75,000)', value: 'no_cooldown' },
               { name: '💼 Overtime Permit — half /work cooldown 4h (20,000)', value: 'overtime' },
               { name: '🧲 Coin Magnet — 1.5× work/daily/beg coins 24h (40,000)', value: 'coin_magnet' },
               { name: '🎟️ Loaded Dice — 2× lottery chance next draw (15,000)', value: 'loaded_dice' },

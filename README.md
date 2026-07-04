@@ -260,7 +260,7 @@ Four channel-based guessing games — 🎬 **Movie**, 📺 **TV Show**, 🎮 **V
 
 | Command | Description |
 |---|---|
-| `/hint` (or 💡 **Hint** button) | Reveal your **own** next clue, privately — no one else sees it (up to 5 per round). No cooldown — request as many as you want, as fast as you want. Each hint you personally use lowers the XP you get *if you* guess correctly (150 XP at 0 hints, −25 per hint, 50 floor) — guess it cold and you keep the full reward. |
+| `/hint` (or 💡 **Hint** button) | Reveal your **own** next clue, privately — no one else sees it (up to 5 per round, 6 for songs). No cooldown — request as many as you want, as fast as you want, as long as you can pay. Each hint costs coins (25 for your 1st, 50 for your 2nd, 75 for your 3rd, and so on) rather than reducing XP — a correct guess always pays the full reward. |
 | `/voteskip` (or ⏭️ **Vote Skip** button) | Vote to skip the current round (2 votes needed, locked out for the first 5 minutes so everyone gets a fair shot — a "Vote Skip Available" notice posts once it opens up) |
 | `/mediaguess setup <type> <channel>` | *(Admin)* Set up a movie, TV show, video game, or song game channel and start the first round |
 | `/mediaguess stop` | *(Admin)* Stop the game in this channel and remove its config |
@@ -356,7 +356,7 @@ All economy commands are under `/economy`.
 |---|---|---|
 | 🔮 XP Surge | 2× XP from all sources for 1 hour | 25,000 |
 | 🍀 Lucky Charm | 1.5× gambling winnings for 30 minutes | 30,000 |
-| ⚡ Hint Rush | No XP penalty for hints used in the guessing games, for 15 minutes | 75,000 |
+| ⚡ Hint Rush | Free hints in the guessing games, for 15 minutes | 75,000 |
 | 💼 Overtime Permit | Half `/work` cooldown (30 min) for 4 hours | 20,000 |
 | 🧲 Coin Magnet | 1.5× coins from `/work`, `/daily`, `/beg` for 24 hours | 40,000 |
 | 🎟️ Loaded Dice | Double your chance in the next daily lottery draw | 15,000 |

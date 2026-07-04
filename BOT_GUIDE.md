@@ -29,7 +29,7 @@ Earn and spend coins in the server economy.
 **⏱️ Timed boosts:**
 - 🔮 **XP Surge** — 2× XP from all sources for 1 hour (25,000 coins)
 - 🍀 **Lucky Charm** — 1.5× gambling winnings for 30 minutes (30,000 coins)
-- ⚡ **Hint Rush** — no XP penalty for hints used in the guessing games, for 15 minutes (75,000 coins)
+- ⚡ **Hint Rush** — free hints in the guessing games, for 15 minutes (75,000 coins)
 - 💼 **Overtime Permit** — half `/work` cooldown (30 min) for 4 hours (20,000 coins)
 - 🧲 **Coin Magnet** — 1.5× coins from `/work`, `/daily`, and `/beg` for 24 hours (40,000 coins)
 - 🎟️ **Loaded Dice** — double your chance in the next daily lottery draw (15,000 coins)
@@ -116,8 +116,8 @@ Four channel-based guessing games — 🎬 **Movie**, 📺 **TV Show**, 🎮 **V
 
 - **Just type your guess** in the game channel — no command needed
 - Bot reacts **❗** if you're close, **‼️** if you're very close
-- First to guess correctly wins up to **+150 XP** (counts toward daily XP cap) — the reward drops 25 XP for every hint *you personally* used (50 XP floor), so guessing without hints keeps the full reward. For songs, the **full 30-second clip** posts as a bonus once someone wins the round
-- `/hint` (or the **Hint** button) — Reveal your own next clue **privately** (up to 5 per round, 6 for songs). No cooldown, request as fast as you want — everyone follows the same shuffled order, but only you see how many you've used. Movie/TV/game hints: info card → masked title → anagram → extra screenshot → description. Song hints: info (year/genre/duration) → masked title → anagram → **extended snippet** *(a different 10-second clip, later in the track)* → **artist reveal** → **album art**
+- First to guess correctly wins **+150 XP** (counts toward daily XP cap) — always the full reward, no matter how many hints you used. For songs, the **full 30-second clip** posts as a bonus once someone wins the round
+- `/hint` (or the **Hint** button) — Reveal your own next clue **privately** (up to 5 per round, 6 for songs). No cooldown, request as fast as you want — everyone follows the same shuffled order, but only you see how many you've used. Costs coins instead of XP: 25 for your 1st hint, 50 for your 2nd, 75 for your 3rd, and so on (buy ⚡ **Hint Rush** to make them free for 15 minutes). Movie/TV/game hints: info card → masked title → anagram → extra screenshot → description. Song hints: info (year/genre/duration) → masked title → anagram → **extended snippet** *(a different 10-second clip, later in the track)* → **artist reveal** → **album art**
 - `/voteskip` (or the **Vote Skip** button) — Vote to skip the current round (2 votes needed, opens up 5 minutes into the round)
 
 ---
