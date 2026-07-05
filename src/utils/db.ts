@@ -1061,6 +1061,16 @@ export async function initDb() {
     expires_at INTEGER NOT NULL
   )`;
 
+  // Tracks the last time ANYONE in a guild claimed a given command (work/daily/
+  // beg) — separate from the per-user economy_cooldowns table — so a growing
+  // drought bonus can be offered to whoever breaks the dry spell.
+  await db`CREATE TABLE IF NOT EXISTS economy_drought (
+    guild_id  TEXT NOT NULL,
+    type      TEXT NOT NULL,
+    last_used INTEGER NOT NULL,
+    PRIMARY KEY (guild_id, type)
+  )`;
+
   try { await db`ALTER TABLE economy_config ADD COLUMN lottery_channel_id TEXT`; } catch {}
   try { await db`ALTER TABLE economy_config ADD COLUMN lottery_enabled INTEGER NOT NULL DEFAULT 0`; } catch {}
   try { await db`ALTER TABLE economy_config ADD COLUMN lottery_prize INTEGER NOT NULL DEFAULT 50000`; } catch {}
@@ -1225,6 +1235,7 @@ export async function removeGuild(guild_id: string) {
     'topic_channels', 'topics', 'starboard_config', 'starboard_posts',
     'tags', 'music_config', 'news_config', 'verify_config',
     'streamvc_config', 'streamvc_approvers', 'antiphishing_config', 'mediaguess_rounds', 'mediaguess_config',
+    'economy_drought',
   ]) {
     await db`DELETE FROM ${db(table)} WHERE guild_id = ${guild_id}`.catch(() => {});
   }
@@ -2111,6 +2122,21 @@ export async function setEconomyCooldown(user_id: string, type: string) {
 /** Clear a cooldown entirely (Time Skip shop item). */
 export async function resetEconomyCooldown(user_id: string, type: string): Promise<void> {
   await db`DELETE FROM economy_cooldowns WHERE user_id = ${user_id} AND type = ${type}`;
+}
+
+// ─── Economy Drought (guild-wide "no one's claimed this in a while") ───────────
+
+/** 0 if no one in the guild has ever claimed this command type. */
+export async function getGuildDroughtClaim(guild_id: string, type: string): Promise<number> {
+  const [row] = await db`SELECT last_used FROM economy_drought WHERE guild_id = ${guild_id} AND type = ${type}`;
+  return row ? (row.last_used as number) : 0;
+}
+
+export async function setGuildDroughtClaim(guild_id: string, type: string): Promise<void> {
+  await db`
+    INSERT INTO economy_drought (guild_id, type, last_used) VALUES (${guild_id}, ${type}, ${Date.now()})
+    ON CONFLICT(guild_id, type) DO UPDATE SET last_used = excluded.last_used
+  `;
 }
 
 // ─── Economy Protection ────────────────────────────────────────────────────────

@@ -7,12 +7,12 @@
 Earn and spend coins in the server economy.
 
 - `/balance [user]` — Check your coin balance (or anyone else's)
-- `/daily` — Collect your daily reward
-- `/work` — Work for a random coin payout
+- `/daily` — Collect your daily reward *(grows if no one's claimed one in a while — see Drought Bonus)*
+- `/work` — Work for a random coin payout *(grows if no one's worked in a while — see Drought Bonus)*
 - `/weekly` — Collect your weekly bonus
 - `/monthly` — Collect your monthly bonus
 - `/yearly` — Collect your yearly bonus
-- `/beg` — Beg for a small amount of coins (15-minute cooldown)
+- `/beg` — Beg for a small amount of coins (15-minute cooldown, grows if no one's begged in a while — see Drought Bonus)
 - `/pay user: amount:` — Send coins to another member
 - `/economy leaderboard` — See who has the most coins on the server
 
@@ -43,6 +43,10 @@ Earn and spend coins in the server economy.
 **⚡ Instant:**
 - ⏩ **Time Skip** — instantly reset your `/daily`, `/work`, or `/beg` cooldown (35,000 coins)
 - 📦 **Mystery Box** — 60% coins (2k–8k), 25% a random boost, 10% nothing, 5% a 50k jackpot (10,000 coins)
+
+### 📈 Drought Bonus
+
+`/work`, `/daily`, and `/beg` each watch how long it's been since **anyone in the server** last claimed them — not you personally. The longer it sits unclaimed, the bigger the payout for whoever runs it next: it doubles every 12 hours of drought (past a 6-hour grace period) for `/work`, every 24 hours (past 4 days) for `/daily`, and every 6 hours (past 3 hours) for `/beg` — capped at **1,000,000 coins**. Claiming it resets the timer to zero, so hitting the cap takes real days of nobody touching that command — rare, but it happens. You'll see a 🔥/💰/🎰 note in the response whenever a bonus kicks in.
 
 ### 🎰 Daily Lottery
 

@@ -328,12 +328,12 @@ All economy commands are under `/economy`.
 | Command | Description |
 |---|---|
 | `/balance [user]` | Check your or another user's coin balance and total earned. |
-| `/daily` | Claim a daily coin reward (20-hour cooldown). |
+| `/daily` | Claim a daily coin reward (20-hour cooldown). Payout grows the longer nobody in the server has claimed it — see **Drought Bonus** below. |
 | `/weekly` | Claim a weekly coin reward (7-day cooldown). |
 | `/monthly` | Claim a monthly coin reward (30-day cooldown). |
 | `/yearly` | Claim a yearly coin reward (365-day cooldown). |
-| `/work` | Work to earn coins with a random job flavor text (1-hour cooldown). |
-| `/beg` | Beg for a small coin reward (15-minute cooldown, 10–100 coins). |
+| `/work` | Work to earn coins with a random job flavor text (1-hour cooldown). Payout grows the longer nobody in the server has worked — see **Drought Bonus** below. |
+| `/beg` | Beg for a small coin reward (15-minute cooldown, 10–100 coins). Payout grows the longer nobody in the server has begged — see **Drought Bonus** below. |
 | `/pay <user> <amount>` | Transfer coins to another user. |
 | `/economy leaderboard [limit]` | Show the richest users in the server. |
 | `/flip <bet>` | Bet on a coin flip — win doubles your bet (50/50). Lucky Charm boosts wins 1.5×. |
@@ -366,6 +366,9 @@ All economy commands are under `/economy`.
 | 💖 Extra Life | One-shot: your next mistake in counting is forgiven instead of resetting the streak (keeps 7 days) | 35,000 |
 | ⏩ Time Skip | Instant: reset your `/daily`, `/work`, or `/beg` cooldown | 35,000 |
 | 📦 Mystery Box | Instant: 60% coins (2k–8k), 25% a random boost, 10% nothing, 5% 50k jackpot | 10,000 |
+
+#### Drought Bonus
+`/work`, `/daily`, and `/beg` each track the last time **anyone in the server** claimed them — not per-user. The longer that sits unclaimed, the bigger the payout grows for whoever runs it next: the reward doubles every 12 hours of drought past a 6-hour grace period for `/work`, every 24 hours past 4 days for `/daily`, and every 6 hours past 3 hours for `/beg`, capped at **1,000,000 coins**. Claiming resets the drought timer back to zero, so hitting the cap takes a server going completely silent on that command for several real days to weeks — rare, but always possible. A boosted claim calls it out in the response (🔥 small bonus → 💰 drought bonus → 🎰 massive/jackpot).
 
 #### Daily Lottery
 Once per day, one random server member wins **50,000 coins** automatically. Any member with at least 1 XP (i.e. anyone who has ever chatted) is entered. Buying 🎟️ **Loaded Dice** from the shop doubles your chance for the next draw. Winners are announced in the configured lottery channel — the previous day's winner announcement is deleted right before the new one posts, so the channel never accumulates old winner messages. Enable it with `/economyconfig lottery <channel>`.

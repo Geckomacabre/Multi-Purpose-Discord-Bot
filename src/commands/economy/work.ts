@@ -6,9 +6,14 @@ import {
 import { Command } from '../../interfaces/command';
 import { getEconomyConfig, getEconomyCooldown, setEconomyCooldown, adjustBalance, getActiveBoost } from '../../utils/db';
 import { cv2Text } from '../../utils/components.js';
+import { applyDroughtBonus, droughtNote } from '../../utils/droughtBonus.js';
 
 const IS_CV2 = MessageFlags.IsComponentsV2;
 const WORK_COOLDOWN_MS = 60 * 60 * 1000;
+// No one's worked in this server for 6+ hours? Pay starts climbing, doubling
+// every 12 hours after that — reaching the 1,000,000 cap takes over a week of
+// nobody working at all, so it stays a rare, exciting find.
+const DROUGHT_TUNING = { type: 'work', thresholdMs: 6 * 60 * 60 * 1000, doublingMs: 12 * 60 * 60 * 1000 };
 const pendingWorkNotifications = new Map<string, ReturnType<typeof setTimeout>>();
 
 const WORK_JOBS = [
@@ -46,13 +51,16 @@ const Work: Command = {
     }
     const magnet = await getActiveBoost(guildId, userId, 'magnet');
     const base = Math.floor(Math.random() * (cfg.work_max - cfg.work_min + 1)) + cfg.work_min;
-    const amount = magnet ? Math.floor(base * magnet.multiplier) : base;
+    const magnetAmount = magnet ? Math.floor(base * magnet.multiplier) : base;
+    const drought = await applyDroughtBonus(guildId, magnetAmount, DROUGHT_TUNING);
+    const amount = drought.amount;
     const job = pick(WORK_JOBS);
     const { newBalance } = await adjustBalance(guildId, userId, amount);
     await setEconomyCooldown(userId, 'work');
     const boostNotes =
       (magnet ? '\n🧲 *Coin Magnet boosted your pay!*' : '') +
-      (overtime ? '\n💼 *Overtime Permit: you can work again in 30 minutes.*' : '');
+      (overtime ? '\n💼 *Overtime Permit: you can work again in 30 minutes.*' : '') +
+      droughtNote(drought);
     const container = new ContainerBuilder()
       .setAccentColor(Colors.Blue)
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(

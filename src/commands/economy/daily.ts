@@ -5,8 +5,13 @@ import {
 import { Command } from '../../interfaces/command';
 import { getEconomyConfig, getEconomyCooldown, setEconomyCooldown, adjustBalance, getActiveBoost } from '../../utils/db';
 import { cv2Err, IS_CV2 } from '../../utils/components.js';
+import { applyDroughtBonus, droughtNote } from '../../utils/droughtBonus.js';
 
 const DAILY_COOLDOWN_MS = 20 * 60 * 60 * 1000;
+// No one's claimed a daily in this server for 4+ days? The reward starts
+// climbing, doubling every 24 hours after that — reaching the 1,000,000 cap
+// takes over two weeks of total silence, so it stays a rare, exciting find.
+const DROUGHT_TUNING = { type: 'daily', thresholdMs: 4 * 24 * 60 * 60 * 1000, doublingMs: 24 * 60 * 60 * 1000 };
 
 const Daily: Command = {
   data: new SlashCommandBuilder()
@@ -29,10 +34,12 @@ const Daily: Command = {
     }
     const magnet = await getActiveBoost(guildId, userId, 'magnet');
     const base = Math.floor(Math.random() * (cfg.daily_max - cfg.daily_min + 1)) + cfg.daily_min;
-    const amount = magnet ? Math.floor(base * magnet.multiplier) : base;
+    const magnetAmount = magnet ? Math.floor(base * magnet.multiplier) : base;
+    const drought = await applyDroughtBonus(guildId, magnetAmount, DROUGHT_TUNING);
+    const amount = drought.amount;
     const { newBalance } = await adjustBalance(guildId, userId, amount);
     await setEconomyCooldown(userId, 'daily');
-    const magnetNote = magnet ? '\n🧲 *Coin Magnet boosted your reward!*' : '';
+    const magnetNote = (magnet ? '\n🧲 *Coin Magnet boosted your reward!*' : '') + droughtNote(drought);
     const container = new ContainerBuilder()
       .setAccentColor(Colors.Green)
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(
