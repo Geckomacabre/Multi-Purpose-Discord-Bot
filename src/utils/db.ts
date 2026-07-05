@@ -1157,11 +1157,11 @@ export type IMediaGuessRound = {
   type: string;
   media: string;       // JSON-serialized MediaEntry
   hint_order: string;  // JSON-serialized number[]
-  hints_used: number;  // vestigial — hints are per-user now, see user_hints
+  hints_used: number;  // how many hints have been revealed this round (shared, not per-user)
   message_id: string | null;
   started_at: number;
-  last_hint_at: number; // vestigial — no cooldown anymore
-  user_hints: string;   // JSON-serialized { [userId]: hintsRevealedToThatUser }
+  last_hint_at: number; // timestamp of the last hint reveal, for the shared cooldown
+  user_hints: string;   // vestigial — hints were briefly per-user, kept for schema compat, always '{}'
 };
 
 export async function saveMediaGuessRound(row: IMediaGuessRound): Promise<void> {

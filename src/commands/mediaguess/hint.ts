@@ -1,6 +1,6 @@
 import {
   ApplicationIntegrationType, ChatInputCommandInteraction,
-  InteractionContextType, MessageFlags, SlashCommandBuilder,
+  InteractionContextType, SlashCommandBuilder,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
 import { requestHint } from '../../utils/mediagame';
@@ -8,14 +8,15 @@ import { requestHint } from '../../utils/mediagame';
 const Hint: Command = {
   data: new SlashCommandBuilder()
     .setName('hint')
-    .setDescription('Reveal your next clue for the guessing game — private, only you see it')
+    .setDescription('Reveal the next clue for the guessing game — shared with everyone in the channel')
     .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
     .setContexts([InteractionContextType.Guild]),
 
   async run(interaction: ChatInputCommandInteraction) {
-    // Deferred — the music "Extended Snippet" hint downloads and trims audio,
-    // which can take longer than Discord's 3-second interaction window.
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    // Deferred and public — hints are shared with the whole channel. The
+    // defer is needed because music's "Extended Snippet" hint downloads and
+    // trims audio, which can take longer than Discord's 3-second interaction window.
+    await interaction.deferReply();
     const payload = await requestHint(interaction.channelId, interaction.user.id);
     if (!payload) {
       await interaction.editReply({ content: '❌ There is no active guessing game in this channel.' });

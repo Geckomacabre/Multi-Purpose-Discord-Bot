@@ -46,7 +46,8 @@ export interface GameState {
   type: MediaType;
   media: MediaEntry;
   hintOrder: number[]; // shuffled indices into HINT_TYPES, randomised per round — same order for everyone, kept fair
-  userHints: Map<string, number>; // userId -> hints revealed to that user so far (hints are private and per-user, no cooldown)
+  hintsUsed: number; // shared — one hint sequence for the whole room, posted publicly
+  lastHintAt: number; // shared cooldown timestamp, skippable with the Hint Rush boost
   voteskips: Set<string>;
   messageId: string | null;
   startedAt: number;
@@ -102,11 +103,11 @@ function persistRound(state: GameState): void {
     type: state.type,
     media: JSON.stringify(state.media),
     hint_order: JSON.stringify(state.hintOrder),
-    hints_used: 0, // vestigial column — hints are per-user now, see user_hints
+    hints_used: state.hintsUsed,
     message_id: state.messageId,
     started_at: state.startedAt,
-    last_hint_at: 0, // vestigial column — no cooldown anymore
-    user_hints: JSON.stringify(Object.fromEntries(state.userHints)),
+    last_hint_at: state.lastHintAt,
+    user_hints: '{}', // vestigial column, kept for schema compat — hints are shared now, not per-user
   }).catch(() => {});
 }
 
@@ -122,7 +123,8 @@ export async function restoreActiveGames(client: Client): Promise<void> {
         type: row.type as MediaType,
         media: JSON.parse(row.media),
         hintOrder: JSON.parse(row.hint_order),
-        userHints: new Map(Object.entries(JSON.parse(row.user_hints || '{}'))),
+        hintsUsed: row.hints_used,
+        lastHintAt: row.last_hint_at,
         voteskips: new Set(),
         messageId: row.message_id,
         startedAt: row.started_at,
@@ -802,48 +804,37 @@ export interface HintPayload {
   files?: AttachmentBuilder[];
 }
 
-// Coins per hint scale with how many the user has already taken this round
-// (hint #1 costs HINT_COST_PER_LEVEL, #2 costs double, etc.) — a flat per-request
-// tax rather than a penalty on the eventual correct-guess reward, so a correct
-// guess always pays full XP regardless of how many hints were used.
-const HINT_COST_PER_LEVEL = 25;
+const HINT_COOLDOWN_MS = 60_000;
 
-// Hints are per-user and private — everyone follows the same shuffled
-// hintOrder (fair: no one gets an easier sequence), but each person's own
-// count of how many they've revealed is tracked separately, and there's no
-// cooldown — request as many as you want, as fast as you want, as long as you
-// can pay. The tradeoff is a coin cost charged at request time (waived by the
-// ⚡ Hint Rush boost), not a hit to the eventual correct-guess XP. Async because
-// music's "Extended Snippet" hint (slot 3) has to re-download and trim audio.
+// Hints are shared and public — one hint sequence for the whole room, posted
+// visibly so everyone benefits from the same reveal. Free of charge, but
+// gated by a 60-second cooldown between hints (shared, not per-user) so the
+// round can't be trivialized by hint-spam; ⚡ Hint Rush lets its buyer skip
+// the cooldown personally. Async because music's "Extended Snippet" hint
+// (slot 3) has to re-download and trim audio.
 export async function requestHint(channelId: string, userId: string): Promise<HintPayload | null> {
   const state = activeGames.get(channelId);
   if (!state || state.answered) return null;
 
   const maxHints = state.hintOrder.length;
-  const used = state.userHints.get(userId) ?? 0;
-  if (used >= maxHints) {
-    return { content: `❌ You've used all ${maxHints} hints for this round! Keep guessing or \`/voteskip\`.` };
+  if (state.hintsUsed >= maxHints) {
+    return { content: `❌ All ${maxHints} hints have been used! Keep guessing or \`/voteskip\`.` };
   }
 
-  const n = used + 1;
-  const cost = HINT_COST_PER_LEVEL * n;
-  const rush = await db.getActiveBoost(state.guildId, userId, 'guesscd').catch(() => null);
-  let costNote: string;
-  if (rush) {
-    costNote = 'free — ⚡ Hint Rush active';
-  } else {
-    const cfg = await db.getEconomyConfig(state.guildId);
-    const eco = await db.getOrCreateEconomy(state.guildId, userId);
-    if (eco.balance < cost) {
-      return { content: `❌ This hint costs **${cfg.currency_symbol} ${cost.toLocaleString()}** — you only have **${cfg.currency_symbol} ${eco.balance.toLocaleString()}**. Earn more with \`/work\` or \`/daily\`.` };
+  const elapsed = Date.now() - state.lastHintAt;
+  if (state.lastHintAt > 0 && elapsed < HINT_COOLDOWN_MS) {
+    const rush = await db.getActiveBoost(state.guildId, userId, 'guesscd').catch(() => null);
+    if (!rush) {
+      const secsLeft = Math.ceil((HINT_COOLDOWN_MS - elapsed) / 1000);
+      return { content: `⏳ Hints are on cooldown — next hint available in **${secsLeft}s**. *(skip with ⚡ Hint Rush from \`/shop\`)*` };
     }
-    await db.adjustBalance(state.guildId, userId, -cost);
-    costNote = `${cfg.currency_symbol} ${cost.toLocaleString()}`;
   }
 
-  state.userHints.set(userId, n);
+  state.lastHintAt = Date.now();
+  state.hintsUsed++;
   persistRound(state);
   const { media, type } = state;
+  const n = state.hintsUsed;
   const label = type === 'movie' ? 'Movie' : type === 'tv' ? 'TV Show' : type === 'game' ? 'Game' : 'Song';
   const hintIdx = state.hintOrder[n - 1]!;
   const hintType = (type === 'music' ? MUSIC_HINT_TYPES : HINT_TYPES)[hintIdx]!;
@@ -851,7 +842,7 @@ export async function requestHint(channelId: string, userId: string): Promise<Hi
   const embed = new EmbedBuilder()
     .setColor(HINT_COLOR)
     .setTitle(`💡 ${label} Hint #${n} (${hintType})`)
-    .setFooter({ text: `${n}/${maxHints} hints used — only you can see this · this hint cost ${costNote}` });
+    .setFooter({ text: `Requested by <@${userId}> · ${n}/${maxHints} hints used` });
   let files: AttachmentBuilder[] | undefined;
 
   switch (hintIdx) {
@@ -1037,7 +1028,7 @@ export async function startGame(
     .setDescription(
       `**Can you guess the ${typeStr} from this ${isMusic ? `${ROUND_CLIP_SEC}-second clip` : 'still'}?**\n\n` +
       `Type your answer in chat, or use the buttons below!\n` +
-      `> 💡 **Hint** / \`/hint\` — Reveal your own clue *(private, unlimited — but costs coins)*\n` +
+      `> 💡 **Hint** / \`/hint\` — Reveal the next clue for everyone *(shared, 60s cooldown between hints)*\n` +
       `> ⏭️ **Vote Skip** / \`/voteskip\` — Vote to skip *(2 votes needed, available after 5 min)*`,
     )
     .setFooter({ text: `Good luck! ${type === 'music' ? '🎧' : type === 'game' ? '🎮' : '🍿'}` });
@@ -1068,7 +1059,8 @@ export async function startGame(
     type,
     media,
     hintOrder: buildHintOrder(media),
-    userHints: new Map(),
+    hintsUsed: 0,
+    lastHintAt: 0,
     voteskips: new Set(),
     messageId: msg.id,
     startedAt: Date.now(),

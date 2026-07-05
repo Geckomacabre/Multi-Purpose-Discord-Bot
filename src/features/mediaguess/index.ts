@@ -34,8 +34,8 @@ function looksLikeChat(text: string): boolean {
   return CHAT_PATTERNS.some(p => p.test(t));
 }
 
-// Hints cost coins at request time (see requestHint() in mediagame.ts), so a
-// correct guess always pays the full reward regardless of hints used.
+// Hints are free and shared (see requestHint() in mediagame.ts), so a correct
+// guess always pays the full reward regardless of how many hints were used.
 const CORRECT_GUESS_XP = 150;
 
 const mediaguessModule: EventModule = {
@@ -92,9 +92,11 @@ const mediaguessModule: EventModule = {
       if (btn.customId !== 'mg_hint' && btn.customId !== 'mg_voteskip') return;
 
       if (btn.customId === 'mg_hint') {
-        // Deferred — the music "Extended Snippet" hint downloads and trims
-        // audio, which can take longer than Discord's 3-second interaction window.
-        await btn.deferReply({ flags: MessageFlags.Ephemeral });
+        // Deferred and public — hints are shared with the whole channel. The
+        // defer is needed because music's "Extended Snippet" hint downloads
+        // and trims audio, which can take longer than Discord's 3-second
+        // interaction window.
+        await btn.deferReply();
         const payload = await requestHint(btn.channelId, btn.user.id);
         if (!payload) {
           await btn.editReply({ content: '❌ There is no active guessing game in this channel.' });

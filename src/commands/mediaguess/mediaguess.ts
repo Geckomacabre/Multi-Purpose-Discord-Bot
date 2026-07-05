@@ -132,7 +132,7 @@ const MediaGuess: Command = {
         const channelId = configChannel(cfg, type);
         const state = channelId ? activeGames.get(channelId) : null;
         const status = state
-          ? `Active — ${state.userHints.size} player(s) have used hints, ${state.voteskips.size}/2 skip votes`
+          ? `Active — ${state.hintsUsed}/${state.hintOrder.length} hints used, ${state.voteskips.size}/2 skip votes`
           : (channelId ? 'Channel set but no active round' : 'Not configured');
         return [
           { name: `${TYPE_EMOJI[type]} ${TYPE_LABEL[type]} Channel`, value: channelId ? `<#${channelId}>` : 'Not set', inline: true },
