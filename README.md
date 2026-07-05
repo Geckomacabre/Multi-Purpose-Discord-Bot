@@ -356,7 +356,7 @@ All economy commands are under `/economy`.
 |---|---|---|
 | 🔮 XP Surge | 2× XP from all sources for 1 hour | 25,000 |
 | 🍀 Lucky Charm | 1.5× gambling winnings for 30 minutes | 30,000 |
-| ⚡ Hint Rush | Skip the shared hint cooldown in the guessing games, for 15 minutes | 75,000 |
+| ⚡ Hint Rush | Skip the shared hint cooldown in the guessing games, for 15 minutes | 15,000 |
 | 💼 Overtime Permit | Half `/work` cooldown (30 min) for 4 hours | 20,000 |
 | 🧲 Coin Magnet | 1.5× coins from `/work`, `/daily`, `/beg` for 24 hours | 40,000 |
 | 🎟️ Loaded Dice | Double your chance in the next daily lottery draw | 15,000 |

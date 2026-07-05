@@ -29,7 +29,7 @@ Earn and spend coins in the server economy.
 **⏱️ Timed boosts:**
 - 🔮 **XP Surge** — 2× XP from all sources for 1 hour (25,000 coins)
 - 🍀 **Lucky Charm** — 1.5× gambling winnings for 30 minutes (30,000 coins)
-- ⚡ **Hint Rush** — skip the shared hint cooldown in the guessing games, for 15 minutes (75,000 coins)
+- ⚡ **Hint Rush** — skip the shared hint cooldown in the guessing games, for 15 minutes (15,000 coins)
 - 💼 **Overtime Permit** — half `/work` cooldown (30 min) for 4 hours (20,000 coins)
 - 🧲 **Coin Magnet** — 1.5× coins from `/work`, `/daily`, and `/beg` for 24 hours (40,000 coins)
 - 🎟️ **Loaded Dice** — double your chance in the next daily lottery draw (15,000 coins)
