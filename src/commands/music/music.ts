@@ -10,6 +10,7 @@ import * as db from '../../utils/db';
 import logger from '../../utils/logger';
 
 let player: Player | null = null;
+let extractorsReady: Promise<unknown> | null = null;
 
 // discord-player defaults to Discord's DAVE E2EE voice protocol, which requires
 // the @snazzah/davey native package — not something we ship, and not needed for
@@ -26,7 +27,7 @@ const followMap = new Map<string, string>();
 export function getPlayer(client: any): Player {
   if (!player) {
     player = new Player(client, { skipFFmpeg: false });
-    player.extractors.loadMulti(DefaultExtractors).catch(e => logger.error('Failed to load extractors:', e));
+    const loadDefaults = player.extractors.loadMulti(DefaultExtractors).catch(e => logger.error('Failed to load extractors:', e));
     // discord-player swallows extractor activation errors internally (register()
     // resolves to null instead of rejecting), so without this listener a failed
     // YouTube extractor activation is completely silent — it just shows up later
@@ -40,8 +41,14 @@ export function getPlayer(client: any): Player {
     // YOUTUBE_COOKIE is optional but strongly recommended: YouTube frequently
     // blocks/challenges datacenter IPs (most hosting providers), which makes
     // activation fail silently without an authenticated session.
-    player.extractors.register(YoutubeiExtractor, Bun.env.YOUTUBE_COOKIE ? { cookie: Bun.env.YOUTUBE_COOKIE } : {})
+    const loadYoutube = player.extractors.register(YoutubeiExtractor, Bun.env.YOUTUBE_COOKIE ? { cookie: Bun.env.YOUTUBE_COOKIE } : {})
       .catch(e => logger.error('Failed to load YouTube extractor:', e));
+    // Extractor registration does a real network round-trip (bootstrapping the
+    // YouTube session), so it isn't done by the time this function returns.
+    // Anything that queues/searches must await this first, or the very first
+    // /music command after each restart races it and finds zero extractors
+    // ready — surfacing as "no results found (extractor: N/A)".
+    extractorsReady = Promise.allSettled([loadDefaults, loadYoutube]);
     (player.events as any).on('playerError', (_queue: any, err: any) => logger.error('Player error:', err));
     (player.events as any).on('error', (_queue: any, err: any) => logger.error('Queue error:', err));
     player.events.on('playerStart', (queue, track) => {
@@ -60,6 +67,10 @@ export function getPlayer(client: any): Player {
     });
   }
   return player;
+}
+
+async function waitForExtractors(): Promise<void> {
+  if (extractorsReady) await extractorsReady;
 }
 
 function checkKaraoke(guildId: string, member: GuildMember): string | null {
@@ -175,18 +186,21 @@ const Music: Command = {
       return true;
     };
 
-    const queueTrack = async (query: string | Track, extra: Record<string, any> = {}) => p.play(vc!, query, {
-      nodeOptions: {
-        metadata: interaction.channel,
-        volume: (await db.getMusicConfig(interaction.guildId!)).volume,
-        leaveOnEmpty: true,
-        leaveOnEmptyCooldown: 30000,
-        leaveOnEnd: true,
-        leaveOnEndCooldown: 30000,
-      },
-      connectionOptions: VOICE_CONNECT_OPTIONS,
-      ...extra,
-    });
+    const queueTrack = async (query: string | Track, extra: Record<string, any> = {}) => {
+      await waitForExtractors();
+      return p.play(vc!, query, {
+        nodeOptions: {
+          metadata: interaction.channel,
+          volume: (await db.getMusicConfig(interaction.guildId!)).volume,
+          leaveOnEmpty: true,
+          leaveOnEmptyCooldown: 30000,
+          leaveOnEnd: true,
+          leaveOnEndCooldown: 30000,
+        },
+        connectionOptions: VOICE_CONNECT_OPTIONS,
+        ...extra,
+      });
+    };
 
     if (sub === 'play') {
       if (!await requireVC() || !await requireNotKaraoke()) return;
@@ -231,6 +245,7 @@ const Music: Command = {
       const query = interaction.options.getString('query', true);
       const source = interaction.options.getString('source') ?? 'youtube';
       await interaction.deferReply();
+      await waitForExtractors();
       const results = await p.search(query, {
         searchEngine: source === 'soundcloud' ? QueryType.SOUNDCLOUD_SEARCH : QueryType.YOUTUBE_SEARCH,
         requestedBy: interaction.user,
