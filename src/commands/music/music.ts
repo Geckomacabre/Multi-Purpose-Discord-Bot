@@ -5,7 +5,7 @@ import {
 import { Command } from '../../interfaces/command';
 import { Player, QueryType, useQueue, GuildQueue, Track } from 'discord-player';
 import { DefaultExtractors } from '@discord-player/extractor';
-import { YoutubeExtractor, getInnertube, getVideoId, toNodeReadable } from 'discord-player-youtubei';
+import { YoutubeExtractor } from 'discord-player-youtubei';
 import * as db from '../../utils/db';
 import logger from '../../utils/logger';
 
@@ -53,21 +53,14 @@ export function getPlayer(client: any): Player {
     // fails with "Could not extract stream for this track" (ERR_NO_RESULT).
     // YOUTUBE_COOKIE is optional: it authenticates the session, which can help
     // avoid rate-limiting/bot-detection on busy bots.
+    // We use the extractor's default streaming path (ANDROID_VR first, with
+    // MWEB/WEB_EMBEDDED/SABR fallbacks) rather than forcing a single client — it's
+    // the maintained path and has fallbacks. (An earlier IOS createStream override
+    // was removed: it forced per-chunk ranged fetches that hit a non-2xx from
+    // googlevideo, and relied on the beta's toNodeReadable whose background reader
+    // has no error handler, surfacing as an unhandled rejection.)
     const ytCookieOpts = Bun.env.YOUTUBE_COOKIE ? { cookie: Bun.env.YOUTUBE_COOKIE } : {};
-    const loadYoutube = player.extractors.register(YoutubeExtractor, {
-      ...ytCookieOpts,
-      // The extractor's default streaming path (ANDROID_VR → MWEB → WEB_EMBEDDED
-      // → SABR, several needing fragile jsdom/BotGuard poToken minting) produces
-      // an uncatchable "AbortError: The operation was aborted" mid-playback in
-      // this environment — the bot joins voice but no audio ever flows. The IOS
-      // client's download() reliably returns the full audio stream here (verified
-      // end-to-end), so we force that path directly and skip the default machinery.
-      createStream: async (track: Track) => {
-        const yt = await getInnertube(ytCookieOpts);
-        const web = await yt.download(getVideoId(track.url), { type: 'audio', quality: 'best', client: 'IOS' });
-        return toNodeReadable(web);
-      },
-    } as any)
+    const loadYoutube = player.extractors.register(YoutubeExtractor, ytCookieOpts as any)
       .catch(e => logger.error(`Failed to load YouTube extractor: ${describeError(e)}`));
     // Extractor registration does a real network round-trip (bootstrapping the
     // YouTube session), so it isn't done by the time this function returns.
