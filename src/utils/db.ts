@@ -100,6 +100,7 @@ export type IAutorole = {
   guild_id: string;
   role_id: string;
   wait_seconds: number;
+  target: 'all' | 'humans' | 'bots';
 };
 
 export type IRoleCommand = {
@@ -569,6 +570,7 @@ export async function initDb() {
     role_id      TEXT NOT NULL,
     wait_seconds INTEGER NOT NULL DEFAULT 0
   )`;
+  try { await db`ALTER TABLE autoroles ADD COLUMN target TEXT NOT NULL DEFAULT 'all'`; } catch {}
 
   await db`CREATE TABLE IF NOT EXISTS rolecommands (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1486,11 +1488,11 @@ export async function getAutoroles(guild_id: string): Promise<IAutorole[]> {
   return rows as IAutorole[];
 }
 
-export async function addAutorole(guild_id: string, role_id: string, wait_seconds = 0): Promise<IAutorole> {
+export async function addAutorole(guild_id: string, role_id: string, wait_seconds = 0, target: IAutorole['target'] = 'all'): Promise<IAutorole> {
   await ensureConfig(guild_id);
   const [row] = await db`
-    INSERT INTO autoroles (guild_id, role_id, wait_seconds)
-    VALUES (${guild_id}, ${role_id}, ${wait_seconds})
+    INSERT INTO autoroles (guild_id, role_id, wait_seconds, target)
+    VALUES (${guild_id}, ${role_id}, ${wait_seconds}, ${target})
     RETURNING *
   `;
   return row as IAutorole;

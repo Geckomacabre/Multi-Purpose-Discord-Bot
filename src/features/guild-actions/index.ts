@@ -1,29 +1,17 @@
 import { GuildMember, PartialGuildMember } from 'discord.js';
 import { EventModule } from '../feature';
-import { LinkedRoles, Roles } from '../../constants';
+import { HOME_GUILD_ID, LinkedRoles } from '../../constants';
 import { shouldHaveRole } from '../../utils/linkedRoles';
 
+// Join-time role assignment (bot/human) now lives in the generic, per-guild
+// /rolesconfig auto system (see src/features/autorole) so every server can
+// configure it — not just this one. Only the LinkedRoles parent/child sync
+// below remains hardcoded to this specific server.
 const guildActionsModule: EventModule = {
   name: 'guild-actions',
   handlers: {
-    guildMemberAdd: async ({ data: [member] }: { data: [GuildMember] }) => {
-      const { user, guild } = member;
-      try {
-        await new Promise((res) => setTimeout(res, 5_000));
-        const freshMember = await guild.members.fetch(member.id).catch(() => null);
-        if (!freshMember) return;
-
-        if (user.bot) {
-          await freshMember.roles.add(Roles.MidnightSystems);
-          return;
-        }
-
-        await freshMember.roles.add(Roles.Newcomer);
-      } catch (err) {
-        console.error(`Error assigning role to ${user.tag}`, err);
-      }
-    },
     guildMemberUpdate: async ({ data: [oldMember, newMember] }: { data: [GuildMember | PartialGuildMember, GuildMember] }) => {
+      if (newMember.guild.id !== HOME_GUILD_ID) return;
       const oldRoles = oldMember.roles.cache;
       const newRoles = newMember.roles.cache;
 

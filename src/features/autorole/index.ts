@@ -5,7 +5,11 @@ const autoroleModule: EventModule = {
   name: 'autorole',
   handlers: {
     guildMemberAdd: async ({ data: [member], db }) => {
-      const roles = await db.getAutoroles(member.guild.id);
+      const roles = (await db.getAutoroles(member.guild.id)).filter(ar => {
+        if (ar.target === 'bots') return member.user.bot;
+        if (ar.target === 'humans') return !member.user.bot;
+        return true;
+      });
       logger.debug(`[autorole] guildMemberAdd fired for ${member.user.tag} in ${member.guild.name} — ${roles.length} autorole(s) configured`);
       if (!roles.length) return;
       logger.info(`[autorole] ${roles.length} autorole(s) to apply to ${member.user.tag} in ${member.guild.name}`);

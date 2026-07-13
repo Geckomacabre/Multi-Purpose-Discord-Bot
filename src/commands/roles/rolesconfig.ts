@@ -46,7 +46,12 @@ const RolesConfig: Command = {
     .addSubcommandGroup(g => g.setName('auto').setDescription('Roles assigned automatically to new members')
       .addSubcommand(s => s.setName('add').setDescription('Add an autorole')
         .addRoleOption(o => o.setName('role').setDescription('Role to assign').setRequired(true))
-        .addIntegerOption(o => o.setName('delay').setDescription('Seconds to wait before assigning (0 = instant)').setMinValue(0)))
+        .addIntegerOption(o => o.setName('delay').setDescription('Seconds to wait before assigning (0 = instant)').setMinValue(0))
+        .addStringOption(o => o.setName('target').setDescription('Who this applies to (default: everyone)').setChoices(
+          { name: 'Everyone', value: 'all' },
+          { name: 'Humans only', value: 'humans' },
+          { name: 'Bots only', value: 'bots' },
+        )))
       .addSubcommand(s => s.setName('remove').setDescription('Remove an autorole by ID')
         .addIntegerOption(o => o.setName('id').setDescription('Autorole ID').setRequired(true)))
       .addSubcommand(s => s.setName('list').setDescription('List all autoroles'))
@@ -139,8 +144,10 @@ const RolesConfig: Command = {
       if (sub === 'add') {
         const role = interaction.options.getRole('role', true);
         const delay = interaction.options.getInteger('delay') ?? 0;
-        const ar = await db.addAutorole(guildId, role.id, delay);
-        await interaction.editReply(cv2Text(`✅ <@&${role.id}> will be assigned to new members${delay ? ` after ${delay}s` : ' instantly'}. (ID: ${ar.id})`));
+        const target = (interaction.options.getString('target') ?? 'all') as 'all' | 'humans' | 'bots';
+        const ar = await db.addAutorole(guildId, role.id, delay, target);
+        const who = target === 'all' ? 'new members' : target === 'humans' ? 'new human members' : 'new bots';
+        await interaction.editReply(cv2Text(`✅ <@&${role.id}> will be assigned to ${who}${delay ? ` after ${delay}s` : ' instantly'}. (ID: ${ar.id})`));
       } else if (sub === 'remove') {
         const id = interaction.options.getInteger('id', true);
         const ok = await db.removeAutorole(id, guildId);
@@ -165,7 +172,7 @@ const RolesConfig: Command = {
               continue;
             }
             const canAssign = botHasManageRoles && botHighestPos > role.position;
-            lines.push(`• <@&${role.id}> (pos ${role.position})${ar.wait_seconds ? ` — ${ar.wait_seconds}s delay` : ''} — ${canAssign ? '✅ Bot can assign this' : `❌ Bot cannot assign — bot role (pos ${botHighestPos}) must be above this role (pos ${role.position})`}`);
+            lines.push(`• <@&${role.id}> (pos ${role.position})${ar.target !== 'all' ? ` — ${ar.target} only` : ''}${ar.wait_seconds ? ` — ${ar.wait_seconds}s delay` : ''} — ${canAssign ? '✅ Bot can assign this' : `❌ Bot cannot assign — bot role (pos ${botHighestPos}) must be above this role (pos ${role.position})`}`);
           }
         }
         const container = new ContainerBuilder().setAccentColor(botHasManageRoles ? Colors.Green : Colors.Red)
@@ -176,7 +183,7 @@ const RolesConfig: Command = {
         if (!roles.length) { await interaction.editReply(cv2Text('No autoroles configured.')); return; }
         const container = new ContainerBuilder().setAccentColor(Colors.Blurple)
           .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-            `**Autoroles**\n\n${roles.map(r => `**#${r.id}** <@&${r.role_id}>${r.wait_seconds ? ` — ${r.wait_seconds}s delay` : ''}`).join('\n')}`
+            `**Autoroles**\n\n${roles.map(r => `**#${r.id}** <@&${r.role_id}>${r.target !== 'all' ? ` — ${r.target} only` : ''}${r.wait_seconds ? ` — ${r.wait_seconds}s delay` : ''}`).join('\n')}`
           ));
         await interaction.editReply({ flags: IS_CV2, components: [container] });
       }

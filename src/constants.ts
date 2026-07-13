@@ -1,10 +1,12 @@
 export const Channels = {} as const;
 
+// The server the LinkedRoles parent/child role IDs below belong to (Geckomacabre)
+// — guild-actions only applies them here since the IDs are meaningless elsewhere.
+export const HOME_GUILD_ID = '337294816641679370';
+
 export const Roles = {
-  MidnightSystems: '1477434976172511272',
   EXCLUSIVE: '1496264991266050290',
   ACCESS: '1496263685151391865',
-  Newcomer: '1478173271253061633',
   ALERTS: '1496265313614823445',
 } as const;
 
