@@ -24,10 +24,19 @@ const karaokeGuilds = new Set<string>();
 // guildId -> userId the bot should follow between voice channels.
 const followMap = new Map<string, string>();
 
+// pino's logger hook JSON-stringifies a 2-arg call (logger.error('label', err)),
+// but native Error objects serialize to "{}" since message/stack aren't own
+// enumerable properties — silently swallowing the actual error. Pulling them
+// out explicitly (and passing a single pre-built string) avoids that.
+function describeError(err: any): string {
+  if (!(err instanceof Error)) return typeof err === 'object' ? JSON.stringify(err) : String(err);
+  return JSON.stringify({ ...err, name: err.name, message: err.message }, null, 0) + `\n${err.stack ?? ''}`;
+}
+
 export function getPlayer(client: any): Player {
   if (!player) {
     player = new Player(client, { skipFFmpeg: false });
-    const loadDefaults = player.extractors.loadMulti(DefaultExtractors).catch(e => logger.error('Failed to load extractors:', e));
+    const loadDefaults = player.extractors.loadMulti(DefaultExtractors).catch(e => logger.error(`Failed to load extractors: ${describeError(e)}`));
     // discord-player swallows extractor activation errors internally (register()
     // resolves to null instead of rejecting), so without this listener a failed
     // YouTube extractor activation is completely silent — it just shows up later
@@ -42,15 +51,15 @@ export function getPlayer(client: any): Player {
     // blocks/challenges datacenter IPs (most hosting providers), which makes
     // activation fail silently without an authenticated session.
     const loadYoutube = player.extractors.register(YoutubeiExtractor, Bun.env.YOUTUBE_COOKIE ? { cookie: Bun.env.YOUTUBE_COOKIE } : {})
-      .catch(e => logger.error('Failed to load YouTube extractor:', e));
+      .catch(e => logger.error(`Failed to load YouTube extractor: ${describeError(e)}`));
     // Extractor registration does a real network round-trip (bootstrapping the
     // YouTube session), so it isn't done by the time this function returns.
     // Anything that queues/searches must await this first, or the very first
     // /music command after each restart races it and finds zero extractors
     // ready — surfacing as "no results found (extractor: N/A)".
     extractorsReady = Promise.allSettled([loadDefaults, loadYoutube]);
-    (player.events as any).on('playerError', (_queue: any, err: any) => logger.error('Player error:', err));
-    (player.events as any).on('error', (_queue: any, err: any) => logger.error('Queue error:', err));
+    (player.events as any).on('playerError', (_queue: any, err: any) => logger.error(`Player error: ${describeError(err)}`));
+    (player.events as any).on('error', (_queue: any, err: any) => logger.error(`Queue error: ${describeError(err)}`));
     player.events.on('playerStart', (queue, track) => {
       const ch = queue.metadata as any;
       if (ch?.send) ch.send({ embeds: [nowPlayingEmbed(track)] });
