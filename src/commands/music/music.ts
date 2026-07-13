@@ -97,6 +97,21 @@ function checkKaraoke(guildId: string, member: GuildMember): string | null {
   return '🎤 Karaoke mode is enabled — only a Manage Server member can add tracks right now.';
 }
 
+// YouTube "radio"/"mix" URLs (list=RD…, start_radio=1) are dynamically generated
+// per session and resolve to an empty playlist, so a watch URL carrying them yields
+// "No results found". When such a URL has a real video id, reduce it to the plain
+// video so the song itself plays. Real playlists (list=PL…) are left untouched.
+function normalizeQuery(q: string): string {
+  let u: URL;
+  try { u = new URL(q.trim()); } catch { return q; } // plain search text, not a URL
+  const isYouTube = u.hostname === 'youtu.be' || /(^|\.)youtube\.com$/.test(u.hostname);
+  if (!isYouTube) return q;
+  const vid = u.hostname === 'youtu.be' ? u.pathname.slice(1) : u.searchParams.get('v');
+  const list = u.searchParams.get('list');
+  const isRadio = u.searchParams.get('start_radio') === '1' || !!list?.startsWith('RD');
+  return vid && isRadio ? `https://www.youtube.com/watch?v=${vid}` : q;
+}
+
 function nowPlayingEmbed(track: Track) {
   return new EmbedBuilder()
     .setColor(Colors.Blue)
@@ -207,7 +222,8 @@ const Music: Command = {
 
     const queueTrack = async (query: string | Track, extra: Record<string, any> = {}) => {
       await waitForExtractors();
-      return p.play(vc!, query, {
+      const resolved = typeof query === 'string' ? normalizeQuery(query) : query;
+      return p.play(vc!, resolved, {
         nodeOptions: {
           metadata: interaction.channel,
           volume: (await db.getMusicConfig(interaction.guildId!)).volume,
