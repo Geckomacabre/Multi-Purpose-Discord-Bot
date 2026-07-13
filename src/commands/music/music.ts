@@ -12,12 +12,16 @@ import logger from '../../utils/logger';
 let player: Player | null = null;
 let extractorsReady: Promise<unknown> | null = null;
 
-// discord-player defaults to Discord's DAVE E2EE voice protocol, which requires
-// the @snazzah/davey native package — not something we ship, and not needed for
-// a bot streaming into a channel. Without this, connecting throws an uncaught
-// exception that kills the voice connection entirely. Anything that connects to
-// voice directly (play, summon, follow) must pass this.
-const VOICE_CONNECT_OPTIONS = { daveEncryption: false } as const;
+// Discord ENFORCES the DAVE (E2EE) voice protocol for all non-stage voice calls
+// as of 2026-03-01: connecting with DAVE disabled (max_dave_protocol_version: 0)
+// is rejected by the voice gateway with close code 4017 ("E2EE/DAVE protocol
+// required"), so the bot joins the channel but no audio ever flows. DAVE support
+// comes from the @snazzah/davey native package (a dependency of this project);
+// with it installed, the default connection options negotiate DAVE correctly, so
+// we pass no special connection options. (Previously this passed
+// daveEncryption:false to dodge a crash when @snazzah/davey was missing — that
+// workaround now hard-breaks playback, so the package must stay installed.)
+const VOICE_CONNECT_OPTIONS = {} as const;
 
 // Guilds with karaoke mode enabled — blocks new tracks from non-DJs.
 const karaokeGuilds = new Set<string>();

@@ -28,6 +28,7 @@
   "dependencies": {
     "@discord-player/extractor": "^7.2.0",
     "@napi-rs/canvas": "^1.0.0",
+    "@snazzah/davey": "^0.1.12",
     "@types/he": "^1.2.3",
     "@types/libsodium-wrappers": "^0.8.2",
     "@vvo/tzdb": "^6.198.0",
