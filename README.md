@@ -134,7 +134,7 @@ Admin configuration is under `/rolesconfig` (Manage Roles required):
 | `/rolesconfig self-assign add <name> <role>` | Register a self-assignable role with a name and optional group. |
 | `/rolesconfig self-assign remove <id>` | Remove a role command by ID. |
 | `/rolesconfig self-assign list` | List all self-assignable roles. |
-| `/rolesconfig auto add <role>` | Assign a role automatically to new members (with optional delay). |
+| `/rolesconfig auto add <role> [delay] [target]` | Assign a role automatically to new members (optional delay; target everyone, humans only, or bots only). |
 | `/rolesconfig auto remove <id>` | Remove an autorole by ID. |
 | `/rolesconfig auto list` | List all autoroles. |
 | `/rolesconfig voice add <channel> <role>` | Assign a role when members join a specific voice channel. |
@@ -526,19 +526,32 @@ Full-featured music player. Supports YouTube, Spotify, SoundCloud, Apple Music, 
 
 **Requires:** `ffmpeg` installed and available on your system PATH. (Also used by the Song guessing game to trim clips — see [Guessing Games](#guessing-games).)
 
+**Recommended:** set `YOUTUBE_COOKIE` in your `.env`. YouTube frequently blocks or challenges hosting-provider IPs, which makes playback fail silently ("no results found") without an authenticated session. See `.env.example` for how to get a cookie string.
+
 | Command | Description |
 |---|---|
 | `/music play <query>` | Play a song or add it to the queue. Accepts names, URLs, or playlists. |
+| `/music playnext <query>` | Add a song to the front of the queue. |
+| `/music playnow <query>` | Play a song immediately, skipping the current track. |
+| `/music search <query> [source]` | Search YouTube or SoundCloud and pick a track from the results to queue. |
+| `/music stream <url>` | Play a direct stream URL (e.g. an internet radio stream). |
 | `/music skip` | Skip the current track. |
 | `/music stop` | Stop playback and clear the queue. |
+| `/music clear` | Clear the upcoming queue without stopping the current track. |
 | `/music pause` | Pause or resume playback. |
 | `/music queue [page]` | Show the current queue. |
 | `/music nowplaying` | Show what's currently playing with a progress bar. |
 | `/music volume <1-200>` | Set the playback volume (persisted per server). |
+| `/music speed <0.5-100>` | Set the playback speed of the current track. |
 | `/music loop <off\|track\|queue\|autoplay>` | Set the loop mode. |
 | `/music shuffle` | Shuffle the queue. |
 | `/music remove <position>` | Remove a track from the queue by position. |
+| `/music move <from> <to>` | Move a track to a different position in the queue. |
 | `/music seek <time>` | Seek to a position (e.g. `1:30` or `90`). |
+| `/music karaoke` | Toggle karaoke mode — while enabled, only members with Manage Server can add tracks. |
+| `/music summon` | Join your voice channel without playing anything. |
+| `/music follow [user]` | Make the bot follow a user between voice channels. |
+| `/music clean [amount]` | Delete the bot's recent messages in the current channel. |
 | `/music host <user>` | Transfer DJ privileges to another user. |
 
 ---
