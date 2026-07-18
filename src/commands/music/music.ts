@@ -112,6 +112,10 @@ function normalizeQuery(q: string): string {
   return vid && isRadio ? `https://www.youtube.com/watch?v=${vid}` : q;
 }
 
+function requesterText(track: Track): string {
+  return track.requestedBy ? `${track.requestedBy}` : 'Unknown';
+}
+
 function nowPlayingEmbed(track: Track) {
   return new EmbedBuilder()
     .setColor(Colors.Blue)
@@ -119,9 +123,26 @@ function nowPlayingEmbed(track: Track) {
     .setDescription(`**[${track.title}](${track.url})**`)
     .addFields(
       { name: 'Duration', value: track.duration, inline: true },
-      { name: 'Requested by', value: `${track.requestedBy}`, inline: true },
+      { name: 'Requested by', value: requesterText(track), inline: true },
     )
     .setThumbnail(track.thumbnail);
+}
+
+// Shown as the command reply when a track is added — so the flow reads "Added to
+// Queue" (command) then "Now Playing" (playerStart), instead of two Now Playing
+// embeds. `position` is the track's spot in the waiting queue (0 = plays next/now).
+function queuedEmbed(track: Track, position: number) {
+  const e = new EmbedBuilder()
+    .setColor(Colors.Green)
+    .setTitle('Added to Queue')
+    .setDescription(`**[${track.title}](${track.url})**`)
+    .setThumbnail(track.thumbnail)
+    .addFields(
+      { name: 'Duration', value: track.duration, inline: true },
+      { name: 'Requested by', value: requesterText(track), inline: true },
+    );
+  if (position > 0) e.addFields({ name: 'Position', value: `#${position}`, inline: true });
+  return e;
 }
 
 function queueEmbed(queue: GuildQueue, page = 0) {
@@ -224,19 +245,23 @@ const Music: Command = {
       await waitForExtractors();
       const resolved = typeof query === 'string' ? normalizeQuery(query) : query;
       return p.play(vc!, resolved, {
+        // requestedBy populates track.requestedBy so embeds can credit the user.
+        requestedBy: interaction.user,
         nodeOptions: {
           metadata: interaction.channel,
           volume: (await db.getMusicConfig(interaction.guildId!)).volume,
-          leaveOnEmpty: true,
+          leaveOnEmpty: true,          // leave when no humans remain in the channel
           leaveOnEmptyCooldown: 30000,
-          leaveOnEnd: true,
-          leaveOnEndCooldown: 30000,
+          leaveOnEnd: false,           // stay after the queue finishes (don't leave on empty queue)
         },
         connectionOptions: VOICE_CONNECT_OPTIONS,
         ...extra,
       });
     };
 
+    // The command reply always shows "Added to Queue"; the actual "Now Playing"
+    // announcement comes from the playerStart event when the track starts. This
+    // gives a clean "Added to Queue → Now Playing" flow instead of two Now Playings.
     if (sub === 'play') {
       if (!await requireVC() || !await requireNotKaraoke()) return;
       const query = interaction.options.getString('query', true);
@@ -244,11 +269,7 @@ const Music: Command = {
       try {
         const { track } = await queueTrack(query);
         const q = useQueue(interaction.guildId!);
-        if (q && q.tracks.size > 0) {
-          await interaction.editReply({ embeds: [new EmbedBuilder().setColor(Colors.Green).setTitle('Added to Queue').setDescription(`**[${track.title}](${track.url})**`).setThumbnail(track.thumbnail).addFields({ name: 'Position', value: `#${q.tracks.size}`, inline: true }, { name: 'Duration', value: track.duration, inline: true })] });
-        } else {
-          await interaction.editReply({ embeds: [nowPlayingEmbed(track)] });
-        }
+        await interaction.editReply({ embeds: [queuedEmbed(track, q?.tracks.size ?? 0)] });
       } catch (e: any) {
         await interaction.editReply(`❌ Could not play: ${e?.message ?? e}`);
       }
@@ -261,15 +282,13 @@ const Music: Command = {
       try {
         const { track } = await queueTrack(query);
         const q = useQueue(interaction.guildId!)!;
-        if (q.currentTrack !== track) {
+        const playingSomethingElse = q.currentTrack && q.currentTrack !== track;
+        if (playingSomethingElse) {
           q.moveTrack(track, 0);
-          if (sub === 'playnow') q.node.skip();
+          if (sub === 'playnow') q.node.skip(); // playerStart will announce Now Playing
         }
-        if (sub === 'playnow' || q.currentTrack === track) {
-          await interaction.editReply({ embeds: [nowPlayingEmbed(track)] });
-        } else {
-          await interaction.editReply({ embeds: [new EmbedBuilder().setColor(Colors.Green).setTitle('Playing Next').setDescription(`**[${track.title}](${track.url})**`).setThumbnail(track.thumbnail)] });
-        }
+        // position 0 → "playing now / next"; playerStart handles the Now Playing embed
+        await interaction.editReply({ embeds: [queuedEmbed(track, 0).setTitle(sub === 'playnow' ? 'Playing Now' : 'Playing Next')] });
       } catch (e: any) {
         await interaction.editReply(`❌ Could not play: ${e?.message ?? e}`);
       }
@@ -442,10 +461,9 @@ const Music: Command = {
         q = p.queues.create(interaction.guild!, {
           metadata: interaction.channel,
           volume: (await db.getMusicConfig(interaction.guildId!)).volume,
-          leaveOnEmpty: true,
+          leaveOnEmpty: true,          // leave when no humans remain in the channel
           leaveOnEmptyCooldown: 30000,
-          leaveOnEnd: true,
-          leaveOnEndCooldown: 30000,
+          leaveOnEnd: false,           // stay after the queue finishes (don't leave on empty queue)
         });
       }
       try {
