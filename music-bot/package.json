@@ -1,0 +1,21 @@
+{
+  "name": "tmcbot-music",
+  "description": "Standalone music bot — runs natively (outside Docker) so Discord voice UDP isn't virtualized",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun run index.ts",
+    "dev": "bun --watch index.ts"
+  },
+  "dependencies": {
+    "@discord-player/extractor": "^7.2.0",
+    "@snazzah/davey": "^0.1.12",
+    "discord-player": "^7.2.0",
+    "discord-player-youtubei": "^3.0.0-beta.4",
+    "discord.js": "^14.26.4",
+    "libsodium-wrappers": "^0.8.4",
+    "mediaplex": "^1.0.0",
+    "opusscript": "^0.1.1",
+    "youtube-dl-exec": "^3.1.3"
+  }
+}

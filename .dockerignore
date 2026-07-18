@@ -12,3 +12,4 @@ Dockerfile
 *.sqlite
 *.rdb
 *.sqlite-*
+music-bot

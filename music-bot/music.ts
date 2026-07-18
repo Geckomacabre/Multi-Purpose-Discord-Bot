@@ -2,14 +2,14 @@ import {
   ActionRowBuilder, ApplicationIntegrationType, ChatInputCommandInteraction, Colors, ComponentType, EmbedBuilder,
   GuildMember, InteractionContextType, MessageFlags, PermissionFlagsBits, SlashCommandBuilder, StringSelectMenuBuilder,
 } from 'discord.js';
-import { Command } from '../../interfaces/command';
+import { Command } from './command';
 import { Player, QueryType, useQueue, GuildQueue, Track, onBeforeCreateStream as registerBeforeCreateStream } from 'discord-player';
 import { DefaultExtractors } from '@discord-player/extractor';
 import { YoutubeExtractor } from 'discord-player-youtubei';
 import { Readable } from 'node:stream';
 import { spawn } from 'node:child_process';
-import * as db from '../../utils/db';
-import logger from '../../utils/logger';
+import * as db from './store';
+import logger from './logger';
 
 let player: Player | null = null;
 let extractorsReady: Promise<unknown> | null = null;
