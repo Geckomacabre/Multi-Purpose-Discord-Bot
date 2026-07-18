@@ -524,7 +524,9 @@ Community text snippets. Anyone can create a tag; the owner (or a mod) can edit/
 
 Full-featured music player. Supports YouTube, Spotify, SoundCloud, Apple Music, and more via `discord-player`.
 
-**Requires:** `ffmpeg` installed and available on your system PATH. (Also used by the Song guessing game to trim clips — see [Guessing Games](#guessing-games).)
+**Requires:** `ffmpeg` and `yt-dlp` installed and available on your system PATH. (`ffmpeg` is also used by the Song guessing game to trim clips — see [Guessing Games](#guessing-games).) The bot downloads each track's audio with `yt-dlp` and plays it from a local buffer, prefetching the next queued track for seamless transitions.
+
+> **Note on choppy audio:** if playback stutters, check where the bot is hosted. Discord voice is real-time UDP, and running under Docker Desktop on Windows/macOS routes it through a virtualized network that adds timing jitter → choppy audio. Native Docker on a Linux host does not have this problem.
 
 **Recommended:** set `YOUTUBE_COOKIE` in your `.env`. YouTube frequently blocks or challenges hosting-provider IPs, which makes playback fail silently ("no results found") without an authenticated session. See `.env.example` for how to get a cookie string.
 

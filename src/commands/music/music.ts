@@ -3,14 +3,63 @@ import {
   GuildMember, InteractionContextType, MessageFlags, PermissionFlagsBits, SlashCommandBuilder, StringSelectMenuBuilder,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
-import { Player, QueryType, useQueue, GuildQueue, Track } from 'discord-player';
+import { Player, QueryType, useQueue, GuildQueue, Track, onBeforeCreateStream as registerBeforeCreateStream } from 'discord-player';
 import { DefaultExtractors } from '@discord-player/extractor';
 import { YoutubeExtractor } from 'discord-player-youtubei';
+import { Readable } from 'node:stream';
+import { spawn } from 'node:child_process';
 import * as db from '../../utils/db';
 import logger from '../../utils/logger';
 
 let player: Player | null = null;
 let extractorsReady: Promise<unknown> | null = null;
+
+// Don't pre-download tracks longer than this (or live streams, durationMS 0) — a
+// normal song is a few MB, but this would be unbounded for a long mix / stream.
+const MAX_PREBUFFER_MS = 30 * 60 * 1000; // 30 minutes
+
+// Fully downloaded audio (compressed, ~3-4MB), keyed by track.id. We download the
+// whole file up front with yt-dlp and play from that complete in-memory copy via
+// onBeforeCreateStream. This is the literal "download the song, then play it" —
+// yt-dlp handles YouTube's throttling/obfuscation robustly (far more reliably than
+// the library's own streaming), and playing from a complete local buffer removes
+// any source-side gaps. Prefetching the NEXT track while the current one plays
+// makes transitions seamless.
+const prebufferCache = new Map<string, Promise<Buffer | null>>();
+
+// Download a track's audio to memory with yt-dlp (already installed in the image).
+function downloadAudio(url: string): Promise<Buffer> {
+  return new Promise<Buffer>((resolve, reject) => {
+    const dl = spawn('yt-dlp', [
+      '-f', 'bestaudio/best', '--no-playlist', '--quiet', '--no-warnings', '-o', '-', url,
+    ], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const chunks: Buffer[] = [];
+    let err = '';
+    dl.stdout.on('data', (c) => chunks.push(c));
+    dl.stderr.on('data', (c) => { err += c.toString(); });
+    dl.on('error', reject); // e.g. yt-dlp not found
+    dl.on('close', (code) => {
+      if (code === 0 && chunks.length) resolve(Buffer.concat(chunks));
+      else reject(new Error(`yt-dlp exited ${code}: ${err.slice(0, 300)}`));
+    });
+  });
+}
+
+// Start (or reuse) a background download of a track's audio.
+function prebuffer(track: Track): Promise<Buffer | null> {
+  const durMs = track?.durationMS ?? 0;
+  if (!track?.id || !track.url || !durMs || durMs > MAX_PREBUFFER_MS) return Promise.resolve(null);
+  let p = prebufferCache.get(track.id);
+  if (!p) {
+    p = downloadAudio(track.url).catch((e) => {
+      logger.warn(`[music] download failed for "${track.title}", will stream on demand: ${describeError(e)}`);
+      prebufferCache.delete(track.id); // allow a later retry / fall back to streaming
+      return null;
+    });
+    prebufferCache.set(track.id, p);
+  }
+  return p;
+}
 
 // Discord ENFORCES the DAVE (E2EE) voice protocol for all non-stage voice calls
 // as of 2026-03-01: connecting with DAVE disabled (max_dave_protocol_version: 0)
@@ -40,6 +89,18 @@ function describeError(err: any): string {
 export function getPlayer(client: any): Player {
   if (!player) {
     player = new Player(client, { skipFFmpeg: false });
+    // Play from the pre-downloaded compressed buffer when available (smooth start).
+    // Returning null falls back to discord-player's normal on-the-fly extraction.
+    registerBeforeCreateStream(async (track: Track) => {
+      // Serve ONLY from an already-prefetched buffer. We must NOT call prebuffer()
+      // (which calls extractor.stream) here — this hook runs inside discord-player's
+      // own stream creation, and re-entering stream() fails with "Could not extract
+      // stream from this track source". Prefetching happens before play / on the
+      // next track, so by the time a track plays its buffer is already in the cache.
+      const cached = track?.id ? prebufferCache.get(track.id) : undefined;
+      const buf = cached ? await cached : null;
+      return buf ? Readable.from(buf) : null;
+    });
     const loadDefaults = player.extractors.loadMulti(DefaultExtractors).catch(e => logger.error(`Failed to load extractors: ${describeError(e)}`));
     // discord-player swallows extractor activation errors internally (register()
     // resolves to null instead of rejecting), so without this listener a failed
@@ -48,17 +109,12 @@ export function getPlayer(client: any): Player {
     player.extractors.on('error', (_ctx: any, extractor: any, err: any) =>
       logger.error(`[music] extractor "${extractor?.identifier}" failed to activate: ${err?.message ?? err}`)
     );
-    // discord-player v7 dropped YouTube support from @discord-player/extractor entirely
-    // (constant breakage from YouTube's side) — without this, every play/search query
-    // fails with "Could not extract stream for this track" (ERR_NO_RESULT).
-    // YOUTUBE_COOKIE is optional: it authenticates the session, which can help
-    // avoid rate-limiting/bot-detection on busy bots.
-    // We use the extractor's default streaming path (ANDROID_VR first, with
-    // MWEB/WEB_EMBEDDED/SABR fallbacks) rather than forcing a single client — it's
-    // the maintained path and has fallbacks. (An earlier IOS createStream override
-    // was removed: it forced per-chunk ranged fetches that hit a non-2xx from
-    // googlevideo, and relied on the beta's toNodeReadable whose background reader
-    // has no error handler, surfacing as an unhandled rejection.)
+    // discord-player v7 dropped YouTube support from @discord-player/extractor
+    // entirely (constant breakage from YouTube's side), so this extractor provides
+    // YouTube search/metadata. The actual audio is downloaded by yt-dlp (see
+    // prebuffer/onBeforeCreateStream above); the extractor's own streaming is only
+    // the fallback if a download fails. YOUTUBE_COOKIE is optional — it authenticates
+    // the session, which can help with rate-limiting/bot-detection on busy bots.
     const ytCookieOpts = Bun.env.YOUTUBE_COOKIE ? { cookie: Bun.env.YOUTUBE_COOKIE } : {};
     const loadYoutube = player.extractors.register(YoutubeExtractor, ytCookieOpts as any)
       .catch(e => logger.error(`Failed to load YouTube extractor: ${describeError(e)}`));
@@ -73,7 +129,21 @@ export function getPlayer(client: any): Player {
     player.events.on('playerStart', (queue, track) => {
       const ch = queue.metadata as any;
       if (ch?.send) ch.send({ embeds: [nowPlayingEmbed(track)] });
+      // Prefetch the next track in the background so its transition is seamless.
+      const next = queue.tracks.at(0);
+      if (next) prebuffer(next);
     });
+    // When a track is queued while something plays, start pre-downloading whatever
+    // is now next-up (deduped by the cache; bounded to ~the next track's worth).
+    (player.events as any).on('audioTrackAdd', (queue: GuildQueue) => {
+      const next = queue.tracks.at(0);
+      if (next && queue.currentTrack) prebuffer(next);
+    });
+    // Free a track's buffer once it finishes so memory stays bounded.
+    (player.events as any).on('playerFinish', (_queue: any, track: Track) => {
+      if (track?.id) prebufferCache.delete(track.id);
+    });
+    (player.events as any).on('queueDelete', () => prebufferCache.clear());
     client.on('voiceStateUpdate', (oldState: any, newState: any) => {
       const followedId = followMap.get(newState.guild.id);
       if (!followedId || newState.member?.id !== followedId) return;
@@ -244,7 +314,23 @@ const Music: Command = {
     const queueTrack = async (query: string | Track, extra: Record<string, any> = {}) => {
       await waitForExtractors();
       const resolved = typeof query === 'string' ? normalizeQuery(query) : query;
-      return p.play(vc!, resolved, {
+      // Force text searches through YouTube. Auto-search otherwise resolves names
+      // via SoundCloud/Spotify (metadata-only extractors that discord-player then
+      // bridges to YouTube for audio) — that bridging path can't be prefetched and
+      // failed with "Could not extract stream from this track source". Searching
+      // YouTube directly yields a youtubei track we can both prefetch and stream.
+      const isUrl = typeof resolved === 'string' && /^https?:\/\//i.test(resolved);
+      const searchEngine = extra.searchEngine ?? (isUrl ? QueryType.AUTO : QueryType.YOUTUBE_SEARCH);
+      // Resolve to concrete tracks up front so we can prefetch the compressed audio
+      // into the cache BEFORE play (prefetch can't run inside the stream hook). For
+      // a single track, wait for the buffer so it starts from a complete local copy.
+      const result = typeof resolved === 'string'
+        ? await p.search(resolved, { requestedBy: interaction.user, searchEngine })
+        : resolved;
+      const firstTrack: Track | undefined = result instanceof Track ? result : (result as any)?.tracks?.[0];
+      const isPlaylist = !!(result as any)?.playlist;
+      if (firstTrack && !isPlaylist) await prebuffer(firstTrack).catch(() => {});
+      return p.play(vc!, result as any, {
         // requestedBy populates track.requestedBy so embeds can credit the user.
         requestedBy: interaction.user,
         nodeOptions: {
