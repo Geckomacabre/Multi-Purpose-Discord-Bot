@@ -4,6 +4,13 @@ import logger from './logger';
 
 const TOKEN = Bun.env.TOKEN;
 const CLIENT_ID = Bun.env.CLIENT_ID;
+// If GUILD_ID is set, /music is registered as a GUILD command in that server.
+// This is REQUIRED when sharing the main bot's token/application: the main bot
+// does a full replace of its GLOBAL commands on every startup, so registering
+// /music globally under the same app would wipe those (and vice-versa). Guild
+// commands are a separate namespace, so the two don't clobber each other. It also
+// makes /music appear instantly instead of taking up to an hour to propagate.
+const GUILD_ID = Bun.env.GUILD_ID;
 
 if (!TOKEN || !CLIENT_ID) {
   logger.error('Missing TOKEN or CLIENT_ID in the environment (.env). See README.md.');
@@ -24,8 +31,11 @@ client.once(Events.ClientReady, async (c) => {
   const rest = new REST({ version: '10' }).setToken(TOKEN);
   const body = Array.from(commands.values()).map((cmd) => cmd.data.toJSON());
   try {
-    await rest.put(Routes.applicationCommands(CLIENT_ID), { body });
-    logger.info(`Registered ${body.length} command(s).`);
+    const route = GUILD_ID
+      ? Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID)
+      : Routes.applicationCommands(CLIENT_ID);
+    await rest.put(route, { body });
+    logger.info(`Registered ${body.length} command(s)${GUILD_ID ? ` in guild ${GUILD_ID}` : ' globally'}.`);
   } catch (e) {
     logger.error(`Command registration failed: ${e}`);
   }
