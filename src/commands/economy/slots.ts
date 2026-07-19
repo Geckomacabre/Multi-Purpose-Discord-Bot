@@ -1,7 +1,7 @@
 import {
   ApplicationIntegrationType, ButtonBuilder, ButtonStyle,
   ChatInputCommandInteraction, Colors, ComponentType, ContainerBuilder,
-  InteractionContextType, SlashCommandBuilder, TextDisplayBuilder,
+  InteractionContextType, Message, SlashCommandBuilder, TextDisplayBuilder,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
 import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplier, recordGameResult } from '../../utils/db';
@@ -9,6 +9,10 @@ import { awardBonusXp } from '../../utils/xpBonus.js';
 import { randInt } from '../../utils/random.js';
 import { cv2Err, IS_CV2 } from '../../utils/components.js';
 import { applyLossInsurance, insuranceLine } from '../../utils/gamble.js';
+import { renderSlotsGif, SLOTS_REVEAL_MS } from '../../utils/slotsRender.js';
+import { postWithReveal, mediaPanel } from '../../utils/casinoReveal.js';
+
+const GIF_NAME = 'slots.gif';
 
 const REEL = ['🍒','🍒','🍒','🍒','🍒','🍋','🍋','🍋','🍋','🔔','🔔','🔔','💎','💎','7️⃣'];
 // Paytable tuned to 99.97% RTP with a 60% hit rate (pairs pay too).
@@ -32,7 +36,22 @@ function buildPanel(content: string, accentColor: number, disabled = false): any
   return { flags: IS_CV2, components: [container] };
 }
 
-type SpinResult = { content: string; accentColor: number };
+type SpinResult = { content: string; accentColor: number; gif: Buffer; bet: number; sym: string };
+
+const againButton = (disabled: boolean) => new ButtonBuilder()
+  .setCustomId('slots_again').setLabel('🔄 Spin Again')
+  .setStyle(ButtonStyle.Primary).setDisabled(disabled);
+
+// Posts the spin, then reveals the payout once the reels have stopped.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function showSpin(r: SpinResult, edit: (p: any) => Promise<any>) {
+  return postWithReveal({
+    edit, gif: r.gif, name: GIF_NAME, revealMs: SLOTS_REVEAL_MS,
+    suspense: { content: `**🎰 Slots** — Bet: ${r.sym} ${r.bet.toLocaleString()}\nSpinning…`, color: Colors.Blurple },
+    result: { content: r.content, color: r.accentColor },
+    button: againButton,
+  });
+}
 
 // Resolves a single spin (bet already validated by the caller) — factored
 // out so both the initial command and the "Spin Again" button reuse
@@ -84,7 +103,8 @@ async function playSpin(
 
   const content = `**🎰 Slots** — Bet: ${sym} ${bet.toLocaleString()}\n${reels.join(' ｜ ')}\n${label}\n${resultLine}\n**Balance:** ${sym} **${(newBalance + refund).toLocaleString()}**\n${LEGEND}${xpLine}`;
   const accentColor = profit ? Colors.Gold : multiplier > 0 ? Colors.Yellow : Colors.Red;
-  return { content, accentColor };
+  const gif = await renderSlotsGif(reels as string[], multiplier > 0);
+  return { content, accentColor, gif, bet, sym };
 }
 
 const Slots: Command = {
@@ -106,7 +126,8 @@ const Slots: Command = {
 
     await interaction.deferReply();
     let last = await playSpin(bet, guildId, userId, cfg, interaction.client, interaction.channelId);
-    const msg = await interaction.editReply(buildPanel(last.content, last.accentColor));
+    let shown = await showSpin(last, (p) => interaction.editReply(p));
+    const msg = shown.msg as Message;
 
     // Keeps the whole session in one message instead of a new one per spin.
     // idle-based so an actively-playing user isn't cut off after a fixed
@@ -132,12 +153,17 @@ const Slots: Command = {
         return;
       }
       last = await playSpin(bet, guildId, userId, cfg, interaction.client, interaction.channelId);
-      await btn.editReply(buildPanel(last.content, last.accentColor)).catch(() => {});
+      shown = await showSpin(last, (p) => btn.editReply(p));
     });
 
     collector.on('end', async (_c, reason) => {
       if (reason === 'broke') return;
-      await interaction.editReply(buildPanel(last.content, last.accentColor, true)).catch(() => {});
+      // Re-use the uploaded GIF URL so expiring the button doesn't re-upload
+      // the file (which would replay the animation).
+      await interaction.editReply({
+        flags: IS_CV2,
+        components: [mediaPanel(last.content, last.accentColor, shown.mediaUrl, againButton(true))],
+      }).catch(() => {});
     });
   },
 };

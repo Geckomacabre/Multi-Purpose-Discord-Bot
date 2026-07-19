@@ -9,6 +9,12 @@ import { awardBonusXp } from '../../utils/xpBonus.js';
 import { randInt } from '../../utils/random.js';
 import { cv2Err } from '../../utils/components.js';
 import { applyLossInsurance, insuranceLine, buildGamePanel } from '../../utils/gamble.js';
+import { renderScratchCard } from '../../utils/scratchRender.js';
+import { mediaPanel } from '../../utils/casinoReveal.js';
+import { AttachmentBuilder } from 'discord.js';
+import { IS_CV2 } from '../../utils/components.js';
+
+const CARD_NAME = 'scratch.png';
 
 // Paytable tuned to ~99% RTP with a 52% hit rate: you need FOUR of the same
 // symbol among the 9 cells. 4 cherries = money back; everything rarer profits.
@@ -67,7 +73,7 @@ async function resolveGame(
   symbols: string[], bet: number,
   guildId: string, userId: string, cfg: Awaited<ReturnType<typeof getEconomyConfig>>,
   client: ChatInputCommandInteraction['client'], channelId: string,
-): Promise<{ content: string; win: boolean }> {
+): Promise<{ content: string; win: boolean; winEmoji: string | null }> {
   const win = checkWin(symbols);
   const sym = cfg.currency_symbol;
   let line = '';
@@ -90,7 +96,22 @@ async function resolveGame(
     line = `\n😢 No match — better luck next time!${insuranceLine(sym, refund)}`;
   }
   const eco2 = await getOrCreateEconomy(guildId, userId);
-  return { content: `🎟️ **Scratch Card** — ${sym} ${bet.toLocaleString()}${line}\n**Balance:** ${sym} ${eco2.balance.toLocaleString()}\n${LEGEND}`, win: !!win };
+  return {
+    content: `🎟️ **Scratch Card** — ${sym} ${bet.toLocaleString()}${line}\n**Balance:** ${sym} ${eco2.balance.toLocaleString()}\n${LEGEND}`,
+    win: !!win,
+    winEmoji: win?.emoji ?? null,
+  };
+}
+
+// Final payoff image: the full grid with the matching symbols lit up.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function finishedCard(content: string, win: boolean, symbols: string[], winEmoji: string | null): any {
+  const png = renderScratchCard(symbols, winEmoji);
+  return {
+    flags: IS_CV2,
+    components: [mediaPanel(content, win ? Colors.Green : Colors.Red, `attachment://${CARD_NAME}`)],
+    files: [new AttachmentBuilder(png, { name: CARD_NAME })],
+  };
 }
 
 const Scratch: Command = {
@@ -135,8 +156,8 @@ const Scratch: Command = {
 
       if (revealed.every(r => r)) {
         collector.stop('done');
-        const { content, win } = await resolveGame(symbols, bet, guildId, userId, cfg, interaction.client, interaction.channelId);
-        await interaction.editReply(buildGamePanel(content, win ? Colors.Green : Colors.Red, buildGrid(symbols, revealed))).catch(() => {});
+        const { content, win, winEmoji } = await resolveGame(symbols, bet, guildId, userId, cfg, interaction.client, interaction.channelId);
+        await interaction.editReply(finishedCard(content, win, symbols, winEmoji)).catch(() => {});
       } else {
         await interaction.editReply(buildGamePanel(
           `🎟️ **Scratch Card** — ${cfg.currency_symbol} ${bet.toLocaleString()}\nClick cells to reveal! Match **4** of the same symbol to win.\n${LEGEND}`,
@@ -148,8 +169,8 @@ const Scratch: Command = {
     collector.on('end', async (_c, reason) => {
       if (reason !== 'done') {
         revealed.fill(true);
-        const { content, win } = await resolveGame(symbols, bet, guildId, userId, cfg, interaction.client, interaction.channelId);
-        await interaction.editReply(buildGamePanel(`*(Timed out — auto-revealed)*\n${content}`, win ? Colors.Green : Colors.Red, buildGrid(symbols, revealed))).catch(() => {});
+        const { content, win, winEmoji } = await resolveGame(symbols, bet, guildId, userId, cfg, interaction.client, interaction.channelId);
+        await interaction.editReply(finishedCard(`*(Timed out — auto-revealed)*\n${content}`, win, symbols, winEmoji)).catch(() => {});
       }
     });
   },
