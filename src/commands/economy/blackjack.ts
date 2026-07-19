@@ -1,17 +1,48 @@
 import {
-  ActionRowBuilder, ApplicationIntegrationType, ButtonBuilder, ButtonStyle,
-  ChatInputCommandInteraction, Colors, ComponentType, InteractionContextType,
-  SlashCommandBuilder,
+  ActionRowBuilder, ApplicationIntegrationType, AttachmentBuilder, ButtonBuilder, ButtonStyle,
+  ChatInputCommandInteraction, Colors, ComponentType, ContainerBuilder, InteractionContextType,
+  MediaGalleryBuilder, MediaGalleryItemBuilder, SlashCommandBuilder, TextDisplayBuilder,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
 import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplier, recordGameResult } from '../../utils/db';
 import { awardBonusXp } from '../../utils/xpBonus.js';
 import { randInt } from '../../utils/random.js';
-import { cv2Err } from '../../utils/components.js';
+import { cv2Err, IS_CV2 } from '../../utils/components.js';
 import { newDeck, shuffleDeck, handStr, bjHandValue, type Card } from '../../utils/cards.js';
-import { applyLossInsurance, insuranceLine, buildGamePanel } from '../../utils/gamble.js';
+import { applyLossInsurance, insuranceLine } from '../../utils/gamble.js';
+import { renderTable } from '../../utils/cardRender.js';
 
 type Outcome = 'win' | 'blackjack' | 'push' | 'lose';
+
+const TABLE_NAME = 'blackjack.png';
+
+/**
+ * Renders the felt as an image alongside the text. Blackjack is interactive, so
+ * a fresh table is drawn per decision (2–5 per hand) rather than one animation.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function bjPanel(
+  playerHand: Card[], dealerHand: Card[], hideHole: boolean,
+  content: string, color: number, rows?: ActionRowBuilder<ButtonBuilder>,
+): any {
+  const png = renderTable([
+    {
+      label: 'Dealer', cards: dealerHand,
+      hideFrom: hideHole ? 1 : undefined,
+      note: hideHole ? `${bjHandValue([dealerHand[0]!])}+` : `${bjHandValue(dealerHand)}`,
+    },
+    { label: 'You', cards: playerHand, note: `${bjHandValue(playerHand)}` },
+  ], '🃏 BLACKJACK');
+
+  const c = new ContainerBuilder()
+    .setAccentColor(color)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(content))
+    .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(
+      new MediaGalleryItemBuilder().setURL(`attachment://${TABLE_NAME}`),
+    ));
+  if (rows) c.addActionRowComponents(rows);
+  return { flags: IS_CV2, components: [c], files: [new AttachmentBuilder(png, { name: TABLE_NAME })] };
+}
 
 function buildButtons(canDouble: boolean, sym: string, bet: number): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -95,7 +126,8 @@ const Blackjack: Command = {
 
       const icon = outcome === 'win' || outcome === 'blackjack' ? '✅' : outcome === 'push' ? '🤝' : '❌';
       const color = outcome === 'win' || outcome === 'blackjack' ? Colors.Green : outcome === 'push' ? Colors.Yellow : Colors.Red;
-      await interaction.editReply(buildGamePanel(
+      await interaction.editReply(bjPanel(
+        playerHand, dealerHand, false,
         gameContent(playerHand, dealerHand, activeBet, sym, false) +
           `\n\n${icon} ${msg}${insuranceLine(sym, refund)}${xpLine}\n**Balance:** ${sym} **${(newBalance + refund).toLocaleString()}**`,
         color,
@@ -140,7 +172,8 @@ const Blackjack: Command = {
       return;
     }
 
-    const msg = await interaction.editReply(buildGamePanel(
+    const msg = await interaction.editReply(bjPanel(
+      playerHand, dealerHand, true,
       gameContent(playerHand, dealerHand, activeBet, sym, true),
       Colors.Blurple, buildButtons(true, sym, activeBet),
     ));
@@ -181,7 +214,8 @@ const Blackjack: Command = {
         collector.stop('stand');
         await resolveStand();
       } else {
-        await interaction.editReply(buildGamePanel(
+        await interaction.editReply(bjPanel(
+          playerHand, dealerHand, true,
           gameContent(playerHand, dealerHand, activeBet, sym, true),
           Colors.Blurple, buildButtons(false, sym, activeBet),
         )).catch(() => {});

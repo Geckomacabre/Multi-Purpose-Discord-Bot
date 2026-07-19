@@ -1,14 +1,47 @@
 import {
-  ActionRowBuilder, ApplicationIntegrationType, ButtonBuilder, ButtonStyle,
-  ChatInputCommandInteraction, Colors, ComponentType, InteractionContextType,
-  SlashCommandBuilder,
+  ActionRowBuilder, ApplicationIntegrationType, AttachmentBuilder, ButtonBuilder, ButtonStyle,
+  ChatInputCommandInteraction, Colors, ComponentType, ContainerBuilder, InteractionContextType,
+  MediaGalleryBuilder, MediaGalleryItemBuilder, SlashCommandBuilder, TextDisplayBuilder,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
 import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplier, recordGameResult } from '../../utils/db';
 import { awardBonusXp } from '../../utils/xpBonus.js';
-import { cv2Err } from '../../utils/components.js';
+import { cv2Err, IS_CV2 } from '../../utils/components.js';
 import { newDeck, shuffleDeck, cardStr, evaluatePokerHand, type Card } from '../../utils/cards.js';
-import { applyLossInsurance, insuranceLine, buildGamePanel } from '../../utils/gamble.js';
+import { applyLossInsurance, insuranceLine } from '../../utils/gamble.js';
+import { renderTable } from '../../utils/cardRender.js';
+
+const TABLE_NAME = 'poker.png';
+
+/**
+ * Renders the hand as an image. Held cards glow gold; the rest dim so it's
+ * obvious at a glance which will be replaced on the draw.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function pokerPanel(
+  hand: Card[], held: boolean[], content: string, color: number,
+  rows?: ActionRowBuilder<ButtonBuilder>[], footer?: string,
+  // During the hold phase, un-held cards dim to show they'll be replaced. On the
+  // final hand there's nothing left to replace, so dimming is turned off —
+  // otherwise a losing hand would render entirely greyed out.
+  dimUnheld = true,
+): any {
+  const png = renderTable([{
+    label: 'Your hand',
+    cards: hand,
+    glow: held,
+    dim: dimUnheld ? held.map(h => !h) : undefined,
+  }], '♠️ VIDEO POKER', footer);
+
+  const c = new ContainerBuilder()
+    .setAccentColor(color)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(content))
+    .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(
+      new MediaGalleryItemBuilder().setURL(`attachment://${TABLE_NAME}`),
+    ));
+  if (rows) for (const r of rows) c.addActionRowComponents(r);
+  return { flags: IS_CV2, components: [c], files: [new AttachmentBuilder(png, { name: TABLE_NAME })] };
+}
 
 const PAYTABLE =
   '**Paytable** (multiplier × bet):\n' +
@@ -65,7 +98,8 @@ const Poker: Command = {
     const held: boolean[] = new Array(5).fill(false);
     const sym = cfg.currency_symbol;
 
-    const msg = await interaction.editReply(buildGamePanel(
+    const msg = await interaction.editReply(pokerPanel(
+      hand, held,
       `**🃏 Video Poker** — Bet: ${sym} ${bet.toLocaleString()}\n\n` +
         `${heldSummary(hand, held)}\n\n` +
         `Toggle cards to **Hold**, then click **Draw** to replace the rest.\n${PAYTABLE}`,
@@ -106,7 +140,9 @@ const Poker: Command = {
           xpLine = xpGiven > 0 ? ` +**${xpGiven} XP**!` : '';
         }
 
-        await interaction.editReply(buildGamePanel(
+        // Final hand: light up every card (the draw is done, nothing is "held").
+        await interaction.editReply(pokerPanel(
+          hand, new Array(5).fill(isWin),
           `**🃏 Video Poker** — Bet: ${sym} ${bet.toLocaleString()}\n\n` +
             `${hand.map(cardStr).join('  ')}\n\n` +
             (isWin
@@ -114,6 +150,7 @@ const Poker: Command = {
               : `❌ **${result.name}** — You lost **${sym} ${bet.toLocaleString()}**.${insuranceLine(sym, refund)}`) +
             `\n**Balance:** ${sym} **${(newBalance + refund).toLocaleString()}**\n${PAYTABLE}`,
           isWin ? Colors.Green : Colors.Red,
+          undefined, result.name, false,
         )).catch(() => {});
         return;
       }
@@ -121,7 +158,8 @@ const Poker: Command = {
       // Toggle hold
       const idx = parseInt(btn.customId.split('_')[2] ?? '0');
       held[idx] = !held[idx];
-      await interaction.editReply(buildGamePanel(
+      await interaction.editReply(pokerPanel(
+        hand, held,
         `**🃏 Video Poker** — Bet: ${sym} ${bet.toLocaleString()}\n\n` +
           `${heldSummary(hand, held)}\n\n` +
           `Toggle cards to **Hold**, then click **Draw** to replace the rest.\n${PAYTABLE}`,
@@ -131,11 +169,12 @@ const Poker: Command = {
 
     collector.on('end', async (_c, reason) => {
       if (reason === 'time') {
-        await interaction.editReply(buildGamePanel(
+        await interaction.editReply(pokerPanel(
+          hand, new Array(5).fill(false),
           `**🃏 Video Poker** — Bet: ${sym} ${bet.toLocaleString()}\n\n` +
             `${hand.map(cardStr).join('  ')}\n\n` +
             `⏰ Timed out — you lost **${sym} ${bet.toLocaleString()}**.`,
-          Colors.Red,
+          Colors.Red, undefined, undefined, false,
         )).catch(() => {});
         await adjustBalance(guildId, userId, -bet);
       }
