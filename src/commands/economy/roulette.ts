@@ -1,6 +1,7 @@
 import {
-  ApplicationIntegrationType, ChatInputCommandInteraction, Colors,
-  ContainerBuilder, InteractionContextType, SlashCommandBuilder, TextDisplayBuilder,
+  ApplicationIntegrationType, AttachmentBuilder, ChatInputCommandInteraction, Colors,
+  ContainerBuilder, InteractionContextType, MediaGalleryBuilder, MediaGalleryItemBuilder,
+  SlashCommandBuilder, TextDisplayBuilder,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
 import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplier, recordGameResult } from '../../utils/db';
@@ -8,6 +9,9 @@ import { awardBonusXp } from '../../utils/xpBonus.js';
 import { randInt } from '../../utils/random.js';
 import { cv2Err, IS_CV2 } from '../../utils/components.js';
 import { applyLossInsurance, insuranceLine } from '../../utils/gamble.js';
+import { renderRouletteGif } from '../../utils/rouletteRender.js';
+
+const GIF_NAME = 'roulette.gif';
 
 // Standard European roulette red numbers
 const RED = new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36]);
@@ -49,7 +53,8 @@ const Roulette: Command = {
       await interaction.reply(cv2Err(`❌ Not enough ${cfg.currency_name}. Balance: **${cfg.currency_symbol} ${eco.balance.toLocaleString()}**.`)); return;
     }
 
-    let result = randInt(1, 36);
+    await interaction.deferReply();
+    const result = randInt(1, 36);
     let multiplier = 2;
     const wouldWin = (r: number) => {
       const red = RED.has(r);
@@ -95,6 +100,7 @@ const Roulette: Command = {
       low: 'Low (1–18)', high: 'High (19–36)', number: `Number ${targetNum}`,
     };
 
+    const gif = await renderRouletteGif(result);
     const container = new ContainerBuilder()
       .setAccentColor(win ? Colors.Green : Colors.Red)
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(
@@ -105,9 +111,12 @@ const Roulette: Command = {
           ? `✅ You won **${sym} ${winnings.toLocaleString()}**!${luckMult > 1 ? ' *(🍀 Lucky Charm!)*' : ''}`
           : `❌ You lost **${sym} ${bet.toLocaleString()}**.${insuranceLine(sym, refund)}`) +
         `\n**Balance:** ${sym} **${(newBalance + refund).toLocaleString()}**${xpLine}`
+      ))
+      .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(
+        new MediaGalleryItemBuilder().setURL(`attachment://${GIF_NAME}`),
       ));
 
-    await interaction.reply({ flags: IS_CV2, components: [container] });
+    await interaction.editReply({ flags: IS_CV2, components: [container], files: [new AttachmentBuilder(gif, { name: GIF_NAME })] });
   },
 };
 
