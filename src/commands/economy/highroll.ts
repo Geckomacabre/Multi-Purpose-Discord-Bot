@@ -1,15 +1,15 @@
 import {
-  ApplicationIntegrationType, AttachmentBuilder, ChatInputCommandInteraction, Colors,
-  ContainerBuilder, InteractionContextType, MediaGalleryBuilder, MediaGalleryItemBuilder,
-  SlashCommandBuilder, TextDisplayBuilder,
+  ApplicationIntegrationType, ChatInputCommandInteraction, Colors,
+  InteractionContextType, SlashCommandBuilder,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
 import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplier, recordGameResult } from '../../utils/db';
 import { awardBonusXp } from '../../utils/xpBonus.js';
 import { randInt } from '../../utils/random.js';
-import { cv2Err, IS_CV2 } from '../../utils/components.js';
+import { cv2Err } from '../../utils/components.js';
 import { applyLossInsurance, insuranceLine } from '../../utils/gamble.js';
-import { renderHighRollGif } from '../../utils/highRollRender.js';
+import { renderHighRollGif, HIGHROLL_REVEAL_MS } from '../../utils/highRollRender.js';
+import { postWithReveal } from '../../utils/casinoReveal.js';
 
 const GIF_NAME = 'highroll.gif';
 
@@ -48,15 +48,15 @@ const HighRoll: Command = {
     }
     const result = tie ? `It's a tie! Your bet of **${sym} ${bet.toLocaleString()}** is refunded.` : win ? `You won **${sym} ${Math.floor(bet * luckMult).toLocaleString()}**!${luckMult > 1 ? ' *(🍀 Lucky Charm!)*' : ''}` : `You lost **${sym} ${bet.toLocaleString()}**.`;
     const gif = await renderHighRollGif(playerRoll, botRoll);
-    const container = new ContainerBuilder()
-      .setAccentColor(win ? Colors.Green : tie ? Colors.Yellow : Colors.Red)
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `**🎲 High Roll**\n**Your Roll:** ${playerRoll} | **Bot Roll:** ${botRoll}\n${result}${insuranceLine(sym, refund)}\n**Balance:** ${sym} **${(newBalance + refund).toLocaleString()}**${xpLine}`
-      ))
-      .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(
-        new MediaGalleryItemBuilder().setURL(`attachment://${GIF_NAME}`),
-      ));
-    await interaction.editReply({ flags: IS_CV2, components: [container], files: [new AttachmentBuilder(gif, { name: GIF_NAME })] });
+    await postWithReveal({
+      edit: (payload) => interaction.editReply(payload),
+      gif, name: GIF_NAME, revealMs: HIGHROLL_REVEAL_MS,
+      suspense: { content: `**🎲 High Roll** — Bet: ${sym} ${bet.toLocaleString()}\nRolling…`, color: Colors.Blurple },
+      result: {
+        content: `**🎲 High Roll**\n**Your Roll:** ${playerRoll} | **Bot Roll:** ${botRoll}\n${result}${insuranceLine(sym, refund)}\n**Balance:** ${sym} **${(newBalance + refund).toLocaleString()}**${xpLine}`,
+        color: win ? Colors.Green : tie ? Colors.Yellow : Colors.Red,
+      },
+    });
   },
 };
 

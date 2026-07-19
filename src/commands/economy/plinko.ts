@@ -1,8 +1,7 @@
 import {
-  ApplicationIntegrationType, AttachmentBuilder, ButtonBuilder, ButtonStyle,
+  ApplicationIntegrationType, ButtonBuilder, ButtonStyle,
   ChatInputCommandInteraction, Colors, ComponentType, ContainerBuilder,
-  InteractionContextType, MediaGalleryBuilder, MediaGalleryItemBuilder,
-  SlashCommandBuilder, TextDisplayBuilder,
+  InteractionContextType, Message, SlashCommandBuilder, TextDisplayBuilder,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
 import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplier, recordGameResult } from '../../utils/db';
@@ -10,7 +9,8 @@ import { awardBonusXp } from '../../utils/xpBonus.js';
 import { rand } from '../../utils/random.js';
 import { cv2Err, IS_CV2 } from '../../utils/components.js';
 import { applyLossInsurance, insuranceLine } from '../../utils/gamble.js';
-import { renderPlinkoGif, ROWS } from '../../utils/plinkoBoard.js';
+import { renderPlinkoGif, ROWS, PLINKO_REVEAL_MS } from '../../utils/plinkoBoard.js';
+import { postWithReveal, mediaPanel } from '../../utils/casinoReveal.js';
 
 // Landing bucket k follows a binomial distribution: P(k) = C(12,k)/4096, i.e.
 // 0.024% 0.293% 1.611% 5.371% 12.085% 19.336% 22.559% (then mirrored).
@@ -32,21 +32,7 @@ function dropBall(): { steps: number[]; bucket: number } {
   return { steps, bucket };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function buildPanel(gif: Buffer, content: string, accentColor: number, disabled = false): any {
-  const container = new ContainerBuilder()
-    .setAccentColor(accentColor)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(content))
-    .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(
-      new MediaGalleryItemBuilder().setURL(`attachment://${GIF_NAME}`),
-    ))
-    .addActionRowComponents(row => row.addComponents(
-      new ButtonBuilder().setCustomId('plinko_again').setLabel('🎲 Drop Again').setStyle(ButtonStyle.Primary).setDisabled(disabled),
-    ));
-  return { flags: IS_CV2, files: [new AttachmentBuilder(gif, { name: GIF_NAME })], components: [container] };
-}
-
-type DropResult = { gif: Buffer; content: string; accentColor: number };
+type DropResult = { gif: Buffer; content: string; accentColor: number; bet: number; sym: string };
 
 async function playDrop(
   bet: number, guildId: string, userId: string,
@@ -88,7 +74,22 @@ async function playDrop(
 
   const content = `**🎲 Plinko** — Bet: ${sym} ${bet.toLocaleString()}\n${label}\n${resultLine}\n**Balance:** ${sym} **${(newBalance + refund).toLocaleString()}**${xpLine}`;
   const accentColor = profit ? Colors.Gold : winnings === bet ? Colors.Yellow : Colors.Red;
-  return { gif, content, accentColor };
+  return { gif, content, accentColor, bet, sym };
+}
+
+const againButton = (disabled: boolean) => new ButtonBuilder()
+  .setCustomId('plinko_again').setLabel('🎲 Drop Again')
+  .setStyle(ButtonStyle.Primary).setDisabled(disabled);
+
+// Posts the drop, then reveals the payout once the ball has landed.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function showDrop(r: DropResult, edit: (p: any) => Promise<any>) {
+  return postWithReveal({
+    edit, gif: r.gif, name: GIF_NAME, revealMs: PLINKO_REVEAL_MS,
+    suspense: { content: `**🎲 Plinko** — Bet: ${r.sym} ${r.bet.toLocaleString()}\nDropping…`, color: Colors.Blurple },
+    result: { content: r.content, color: r.accentColor },
+    button: againButton,
+  });
 }
 
 const Plinko: Command = {
@@ -110,7 +111,8 @@ const Plinko: Command = {
 
     await interaction.deferReply();
     let last = await playDrop(bet, guildId, userId, cfg, interaction.client, interaction.channelId);
-    const msg = await interaction.editReply(buildPanel(last.gif, last.content, last.accentColor));
+    let shown = await showDrop(last, (p) => interaction.editReply(p));
+    const msg = shown.msg as Message;
 
     // Keeps the session in one message, like /slots — idle-based so an actively
     // playing user isn't cut off after a fixed window.
@@ -135,12 +137,17 @@ const Plinko: Command = {
         return;
       }
       last = await playDrop(bet, guildId, userId, cfg, interaction.client, interaction.channelId);
-      await btn.editReply(buildPanel(last.gif, last.content, last.accentColor)).catch(() => {});
+      shown = await showDrop(last, (p) => btn.editReply(p));
     });
 
     collector.on('end', async (_c, reason) => {
       if (reason === 'broke') return;
-      await interaction.editReply(buildPanel(last.gif, last.content, last.accentColor, true)).catch(() => {});
+      // Re-use the already-uploaded GIF URL so expiring the button doesn't
+      // re-upload the file (which would replay the animation).
+      await interaction.editReply({
+        flags: IS_CV2,
+        components: [mediaPanel(last.content, last.accentColor, shown.mediaUrl, againButton(true))],
+      }).catch(() => {});
     });
   },
 };

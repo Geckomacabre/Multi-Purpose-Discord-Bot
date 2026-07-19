@@ -84,6 +84,9 @@ function renderFrames(player: number, bot: number): Buffer[] {
   return frames;
 }
 
+/** How long the counters spin before locking on the final rolls. */
+export const HIGHROLL_REVEAL_MS = Math.round((SPIN_FRAMES / FPS) * 1000);
+
 /** Animated High Roll: two counters spin, then lock on the given values. */
 export async function renderHighRollGif(player: number, bot: number): Promise<Buffer> {
   ensureFonts();

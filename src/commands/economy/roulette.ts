@@ -1,15 +1,15 @@
 import {
-  ApplicationIntegrationType, AttachmentBuilder, ChatInputCommandInteraction, Colors,
-  ContainerBuilder, InteractionContextType, MediaGalleryBuilder, MediaGalleryItemBuilder,
-  SlashCommandBuilder, TextDisplayBuilder,
+  ApplicationIntegrationType, ChatInputCommandInteraction, Colors,
+  InteractionContextType, SlashCommandBuilder,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
 import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplier, recordGameResult } from '../../utils/db';
 import { awardBonusXp } from '../../utils/xpBonus.js';
 import { randInt } from '../../utils/random.js';
-import { cv2Err, IS_CV2 } from '../../utils/components.js';
+import { cv2Err } from '../../utils/components.js';
 import { applyLossInsurance, insuranceLine } from '../../utils/gamble.js';
-import { renderRouletteGif } from '../../utils/rouletteRender.js';
+import { renderRouletteGif, ROULETTE_REVEAL_MS } from '../../utils/rouletteRender.js';
+import { postWithReveal } from '../../utils/casinoReveal.js';
 
 const GIF_NAME = 'roulette.gif';
 
@@ -101,22 +101,25 @@ const Roulette: Command = {
     };
 
     const gif = await renderRouletteGif(result);
-    const container = new ContainerBuilder()
-      .setAccentColor(win ? Colors.Green : Colors.Red)
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `**🎡 Roulette**\n` +
-        `The ball landed on **${colorEmoji} ${result}** *(${colorName})*\n\n` +
-        `Bet on: **${betLabel[type]}**\n` +
-        (win
-          ? `✅ You won **${sym} ${winnings.toLocaleString()}**!${luckMult > 1 ? ' *(🍀 Lucky Charm!)*' : ''}`
-          : `❌ You lost **${sym} ${bet.toLocaleString()}**.${insuranceLine(sym, refund)}`) +
-        `\n**Balance:** ${sym} **${(newBalance + refund).toLocaleString()}**${xpLine}`
-      ))
-      .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(
-        new MediaGalleryItemBuilder().setURL(`attachment://${GIF_NAME}`),
-      ));
-
-    await interaction.editReply({ flags: IS_CV2, components: [container], files: [new AttachmentBuilder(gif, { name: GIF_NAME })] });
+    await postWithReveal({
+      edit: (payload) => interaction.editReply(payload),
+      gif, name: GIF_NAME, revealMs: ROULETTE_REVEAL_MS,
+      suspense: {
+        content: `**🎡 Roulette** — Bet: ${sym} ${bet.toLocaleString()} on **${betLabel[type]}**\nNo more bets…`,
+        color: Colors.Blurple,
+      },
+      result: {
+        content:
+          `**🎡 Roulette**\n` +
+          `The ball landed on **${colorEmoji} ${result}** *(${colorName})*\n\n` +
+          `Bet on: **${betLabel[type]}**\n` +
+          (win
+            ? `✅ You won **${sym} ${winnings.toLocaleString()}**!${luckMult > 1 ? ' *(🍀 Lucky Charm!)*' : ''}`
+            : `❌ You lost **${sym} ${bet.toLocaleString()}**.${insuranceLine(sym, refund)}`) +
+          `\n**Balance:** ${sym} **${(newBalance + refund).toLocaleString()}**${xpLine}`,
+        color: win ? Colors.Green : Colors.Red,
+      },
+    });
   },
 };
 

@@ -146,6 +146,9 @@ function renderFrames(result: number): Buffer[] {
   return frames;
 }
 
+/** How long the wheel spins before the ball settles into its pocket. */
+export const ROULETTE_REVEAL_MS = Math.round((SPIN_FRAMES / FPS) * 1000);
+
 /** Animated roulette: wheel + ball spin and settle on `result` (1–36). */
 export async function renderRouletteGif(result: number): Promise<Buffer> {
   ensureFonts();

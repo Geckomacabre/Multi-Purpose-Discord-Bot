@@ -169,6 +169,9 @@ function drawFrame(
   ctx.restore();
 }
 
+/** How long the ball falls (incl. its settle bounce) before it comes to rest. */
+export const PLINKO_REVEAL_MS = Math.round(((ROWS * FRAMES_PER_ROW + 7) / FPS) * 1000);
+
 /**
  * Renders the whole drop and encodes it as an animated GIF (plays once, then
  * holds on the result). `steps` are the per-row ±1 bounces already decided by

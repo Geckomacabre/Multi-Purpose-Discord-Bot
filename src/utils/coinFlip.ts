@@ -102,6 +102,9 @@ function renderFrames(result: 'heads' | 'tails'): Buffer[] {
   return frames;
 }
 
+/** How long the coin is in the air before it lands face-up on the result. */
+export const FLIP_REVEAL_MS = Math.round((SPIN_FRAMES / FPS) * 1000);
+
 /** Animated coin flip landing on `result`. Cached — only two outcomes exist. */
 export async function renderCoinFlipGif(result: 'heads' | 'tails'): Promise<Buffer> {
   const hit = cache.get(result);
