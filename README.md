@@ -342,6 +342,7 @@ All economy commands are under `/economy`.
 | `/scratch <bet>` | Buy a scratch card — reveal 9 symbols, match **4+** of a kind to win (🍒1× 🍋2× 🍊3× 🍇6× ⭐12× 💎25×). |
 | `/roulette <bet> <type>` | Bet on Red/Black, Even/Odd, Low/High (2×), or a single number 1–36 (35×). No zero pocket — exactly fair odds. |
 | `/crash <bet>` | Ride a stock-style multiplier that swings up and down — cash out at any value above 1×, but it can crash to 0 and wipe your bet. Times out? You're auto-cashed at the current value. |
+| `/plinko <bet>` | Drop a ball down an 8-row peg board and watch it fall — it bounces left/right into one of 9 buckets (25× 5× 1.2× 0.4× 0.2× 0.4× 1.2× 5× 25×). Edges pay 25× but only land 0.4% of the time. Exactly fair (RTP 1.000). |
 | `/blackjack <bet>` | Classic blackjack — Hit, Stand, or Double Down. Blackjack pays 1.5×. |
 | `/poker <bet>` | Jacks or Better video poker. Royal Flush = 250×. |
 | `/rob <user>` | Attempt to rob another user (50/50). On success a **random amount** — anywhere from 1 up to their entire balance — is stolen. 30-min cooldown on fail, 1-hour on success. |

@@ -15,6 +15,7 @@ const GAME_CHOICES = [
   { name: 'Blackjack',        value: 'blackjack'        },
   { name: 'Video Poker',      value: 'poker'            },
   { name: 'Scratch Card',     value: 'scratch'          },
+  { name: 'Plinko',           value: 'plinko'           },
   { name: 'Movie Guesser',    value: 'mediaguess_movie' },
   { name: 'TV Show Guesser',  value: 'mediaguess_tv'   },
   { name: 'Game Guesser',     value: 'mediaguess_game' },
@@ -24,7 +25,7 @@ const GAME_CHOICES = [
 const GAME_EMOJI: Record<string, string> = {
   flip: '🪙', highroll: '🎲', slots: '🎰',
   roulette: '🎡', crash: '🚀', blackjack: '🃏',
-  poker: '♠️', scratch: '🎟️',
+  poker: '♠️', scratch: '🎟️', plinko: '🎲',
   mediaguess_movie: '🎬', mediaguess_tv: '📺',
   mediaguess_game: '🎮', mediaguess_music: '🎵',
 };
