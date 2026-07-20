@@ -12,12 +12,19 @@ import { applyLossInsurance, insuranceLine } from '../../utils/gamble.js';
 import { renderPlinkoGif, ROWS, PLINKO_REVEAL_MS } from '../../utils/plinkoBoard.js';
 import { postWithReveal, mediaPanel } from '../../utils/casinoReveal.js';
 
-// Landing bucket k follows a binomial distribution: P(k) = C(12,k)/4096, i.e.
-// 0.024% 0.293% 1.611% 5.371% 12.085% 19.336% 22.559% (then mirrored).
-// These multipliers are tuned against exactly those odds for an RTP of
-// 1.00000 — dead fair, no house edge (see the project's fairness rule).
-// Don't change one without re-checking that sum(P[k] * MULTS[k]) stays 1.0.
-const MULTS = [120, 25, 4, 2, 1.2, 0.3, 0.2, 0.3, 1.2, 2, 4, 25, 120];
+// Landing bucket k follows a binomial distribution: P(k) = C(10,k)/1024, i.e.
+// 0.098% 0.977% 4.395% 11.719% 20.508% 24.609% (then mirrored).
+// Tuned against exactly those odds for an RTP of 1.000000 — dead fair, no
+// house edge (see the project's fairness rule). Don't change one without
+// re-checking that sum(P[k] * MULTS[k]) stays 1.0.
+//
+// The previous 12-row table topped out at 120x/25x, but those two buckets hit
+// under once in 150 drops while eating ~20% of the entire payout budget — so
+// 85% of drops landed in a dull 0.2x-1.2x band and players never saw a real
+// win. Spending that budget on the reachable tiers instead makes 3x+ land
+// ~1 in 9 drops (was 1 in 26) and 8x+ ~1 in 46 (was 1 in 157), while the two
+// most common buckets actually got *kinder* (0.2->0.25, 0.3->0.35).
+const MULTS = [48, 8, 3, 1.2, 0.35, 0.25, 0.35, 1.2, 3, 8, 48];
 const GIF_NAME = 'plinko.gif';
 
 // Decides the drop with crypto RNG (project rule: never Math.random() for
@@ -61,9 +68,9 @@ async function playDrop(
     xpLine = xpGiven > 0 ? `\n+**${xpGiven} XP** earned!` : '\n*(Daily XP cap reached)*';
   }
 
-  const label = multiplier >= 120 ? '🚨 **JACKPOT!** Dead on the edge!'
-    : multiplier >= 25 ? '🔥 **Huge hit!**'
-    : multiplier >= 4 ? '**Big hit!**'
+  const label = multiplier >= 48 ? '🚨 **JACKPOT!** Dead on the edge!'
+    : multiplier >= 8 ? '🔥 **Huge hit!**'
+    : multiplier >= 3 ? '**Big hit!**'
     : multiplier > 1 ? 'Nice — that pays.'
     : 'Straight down the middle…';
   const resultLine = winnings > bet

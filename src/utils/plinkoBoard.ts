@@ -16,7 +16,10 @@ function ensureFonts() {
   fontsReady = true;
 }
 
-export const ROWS = 12;                  // 12 bounces -> 13 buckets
+// 10 bounces -> 11 buckets. Fewer rows than a "classic" 12 on purpose: the
+// binomial gets sharper with every extra row, and at 12 the middle three
+// buckets swallowed 61% of all drops, so anything good was unreachable.
+export const ROWS = 10;
 const HALF_UNITS = 2 * ROWS;             // ball x lives on 0..24 half-units
 const START_X = ROWS;                    // enters dead centre
 
