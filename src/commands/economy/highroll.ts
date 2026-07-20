@@ -7,7 +7,7 @@ import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplie
 import { awardBonusXp } from '../../utils/xpBonus.js';
 import { randInt } from '../../utils/random.js';
 import { cv2Err } from '../../utils/components.js';
-import { applyLossInsurance, insuranceLine } from '../../utils/gamble.js';
+import { applyLossInsurance, insuranceLine, settleJackpot, jackpotLine } from '../../utils/gamble.js';
 import { renderHighRollGif, HIGHROLL_REVEAL_MS } from '../../utils/highRollRender.js';
 import { postWithReveal } from '../../utils/casinoReveal.js';
 
@@ -38,6 +38,7 @@ const HighRoll: Command = {
     const { newBalance } = await adjustBalance(guildId, userId, win ? Math.floor(bet * luckMult) : tie ? 0 : -bet);
     if (!tie) recordGameResult(guildId, userId, 'highroll', win, bet).catch(() => {});
     const refund = !win && !tie ? await applyLossInsurance(guildId, userId, bet) : 0;
+    const jp = await settleJackpot(guildId, userId, bet, !win && !tie ? bet : 0);
     let xpLine = '';
     if (win) {
       const xpGiven = await awardBonusXp({
@@ -53,7 +54,7 @@ const HighRoll: Command = {
       gif, name: GIF_NAME, revealMs: HIGHROLL_REVEAL_MS,
       suspense: { content: `**🎲 High Roll** — Bet: ${sym} ${bet.toLocaleString()}\nRolling…`, color: Colors.Blurple },
       result: {
-        content: `**🎲 High Roll**\n**Your Roll:** ${playerRoll} | **Bot Roll:** ${botRoll}\n${result}${insuranceLine(sym, refund)}\n**Balance:** ${sym} **${(newBalance + refund).toLocaleString()}**${xpLine}`,
+        content: `**🎲 High Roll**\n**Your Roll:** ${playerRoll} | **Bot Roll:** ${botRoll}\n${result}${insuranceLine(sym, refund)}\n**Balance:** ${sym} **${(newBalance + refund + jp.won).toLocaleString()}**${xpLine}${jackpotLine(sym, jp.won)}`,
         color: win ? Colors.Green : tie ? Colors.Yellow : Colors.Red,
       },
     });

@@ -343,6 +343,13 @@ All economy commands are under `/economy`.
 | `/roulette <bet> <type>` | Bet on Red/Black, Even/Odd, Low/High (2×), or a single number 1–36 (35×). No zero pocket — exactly fair odds. |
 | `/crash <bet>` | Ride a stock-style multiplier that swings up and down — cash out at any value above 1×, but it can crash to 0 and wipe your bet. Times out? You're auto-cashed at the current value. |
 | `/plinko <bet>` | Drop a ball down a 10-row Plinko board — rendered as an animated GIF so you watch it bounce peg to peg into one of 11 buckets (48× 8× 3× 1.2× 0.35× 0.25× …). Edges pay **48×**; 3×+ lands roughly 1 in 9 drops. Exactly fair (RTP 1.000, no house edge). |
+| `/jackpot` | Show the current progressive jackpot pool, and who last hit it. |
+
+#### Progressive jackpot
+
+Every casino game feeds one shared pot: **5% of each loss** goes in, and it keeps growing until somebody hits it. Any bet on any game can trigger it — the odds scale with your bet, so a bigger wager buys proportionally better odds (matching the bigger slice it contributes). Hit it and the entire pool pays out, then it resets to a seed and starts climbing again.
+
+Note this is a *redistribution*, not a rake — every coin taken from losses is paid back out to players, so the house still takes nothing. It does mean each game's own RTP sits a touch under 1.000, with the difference returned through the jackpot.
 | `/blackjack <bet>` | Classic blackjack — Hit, Stand, or Double Down. Blackjack pays 1.5×. |
 | `/poker <bet>` | Jacks or Better video poker. Royal Flush = 250×. |
 | `/rob <user>` | Attempt to rob another user (50/50). On success a **random amount** — anywhere from 1 up to their entire balance — is stolen. 30-min cooldown on fail, 1-hour on success. |

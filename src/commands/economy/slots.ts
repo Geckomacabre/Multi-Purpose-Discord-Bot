@@ -8,7 +8,7 @@ import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplie
 import { awardBonusXp } from '../../utils/xpBonus.js';
 import { randInt } from '../../utils/random.js';
 import { cv2Err, IS_CV2 } from '../../utils/components.js';
-import { applyLossInsurance, insuranceLine } from '../../utils/gamble.js';
+import { applyLossInsurance, insuranceLine, settleJackpot, jackpotLine } from '../../utils/gamble.js';
 import { renderSlotsGif, SLOTS_REVEAL_MS } from '../../utils/slotsRender.js';
 import { postWithReveal, mediaPanel } from '../../utils/casinoReveal.js';
 
@@ -79,6 +79,7 @@ async function playSpin(
   const { newBalance } = await adjustBalance(guildId, userId, delta);
   recordGameResult(guildId, userId, 'slots', winnings >= bet, bet).catch(() => {});
   const refund = multiplier === 0 ? await applyLossInsurance(guildId, userId, bet) : 0;
+  const jp = await settleJackpot(guildId, userId, bet, Math.max(0, bet - winnings));
 
   let xpLine = '';
   if (profit) {
@@ -101,7 +102,7 @@ async function playSpin(
       ? `**${multiplier}x** — you won **${sym} ${winnings.toLocaleString()}**!${luckMult > 1 ? ' *(🍀 Lucky Charm!)*' : ''}`
       : `**${multiplier}x** — you got **${sym} ${winnings.toLocaleString()}** back.`;
 
-  const content = `**🎰 Slots** — Bet: ${sym} ${bet.toLocaleString()}\n${reels.join(' ｜ ')}\n${label}\n${resultLine}\n**Balance:** ${sym} **${(newBalance + refund).toLocaleString()}**\n${LEGEND}${xpLine}`;
+  const content = `**🎰 Slots** — Bet: ${sym} ${bet.toLocaleString()}\n${reels.join(' ｜ ')}\n${label}\n${resultLine}\n**Balance:** ${sym} **${(newBalance + refund + jp.won).toLocaleString()}**\n${LEGEND}${xpLine}${jackpotLine(sym, jp.won)}`;
   const accentColor = profit ? Colors.Gold : multiplier > 0 ? Colors.Yellow : Colors.Red;
   const gif = await renderSlotsGif(reels as string[], multiplier > 0);
   return { content, accentColor, gif, bet, sym };

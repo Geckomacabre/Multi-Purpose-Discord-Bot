@@ -8,7 +8,7 @@ import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplie
 import { awardBonusXp } from '../../utils/xpBonus.js';
 import { rand } from '../../utils/random.js';
 import { cv2Err, IS_CV2 } from '../../utils/components.js';
-import { applyLossInsurance, insuranceLine } from '../../utils/gamble.js';
+import { applyLossInsurance, insuranceLine, settleJackpot, jackpotLine } from '../../utils/gamble.js';
 import { renderPlinkoGif, ROWS, PLINKO_REVEAL_MS } from '../../utils/plinkoBoard.js';
 import { postWithReveal, mediaPanel } from '../../utils/casinoReveal.js';
 
@@ -60,6 +60,7 @@ async function playDrop(
   // Partial losses count — the worst bucket still returns 0.2x, so insurance
   // covers what was actually lost rather than the whole bet.
   const refund = winnings < bet ? await applyLossInsurance(guildId, userId, bet - winnings) : 0;
+  const jp = await settleJackpot(guildId, userId, bet, Math.max(0, bet - winnings));
 
   let xpLine = '';
   if (profit) {
@@ -79,7 +80,7 @@ async function playDrop(
       ? `**${multiplier}x** — you broke even.`
       : `**${multiplier}x** — you got **${sym} ${winnings.toLocaleString()}** back, losing **${sym} ${(bet - winnings).toLocaleString()}**.${insuranceLine(sym, refund)}`;
 
-  const content = `**🎲 Plinko** — Bet: ${sym} ${bet.toLocaleString()}\n${label}\n${resultLine}\n**Balance:** ${sym} **${(newBalance + refund).toLocaleString()}**${xpLine}`;
+  const content = `**🎲 Plinko** — Bet: ${sym} ${bet.toLocaleString()}\n${label}\n${resultLine}\n**Balance:** ${sym} **${(newBalance + refund + jp.won).toLocaleString()}**${xpLine}${jackpotLine(sym, jp.won)}`;
   const accentColor = profit ? Colors.Gold : winnings === bet ? Colors.Yellow : Colors.Red;
   return { gif, content, accentColor, bet, sym };
 }

@@ -8,7 +8,7 @@ import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplie
 import { awardBonusXp } from '../../utils/xpBonus.js';
 import { cv2Err, IS_CV2 } from '../../utils/components.js';
 import { newDeck, shuffleDeck, cardStr, evaluatePokerHand, type Card } from '../../utils/cards.js';
-import { applyLossInsurance, insuranceLine } from '../../utils/gamble.js';
+import { applyLossInsurance, insuranceLine, settleJackpot, jackpotLine } from '../../utils/gamble.js';
 import { renderTable } from '../../utils/cardRender.js';
 
 const TABLE_NAME = 'poker.png';
@@ -130,6 +130,7 @@ const Poker: Command = {
         const { newBalance } = await adjustBalance(guildId, userId, delta);
         recordGameResult(guildId, userId, 'poker', isWin, bet).catch(() => {});
         const refund = isWin ? 0 : await applyLossInsurance(guildId, userId, bet);
+        const jp = await settleJackpot(guildId, userId, bet, isWin ? Math.max(0, bet - winAmount) : bet);
 
         let xpLine = '';
         if (isWin) {
@@ -148,7 +149,7 @@ const Poker: Command = {
             (isWin
               ? `✅ **${result.name}!** You won **${sym} ${winAmount.toLocaleString()}**! *(${result.multiplier}x${luckMult > 1 ? ' 🍀' : ''})*${xpLine}`
               : `❌ **${result.name}** — You lost **${sym} ${bet.toLocaleString()}**.${insuranceLine(sym, refund)}`) +
-            `\n**Balance:** ${sym} **${(newBalance + refund).toLocaleString()}**\n${PAYTABLE}`,
+            `\n**Balance:** ${sym} **${(newBalance + refund + jp.won).toLocaleString()}**${jackpotLine(sym, jp.won)}\n${PAYTABLE}`,
           isWin ? Colors.Green : Colors.Red,
           undefined, result.name, false,
         )).catch(() => {});

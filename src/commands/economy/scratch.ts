@@ -8,7 +8,7 @@ import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplie
 import { awardBonusXp } from '../../utils/xpBonus.js';
 import { randInt } from '../../utils/random.js';
 import { cv2Err } from '../../utils/components.js';
-import { applyLossInsurance, insuranceLine, buildGamePanel } from '../../utils/gamble.js';
+import { applyLossInsurance, insuranceLine, buildGamePanel, settleJackpot, jackpotLine } from '../../utils/gamble.js';
 import { renderScratchCard } from '../../utils/scratchRender.js';
 import { mediaPanel } from '../../utils/casinoReveal.js';
 import { AttachmentBuilder } from 'discord.js';
@@ -76,6 +76,8 @@ async function resolveGame(
 ): Promise<{ content: string; win: boolean; winEmoji: string | null }> {
   const win = checkWin(symbols);
   const sym = cfg.currency_symbol;
+  const winAmountForJp = win ? Math.floor(bet * win.mult) : 0;
+  const jp = await settleJackpot(guildId, userId, bet, Math.max(0, bet - winAmountForJp));
   let line = '';
   if (win) {
     const luckMult = await getGambleMultiplier(guildId, userId);
@@ -97,7 +99,7 @@ async function resolveGame(
   }
   const eco2 = await getOrCreateEconomy(guildId, userId);
   return {
-    content: `🎟️ **Scratch Card** — ${sym} ${bet.toLocaleString()}${line}\n**Balance:** ${sym} ${eco2.balance.toLocaleString()}\n${LEGEND}`,
+    content: `🎟️ **Scratch Card** — ${sym} ${bet.toLocaleString()}${line}\n**Balance:** ${sym} ${eco2.balance.toLocaleString()}\n${LEGEND}${jackpotLine(sym, jp.won)}`,
     win: !!win,
     winEmoji: win?.emoji ?? null,
   };

@@ -9,7 +9,7 @@ import { awardBonusXp } from '../../utils/xpBonus.js';
 import { randInt } from '../../utils/random.js';
 import { cv2Err, IS_CV2 } from '../../utils/components.js';
 import { newDeck, shuffleDeck, handStr, bjHandValue, type Card } from '../../utils/cards.js';
-import { applyLossInsurance, insuranceLine } from '../../utils/gamble.js';
+import { applyLossInsurance, insuranceLine, settleJackpot, jackpotLine } from '../../utils/gamble.js';
 import { renderTable } from '../../utils/cardRender.js';
 
 type Outcome = 'win' | 'blackjack' | 'push' | 'lose';
@@ -113,6 +113,7 @@ const Blackjack: Command = {
         recordGameResult(guildId, userId, 'blackjack', outcome === 'win' || outcome === 'blackjack', activeBet).catch(() => {});
       }
       const refund = outcome === 'lose' ? await applyLossInsurance(guildId, userId, activeBet) : 0;
+      const jp = await settleJackpot(guildId, userId, activeBet, outcome === 'lose' ? activeBet : 0);
 
       let xpLine = '';
       if (outcome === 'win' || outcome === 'blackjack') {
@@ -129,7 +130,7 @@ const Blackjack: Command = {
       await interaction.editReply(bjPanel(
         playerHand, dealerHand, false,
         gameContent(playerHand, dealerHand, activeBet, sym, false) +
-          `\n\n${icon} ${msg}${insuranceLine(sym, refund)}${xpLine}\n**Balance:** ${sym} **${(newBalance + refund).toLocaleString()}**`,
+          `\n\n${icon} ${msg}${insuranceLine(sym, refund)}${xpLine}\n**Balance:** ${sym} **${(newBalance + refund + jp.won).toLocaleString()}**${jackpotLine(sym, jp.won)}`,
         color,
       )).catch(() => {});
     }

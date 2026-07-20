@@ -7,7 +7,7 @@ import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplie
 import { awardBonusXp } from '../../utils/xpBonus.js';
 import { rand, randInt } from '../../utils/random.js';
 import { cv2Err } from '../../utils/components.js';
-import { applyLossInsurance, insuranceLine } from '../../utils/gamble.js';
+import { applyLossInsurance, insuranceLine, settleJackpot, jackpotLine } from '../../utils/gamble.js';
 import { renderCoinFlipGif, FLIP_REVEAL_MS } from '../../utils/coinFlip.js';
 import { postWithReveal } from '../../utils/casinoReveal.js';
 
@@ -37,6 +37,7 @@ const Flip: Command = {
     const { newBalance } = await adjustBalance(guildId, userId, winDelta);
     recordGameResult(guildId, userId, 'flip', win, bet).catch(() => {});
     const refund = win ? 0 : await applyLossInsurance(guildId, userId, bet);
+    const jp = await settleJackpot(guildId, userId, bet, win ? 0 : bet);
     let xpLine = '';
     if (win) {
       const xpGiven = await awardBonusXp({
@@ -51,7 +52,7 @@ const Flip: Command = {
       gif, name: GIF_NAME, revealMs: FLIP_REVEAL_MS,
       suspense: { content: `**🪙 Coin Flip** — Bet: ${sym} ${bet.toLocaleString()}\nFlipping…`, color: Colors.Blurple },
       result: {
-        content: `**${win ? '🪙 Heads!' : '🌑 Tails!'}**\n${win ? `You won **${sym} ${Math.floor(bet * luckMult).toLocaleString()}**!${luckMult > 1 ? ' *(🍀 Lucky Charm!)*' : ''}` : `You lost **${sym} ${bet.toLocaleString()}**.`}${insuranceLine(sym, refund)}\n**Balance:** ${sym} **${(newBalance + refund).toLocaleString()}**${xpLine}`,
+        content: `**${win ? '🪙 Heads!' : '🌑 Tails!'}**\n${win ? `You won **${sym} ${Math.floor(bet * luckMult).toLocaleString()}**!${luckMult > 1 ? ' *(🍀 Lucky Charm!)*' : ''}` : `You lost **${sym} ${bet.toLocaleString()}**.`}${insuranceLine(sym, refund)}\n**Balance:** ${sym} **${(newBalance + refund + jp.won).toLocaleString()}**${xpLine}${jackpotLine(sym, jp.won)}`,
         color: win ? Colors.Green : Colors.Red,
       },
     });

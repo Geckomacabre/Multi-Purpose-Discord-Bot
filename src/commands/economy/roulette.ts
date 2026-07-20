@@ -7,7 +7,7 @@ import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplie
 import { awardBonusXp } from '../../utils/xpBonus.js';
 import { randInt } from '../../utils/random.js';
 import { cv2Err } from '../../utils/components.js';
-import { applyLossInsurance, insuranceLine } from '../../utils/gamble.js';
+import { applyLossInsurance, insuranceLine, settleJackpot, jackpotLine } from '../../utils/gamble.js';
 import { renderRouletteGif, ROULETTE_REVEAL_MS } from '../../utils/rouletteRender.js';
 import { postWithReveal } from '../../utils/casinoReveal.js';
 
@@ -84,6 +84,7 @@ const Roulette: Command = {
     const { newBalance } = await adjustBalance(guildId, userId, delta);
     recordGameResult(guildId, userId, 'roulette', win, bet).catch(() => {});
     const refund = win ? 0 : await applyLossInsurance(guildId, userId, bet);
+    const jp = await settleJackpot(guildId, userId, bet, win ? 0 : bet);
 
     let xpLine = '';
     if (win) {
@@ -116,7 +117,7 @@ const Roulette: Command = {
           (win
             ? `✅ You won **${sym} ${winnings.toLocaleString()}**!${luckMult > 1 ? ' *(🍀 Lucky Charm!)*' : ''}`
             : `❌ You lost **${sym} ${bet.toLocaleString()}**.${insuranceLine(sym, refund)}`) +
-          `\n**Balance:** ${sym} **${(newBalance + refund).toLocaleString()}**${xpLine}`,
+          `\n**Balance:** ${sym} **${(newBalance + refund + jp.won).toLocaleString()}**${xpLine}${jackpotLine(sym, jp.won)}`,
         color: win ? Colors.Green : Colors.Red,
       },
     });

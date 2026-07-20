@@ -5,7 +5,7 @@ import {
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
 import { getOrCreateEconomy, getEconomyConfig, adjustBalance, getGambleMultiplier, recordGameResult, consumeBoost } from '../../utils/db';
-import { applyLossInsurance, insuranceLine, buildGamePanel } from '../../utils/gamble.js';
+import { applyLossInsurance, insuranceLine, buildGamePanel, settleJackpot, jackpotLine } from '../../utils/gamble.js';
 import { awardBonusXp } from '../../utils/xpBonus.js';
 import { rand } from '../../utils/random.js';
 import { cv2Err } from '../../utils/components.js';
@@ -156,8 +156,9 @@ const Crash: Command = {
 
         const { newBalance } = await adjustBalance(guildId, userId, -bet);
         const refund = await applyLossInsurance(guildId, userId, bet);
+        const jp = await settleJackpot(guildId, userId, bet, bet);
         await interaction.editReply(buildGamePanel(
-          `**🚀 Crash**\n\n💥 **CRASHED to 0 from ${fmtMult(current)}!** *(peak ${fmtMult(peak)})*\nYou lost **${sym} ${bet.toLocaleString()}**.${insuranceLine(sym, refund)}\n**Balance:** ${sym} **${(newBalance + refund).toLocaleString()}**`,
+          `**🚀 Crash**\n\n💥 **CRASHED to 0 from ${fmtMult(current)}!** *(peak ${fmtMult(peak)})*\nYou lost **${sym} ${bet.toLocaleString()}**.${insuranceLine(sym, refund)}\n**Balance:** ${sym} **${(newBalance + refund + jp.won).toLocaleString()}**${jackpotLine(sym, jp.won)}`,
           Colors.Red,
         )).catch(() => {});
         return;

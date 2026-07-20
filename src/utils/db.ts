@@ -1054,6 +1054,18 @@ export async function initDb() {
     PRIMARY KEY (guild_id, user_id)
   )`;
 
+  // Progressive jackpot: a shared pot fed by a slice of every loss across all
+  // casino games, paid out whole when someone hits it. Coins are redistributed,
+  // never removed — the house takes nothing.
+  await db`CREATE TABLE IF NOT EXISTS jackpot (
+    guild_id    TEXT PRIMARY KEY,
+    amount      INTEGER NOT NULL DEFAULT 0,
+    seed        INTEGER NOT NULL DEFAULT 5000,
+    last_winner TEXT,
+    last_amount INTEGER NOT NULL DEFAULT 0,
+    last_won_at INTEGER
+  )`;
+
   await db`CREATE TABLE IF NOT EXISTS economy_boosts (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     guild_id   TEXT NOT NULL,
@@ -2869,6 +2881,53 @@ export async function incrementTagUses(guild_id: string, name: string) {
 export async function listTags(guild_id: string): Promise<ITag[]> {
   const rows = await db`SELECT * FROM tags WHERE guild_id = ${guild_id} ORDER BY name ASC`;
   return rows as ITag[];
+}
+
+// ─── Progressive jackpot ──────────────────────────────────────────────────────
+
+export type IJackpot = {
+  guild_id: string;
+  amount: number;
+  seed: number;
+  last_winner: string | null;
+  last_amount: number;
+  last_won_at: number | null;
+};
+
+export async function getJackpot(guild_id: string): Promise<IJackpot> {
+  const [row] = await db`SELECT * FROM jackpot WHERE guild_id = ${guild_id}`;
+  if (row) return row as IJackpot;
+  const [created] = await db`
+    INSERT INTO jackpot (guild_id) VALUES (${guild_id})
+    ON CONFLICT(guild_id) DO UPDATE SET guild_id = ${guild_id}
+    RETURNING *`;
+  return created as IJackpot;
+}
+
+/** Adds a slice of a loss to the pot. Returns the new total. */
+export async function addToJackpot(guild_id: string, amount: number): Promise<number> {
+  if (amount <= 0) return (await getJackpot(guild_id)).amount;
+  await getJackpot(guild_id);
+  const [row] = await db`
+    UPDATE jackpot SET amount = amount + ${amount} WHERE guild_id = ${guild_id}
+    RETURNING amount`;
+  return (row as { amount: number })?.amount ?? 0;
+}
+
+/**
+ * Pays the whole pot to a winner and resets it to the seed. Returns the amount
+ * won (0 if the pot was empty). The balance credit is done by the caller so it
+ * can be folded into that game's payout line.
+ */
+export async function claimJackpot(guild_id: string, user_id: string): Promise<number> {
+  const jp = await getJackpot(guild_id);
+  const won = jp.amount;
+  if (won <= 0) return 0;
+  await db`
+    UPDATE jackpot
+    SET amount = seed, last_winner = ${user_id}, last_amount = ${won}, last_won_at = ${Date.now()}
+    WHERE guild_id = ${guild_id}`;
+  return won;
 }
 
 export async function getMusicConfig(guild_id: string): Promise<{ volume: number; dj_role_id: string | null }> {
