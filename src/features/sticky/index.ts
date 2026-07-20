@@ -19,11 +19,24 @@ const pending = new Map<string, ReturnType<typeof setTimeout>>();
 // double-post (which would leave an orphaned sticky above the new one).
 const inFlight = new Set<string>();
 
-function buildPayload(content: string, asEmbed: boolean) {
+function buildPayload(content: string, asEmbed: boolean, gold = false) {
   if (!asEmbed) return { content };
   return {
-    embeds: [new EmbedBuilder().setColor(Colors.Blurple).setDescription(content)],
+    embeds: [new EmbedBuilder().setColor(gold ? Colors.Gold : Colors.Blurple).setDescription(content)],
   };
+}
+
+/**
+ * Resolves what a sticky should say right now. 'jackpot' stickies are rebuilt
+ * from the live pot on every repost — a static snapshot would be out of date
+ * the moment the next bet landed.
+ */
+async function resolveContent(sticky: { kind: string; guild_id: string; content: string }): Promise<string> {
+  if (sticky.kind === 'jackpot') {
+    const { formatJackpotMessage } = await import('../../utils/gamble.js');
+    return formatJackpotMessage(sticky.guild_id);
+  }
+  return sticky.content;
 }
 
 async function repost(channel: TextChannel, db: typeof import('../../utils/db')) {
@@ -41,7 +54,8 @@ async function repost(channel: TextChannel, db: typeof import('../../utils/db'))
       });
     }
 
-    const sent = await channel.send(buildPayload(sticky.content, sticky.embed === 1));
+    const content = await resolveContent(sticky);
+    const sent = await channel.send(buildPayload(content, sticky.embed === 1, sticky.kind === 'jackpot'));
     await db.setStickyMessageId(id, sent.id);
   } catch (err: any) {
     logger.warn(`[sticky] repost failed in ${channel.id}: ${err?.message ?? err}`);

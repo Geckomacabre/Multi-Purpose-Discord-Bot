@@ -57,6 +57,30 @@ export async function settleJackpot(
   return { contributed, won };
 }
 
+/**
+ * The jackpot panel text. Shared by /jackpot and the live jackpot sticky so
+ * both always read the same — and so the sticky can rebuild it from the current
+ * pot on every repost rather than showing whatever it said when it was set.
+ */
+export async function formatJackpotMessage(guildId: string): Promise<string> {
+  const { getJackpot, getEconomyConfig } = await import('./db.js');
+  const [jp, cfg] = await Promise.all([getJackpot(guildId), getEconomyConfig(guildId)]);
+  const sym = cfg.currency_symbol;
+
+  const last = jp.last_winner && jp.last_won_at
+    ? `\n\n🏆 Last won by <@${jp.last_winner}> — **${sym} ${jp.last_amount.toLocaleString()}** <t:${Math.floor(jp.last_won_at / 1000)}:R>`
+    : '\n\n*Nobody has hit it yet.*';
+
+  return (
+    `## 🎰 Progressive Jackpot\n\n` +
+    `### ${sym} ${jp.amount.toLocaleString()}\n` +
+    `Every casino game feeds the pot — **${Math.round(JACKPOT_LOSS_CUT * 100)}%** of every loss goes in, ` +
+    `and any bet can hit it. Bigger bets have proportionally better odds.\n` +
+    `Win it and the whole pool is yours; it resets to ${sym} ${jp.seed.toLocaleString()} and starts climbing again.` +
+    last
+  );
+}
+
 /** Banner appended to a game's result when the jackpot lands. */
 export function jackpotLine(sym: string, won: number): string {
   return won > 0

@@ -1064,6 +1064,9 @@ export async function initDb() {
     created_by  TEXT,
     created_at  INTEGER NOT NULL
   )`;
+  // 'text' stickies show `content` verbatim; 'jackpot' ones rebuild their text
+  // from the live pot on every repost, so the figure is never stale.
+  try { await db`ALTER TABLE sticky_messages ADD COLUMN kind TEXT NOT NULL DEFAULT 'text'`; } catch {}
 
   // Progressive jackpot: a shared pot fed by a slice of every loss across all
   // casino games, paid out whole when someone hits it. Coins are redistributed,
@@ -2896,6 +2899,8 @@ export async function listTags(guild_id: string): Promise<ITag[]> {
 
 // ─── Sticky messages ──────────────────────────────────────────────────────────
 
+export type StickyKind = 'text' | 'jackpot';
+
 export type IStickyMessage = {
   guild_id: string;
   channel_id: string;
@@ -2904,6 +2909,8 @@ export type IStickyMessage = {
   embed: number;
   created_by: string | null;
   created_at: number;
+  /** 'text' = verbatim content; 'jackpot' = rebuilt from the live pot. */
+  kind: StickyKind;
 };
 
 export async function getSticky(channel_id: string): Promise<IStickyMessage | null> {
@@ -2918,12 +2925,14 @@ export async function getGuildStickies(guild_id: string): Promise<IStickyMessage
 
 export async function setSticky(
   guild_id: string, channel_id: string, content: string, embed: boolean, created_by: string,
+  kind: StickyKind = 'text',
 ): Promise<void> {
   await db`
-    INSERT INTO sticky_messages (guild_id, channel_id, content, embed, created_by, created_at)
-    VALUES (${guild_id}, ${channel_id}, ${content}, ${embed ? 1 : 0}, ${created_by}, ${Date.now()})
+    INSERT INTO sticky_messages (guild_id, channel_id, content, embed, created_by, created_at, kind)
+    VALUES (${guild_id}, ${channel_id}, ${content}, ${embed ? 1 : 0}, ${created_by}, ${Date.now()}, ${kind})
     ON CONFLICT(channel_id) DO UPDATE SET
-      content = ${content}, embed = ${embed ? 1 : 0}, created_by = ${created_by}, created_at = ${Date.now()}`;
+      content = ${content}, embed = ${embed ? 1 : 0}, created_by = ${created_by},
+      created_at = ${Date.now()}, kind = ${kind}`;
 }
 
 /** Records the id of the currently-posted sticky so it can be deleted on repost. */

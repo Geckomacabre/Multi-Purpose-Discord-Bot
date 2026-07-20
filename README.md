@@ -344,6 +344,7 @@ All economy commands are under `/economy`.
 | `/crash <bet>` | Ride a stock-style multiplier that swings up and down — cash out at any value above 1×, but it can crash to 0 and wipe your bet. Times out? You're auto-cashed at the current value. |
 | `/plinko <bet>` | Drop a ball down a 10-row Plinko board — rendered as an animated GIF so you watch it bounce peg to peg into one of 11 buckets (48× 8× 3× 1.2× 0.35× 0.25× …). Edges pay **48×**; 3×+ lands roughly 1 in 9 drops. Exactly fair (RTP 1.000, no house edge). |
 | `/jackpot` | Show the current progressive jackpot pool, and who last hit it. |
+| `/jackpot sticky:True` | *(Manage Messages)* Pin a **live** jackpot message to the bottom of the current channel — it rebuilds the amount every time it re-posts, so it never shows a stale figure. Remove it with `/sticky remove`. |
 
 #### Progressive jackpot
 
@@ -526,6 +527,8 @@ Keeps a message pinned to the bottom of a channel — as people chat, the bot de
 | `/sticky list` | List every sticky message in the server. |
 
 Re-posting is debounced (~3s) rather than firing on every message, so a busy channel doesn't cause flicker or burn rate limit — a burst of chatter costs one repost.
+
+Stickies come in two kinds: normal ones show your text verbatim, while the jackpot sticky (`/jackpot sticky:True`) rebuilds its text from the live pot on every repost, so the amount is always current.
 
 ---
 
