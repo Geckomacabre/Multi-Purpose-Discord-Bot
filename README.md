@@ -513,6 +513,22 @@ Translate text between 16 languages instantly. No API key required.
 
 ---
 
+### Sticky Messages
+
+Keeps a message pinned to the bottom of a channel — as people chat, the bot deletes its old copy and re-posts it so it's always the newest message. Handy for rules, current events, or "read this before posting" notices.
+
+**Requires:** **Send Messages** and **Manage Messages** in the target channel (Manage Messages is needed to delete the previous copy). Requires Manage Messages to use.
+
+| Command | Description |
+|---|---|
+| `/sticky set <message> [channel] [embed]` | Stick a message to the bottom of a channel. Shows as an embed by default; set `embed:false` for plain text. Re-running replaces the existing sticky. |
+| `/sticky remove [channel]` | Stop sticking a message and clean up the last copy. |
+| `/sticky list` | List every sticky message in the server. |
+
+Re-posting is debounced (~3s) rather than firing on every message, so a busy channel doesn't cause flicker or burn rate limit — a burst of chatter costs one repost.
+
+---
+
 ### Tags
 
 Community text snippets. Anyone can create a tag; the owner (or a mod) can edit/delete it.

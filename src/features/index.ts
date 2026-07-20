@@ -29,6 +29,7 @@ import mediaguessModule, { startMediaGames } from './mediaguess';
 import streamVcModule from './streamvc';
 import { startLottery } from './lottery';
 import raidguardModule from './raidguard';
+import stickyModule from './sticky';
 
 const features = [
   countingModule,
@@ -54,6 +55,7 @@ const features = [
   mediaguessModule,
   streamVcModule,
   raidguardModule,
+  stickyModule,
 ];
 
 export function registerFeatures(bot: Client) {

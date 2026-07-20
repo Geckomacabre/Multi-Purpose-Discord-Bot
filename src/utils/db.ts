@@ -1054,6 +1054,17 @@ export async function initDb() {
     PRIMARY KEY (guild_id, user_id)
   )`;
 
+  // Sticky messages: one per channel, re-posted so it stays at the bottom.
+  await db`CREATE TABLE IF NOT EXISTS sticky_messages (
+    guild_id    TEXT NOT NULL,
+    channel_id  TEXT PRIMARY KEY,
+    content     TEXT NOT NULL,
+    message_id  TEXT,
+    embed       INTEGER NOT NULL DEFAULT 1,
+    created_by  TEXT,
+    created_at  INTEGER NOT NULL
+  )`;
+
   // Progressive jackpot: a shared pot fed by a slice of every loss across all
   // casino games, paid out whole when someone hits it. Coins are redistributed,
   // never removed — the house takes nothing.
@@ -2881,6 +2892,48 @@ export async function incrementTagUses(guild_id: string, name: string) {
 export async function listTags(guild_id: string): Promise<ITag[]> {
   const rows = await db`SELECT * FROM tags WHERE guild_id = ${guild_id} ORDER BY name ASC`;
   return rows as ITag[];
+}
+
+// ─── Sticky messages ──────────────────────────────────────────────────────────
+
+export type IStickyMessage = {
+  guild_id: string;
+  channel_id: string;
+  content: string;
+  message_id: string | null;
+  embed: number;
+  created_by: string | null;
+  created_at: number;
+};
+
+export async function getSticky(channel_id: string): Promise<IStickyMessage | null> {
+  const [row] = await db`SELECT * FROM sticky_messages WHERE channel_id = ${channel_id}`;
+  return (row as IStickyMessage) ?? null;
+}
+
+export async function getGuildStickies(guild_id: string): Promise<IStickyMessage[]> {
+  const rows = await db`SELECT * FROM sticky_messages WHERE guild_id = ${guild_id}`;
+  return rows as IStickyMessage[];
+}
+
+export async function setSticky(
+  guild_id: string, channel_id: string, content: string, embed: boolean, created_by: string,
+): Promise<void> {
+  await db`
+    INSERT INTO sticky_messages (guild_id, channel_id, content, embed, created_by, created_at)
+    VALUES (${guild_id}, ${channel_id}, ${content}, ${embed ? 1 : 0}, ${created_by}, ${Date.now()})
+    ON CONFLICT(channel_id) DO UPDATE SET
+      content = ${content}, embed = ${embed ? 1 : 0}, created_by = ${created_by}, created_at = ${Date.now()}`;
+}
+
+/** Records the id of the currently-posted sticky so it can be deleted on repost. */
+export async function setStickyMessageId(channel_id: string, message_id: string | null): Promise<void> {
+  await db`UPDATE sticky_messages SET message_id = ${message_id} WHERE channel_id = ${channel_id}`;
+}
+
+export async function removeSticky(channel_id: string): Promise<boolean> {
+  const rows = await db`DELETE FROM sticky_messages WHERE channel_id = ${channel_id} RETURNING channel_id`;
+  return rows.length > 0;
 }
 
 // ─── Progressive jackpot ──────────────────────────────────────────────────────
