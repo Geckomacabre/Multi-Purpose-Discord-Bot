@@ -29,7 +29,7 @@ import mediaguessModule, { startMediaGames } from './mediaguess';
 import streamVcModule from './streamvc';
 import { startLottery } from './lottery';
 import raidguardModule from './raidguard';
-import stickyModule from './sticky';
+import stickyModule, { startStickyRefresh } from './sticky';
 
 const features = [
   countingModule,
@@ -81,5 +81,6 @@ export function registerFeatures(bot: Client) {
     startTopicPoller(bot);
     startMediaGames(bot);
     startLottery(bot);
+    startStickyRefresh(bot);
   });
 }

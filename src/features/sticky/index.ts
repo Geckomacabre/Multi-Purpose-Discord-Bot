@@ -1,4 +1,4 @@
-import { Colors, EmbedBuilder, Message, TextChannel } from 'discord.js';
+import { Client, Colors, EmbedBuilder, TextChannel } from 'discord.js';
 import { EventModule } from '../feature';
 import logger from '../../utils/logger';
 
@@ -101,6 +101,51 @@ export async function postStickyNow(channel: TextChannel, db: typeof import('../
 export function cancelSticky(channelId: string) {
   const timer = pending.get(channelId);
   if (timer) { clearTimeout(timer); pending.delete(channelId); }
+}
+
+// ── Periodic refresh for live stickies ────────────────────────────────────────
+
+const REFRESH_MS = 30 * 60_000;
+
+/**
+ * Refreshes live ('jackpot') stickies on a timer so the amount doesn't sit
+ * stale in a channel nobody is talking in.
+ *
+ * This EDITS the existing message rather than reposting it. A repost would bump
+ * the channel and mark it unread every 30 minutes for no reason — and in a
+ * quiet channel the sticky is already the newest message, so there's nothing to
+ * move it below. Chat activity still triggers a proper repost.
+ */
+async function refreshLiveStickies(client: Client) {
+  const db = await import('../../utils/db.js');
+  let rows: Awaited<ReturnType<typeof db.getStickiesByKind>>;
+  try {
+    rows = await db.getStickiesByKind('jackpot');
+  } catch (err: any) {
+    logger.warn(`[sticky] refresh lookup failed: ${err?.message ?? err}`);
+    return;
+  }
+
+  for (const sticky of rows) {
+    // A repost already in flight will post fresh content anyway.
+    if (!sticky.message_id || inFlight.has(sticky.channel_id)) continue;
+    try {
+      const channel = await client.channels.fetch(sticky.channel_id).catch(() => null);
+      if (!channel || !channel.isTextBased() || channel.isDMBased()) continue;
+      const msg = await (channel as TextChannel).messages.fetch(sticky.message_id).catch(() => null);
+      // Gone (purged/deleted) — leave it; the next message in the channel reposts it.
+      if (!msg) continue;
+      const content = await resolveContent(sticky);
+      await msg.edit(buildPayload(content, sticky.embed === 1, true));
+    } catch (err: any) {
+      logger.warn(`[sticky] refresh failed in ${sticky.channel_id}: ${err?.message ?? err}`);
+    }
+  }
+}
+
+/** Starts the periodic refresh of live stickies. */
+export function startStickyRefresh(client: Client) {
+  setInterval(() => { void refreshLiveStickies(client); }, REFRESH_MS);
 }
 
 export default stickyModule;

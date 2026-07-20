@@ -2923,6 +2923,12 @@ export async function getGuildStickies(guild_id: string): Promise<IStickyMessage
   return rows as IStickyMessage[];
 }
 
+/** Every sticky of a given kind, across all guilds — used by the refresh timer. */
+export async function getStickiesByKind(kind: StickyKind): Promise<IStickyMessage[]> {
+  const rows = await db`SELECT * FROM sticky_messages WHERE kind = ${kind}`;
+  return rows as IStickyMessage[];
+}
+
 export async function setSticky(
   guild_id: string, channel_id: string, content: string, embed: boolean, created_by: string,
   kind: StickyKind = 'text',
