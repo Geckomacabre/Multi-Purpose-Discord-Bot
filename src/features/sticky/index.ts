@@ -12,12 +12,25 @@ import logger from '../../utils/logger';
  * chatter only costs one repost.
  */
 const REPOST_DELAY_MS = 3_000;
+/**
+ * Upper bound on how long a repost can be deferred. Without this the debounce
+ * below is unbounded: every new message resets the timer, so a channel busier
+ * than one message per REPOST_DELAY_MS would reset it forever and the sticky
+ * would never repost — failing precisely in the busy channels that need it.
+ */
+const MAX_REPOST_WAIT_MS = 10_000;
 
 // channel_id -> pending repost timer
 const pending = new Map<string, ReturnType<typeof setTimeout>>();
+// channel_id -> when the current deferral started, so it can be capped.
+const deferredSince = new Map<string, number>();
 // channel_id -> true while a repost is in flight, so overlapping triggers don't
 // double-post (which would leave an orphaned sticky above the new one).
 const inFlight = new Set<string>();
+// Triggers that arrived mid-repost. They can't run concurrently, but they must
+// not be dropped either: messages sent during a repost would leave the sticky
+// stranded above them with nothing scheduled to fix it.
+const rerunNeeded = new Set<string>();
 
 function buildPayload(content: string, asEmbed: boolean, gold = false) {
   if (!asEmbed) return { content };
@@ -41,7 +54,8 @@ async function resolveContent(sticky: { kind: string; guild_id: string; content:
 
 async function repost(channel: TextChannel, db: typeof import('../../utils/db')) {
   const id = channel.id;
-  if (inFlight.has(id)) return;
+  // Don't run two reposts at once, but remember that another was wanted.
+  if (inFlight.has(id)) { rerunNeeded.add(id); return; }
   inFlight.add(id);
   try {
     const sticky = await db.getSticky(id);
@@ -61,17 +75,30 @@ async function repost(channel: TextChannel, db: typeof import('../../utils/db'))
     logger.warn(`[sticky] repost failed in ${channel.id}: ${err?.message ?? err}`);
   } finally {
     inFlight.delete(id);
+    // Someone talked while we were posting — go again so the sticky ends up
+    // below their messages rather than stranded above them.
+    if (rerunNeeded.delete(id)) scheduleRepost(channel, db);
   }
 }
 
 function scheduleRepost(channel: TextChannel, db: typeof import('../../utils/db')) {
   const id = channel.id;
+  const now = Date.now();
+  if (!deferredSince.has(id)) deferredSince.set(id, now);
+
   const existing = pending.get(id);
   if (existing) clearTimeout(existing);
+
+  // Normally wait for a lull, but never defer past MAX_REPOST_WAIT_MS from the
+  // first trigger — otherwise continuous chatter starves the repost entirely.
+  const waited = now - (deferredSince.get(id) ?? now);
+  const delay = Math.max(0, Math.min(REPOST_DELAY_MS, MAX_REPOST_WAIT_MS - waited));
+
   pending.set(id, setTimeout(() => {
     pending.delete(id);
+    deferredSince.delete(id);
     void repost(channel, db);
-  }, REPOST_DELAY_MS));
+  }, delay));
 }
 
 const stickyModule: EventModule = {
@@ -94,6 +121,7 @@ const stickyModule: EventModule = {
 export async function postStickyNow(channel: TextChannel, db: typeof import('../../utils/db')) {
   const timer = pending.get(channel.id);
   if (timer) { clearTimeout(timer); pending.delete(channel.id); }
+  deferredSince.delete(channel.id);
   await repost(channel, db);
 }
 
@@ -101,6 +129,7 @@ export async function postStickyNow(channel: TextChannel, db: typeof import('../
 export function cancelSticky(channelId: string) {
   const timer = pending.get(channelId);
   if (timer) { clearTimeout(timer); pending.delete(channelId); }
+  deferredSince.delete(channelId);
 }
 
 // ── Periodic refresh for live stickies ────────────────────────────────────────
