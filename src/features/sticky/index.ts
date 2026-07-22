@@ -31,10 +31,23 @@ const inFlight = new Set<string>();
 // not be dropped either: messages sent during a repost would leave the sticky
 // stranded above them with nothing scheduled to fix it.
 const rerunNeeded = new Set<string>();
-// Message ids of stickies WE posted. Recorded synchronously on send so the
-// messageCreate for our own sticky can be ignored without waiting on the DB
-// write — otherwise the sticky would trigger itself and repost forever.
+// Message ids of stickies WE posted, so our own sticky doesn't re-trigger.
 const ownStickyIds = new Set<string>();
+// Channels we're mid-post in. The gateway's MESSAGE_CREATE for our own sticky
+// can arrive BEFORE channel.send() resolves, i.e. before its id is known — so
+// an id-only guard misses it, the sticky triggers itself and reposts forever.
+// This covers that window: while set, our own messages in the channel are
+// ignored.
+const posting = new Set<string>();
+
+/**
+ * Minimum gap between reposts in a channel. Without it, a steady stream of
+ * messages reposts the sticky every few seconds, which reads as the bot
+ * constantly deleting and re-sending.
+ */
+const MIN_REPOST_INTERVAL_MS = 30_000;
+// channel_id -> when we last reposted
+const lastRepostAt = new Map<string, number>();
 
 function buildPayload(content: string, asEmbed: boolean, gold = false) {
   if (!asEmbed) return { content };
@@ -74,8 +87,16 @@ async function repost(channel: TextChannel, db: typeof import('../../utils/db'))
     }
 
     const content = await resolveContent(sticky);
-    const sent = await channel.send(buildPayload(content, sticky.embed === 1, sticky.kind === 'jackpot'));
-    ownStickyIds.add(sent.id);
+    // Guard the whole send window — see `posting` above.
+    posting.add(id);
+    let sent;
+    try {
+      sent = await channel.send(buildPayload(content, sticky.embed === 1, sticky.kind === 'jackpot'));
+      ownStickyIds.add(sent.id);
+    } finally {
+      posting.delete(id);
+    }
+    lastRepostAt.set(id, Date.now());
     await db.setStickyMessageId(id, sent.id);
   } catch (err: any) {
     logger.warn(`[sticky] repost failed in ${channel.id}: ${err?.message ?? err}`);
@@ -98,7 +119,15 @@ function scheduleRepost(channel: TextChannel, db: typeof import('../../utils/db'
   // Normally wait for a lull, but never defer past MAX_REPOST_WAIT_MS from the
   // first trigger — otherwise continuous chatter starves the repost entirely.
   const waited = now - (deferredSince.get(id) ?? now);
-  const delay = Math.max(0, Math.min(REPOST_DELAY_MS, MAX_REPOST_WAIT_MS - waited));
+  let delay = Math.max(0, Math.min(REPOST_DELAY_MS, MAX_REPOST_WAIT_MS - waited));
+
+  // ...but never repost more often than MIN_REPOST_INTERVAL_MS. Busy channels
+  // would otherwise re-send every few seconds, which just looks like the bot
+  // spamming. The sticky sits a little higher for a bit; that's the trade.
+  const sinceLast = now - (lastRepostAt.get(id) ?? 0);
+  if (sinceLast < MIN_REPOST_INTERVAL_MS) {
+    delay = Math.max(delay, MIN_REPOST_INTERVAL_MS - sinceLast);
+  }
 
   pending.set(id, setTimeout(() => {
     pending.delete(id);
@@ -121,6 +150,13 @@ const stickyModule: EventModule = {
       // slash commands, so skipping every bot message meant the sticky never
       // moved and just sat above them.
       if (ownStickyIds.has(message.id)) return;
+      // Our own message that arrived while we were posting — this is the
+      // sticky itself, racing its own send() response. Record it so the id
+      // guard catches any later duplicate event.
+      if (message.author.id === message.client.user?.id && posting.has(channel.id)) {
+        ownStickyIds.add(message.id);
+        return;
+      }
 
       const sticky = await db.getSticky(channel.id);
       if (!sticky) return;
@@ -160,11 +196,13 @@ export function cancelSticky(channelId: string) {
   const timer = pending.get(channelId);
   if (timer) { clearTimeout(timer); pending.delete(channelId); }
   deferredSince.delete(channelId);
+  lastRepostAt.delete(channelId);
+  rerunNeeded.delete(channelId);
 }
 
 // ── Periodic refresh for live stickies ────────────────────────────────────────
 
-const REFRESH_MS = 30 * 60_000;
+const REFRESH_MS = 10 * 60_000;
 
 /**
  * Refreshes live ('jackpot') stickies on a timer so the amount doesn't sit

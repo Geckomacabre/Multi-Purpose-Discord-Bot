@@ -526,9 +526,9 @@ Keeps a message pinned to the bottom of a channel — as people chat, the bot de
 | `/sticky remove [channel]` | Stop sticking a message and clean up the last copy. |
 | `/sticky list` | List every sticky message in the server. |
 
-Re-posting is debounced (~3s) rather than firing on every message, so a busy channel doesn't cause flicker or burn rate limit — a burst of chatter costs one repost.
+Re-posting is debounced (~3s) and rate-limited to at most once every 30s per channel, so a busy channel doesn't get spammed with deletes and re-sends — a burst of chatter costs one repost.
 
-Stickies come in two kinds: normal ones show your text verbatim, while the jackpot sticky (`/jackpot sticky:True`) rebuilds its text from the live pot on every repost, so the amount is always current. It also refreshes itself every **30 minutes** — that refresh *edits the message in place* rather than reposting, so a quiet channel doesn't get bumped and marked unread every half hour.
+Stickies come in two kinds: normal ones show your text verbatim, while the jackpot sticky (`/jackpot sticky:True`) rebuilds its text from the live pot on every repost, so the amount is always current. It also refreshes itself every **10 minutes** — that refresh *edits the message in place* rather than reposting, so a quiet channel doesn't get bumped and marked unread every half hour.
 
 ---
 
