@@ -31,6 +31,10 @@ const inFlight = new Set<string>();
 // not be dropped either: messages sent during a repost would leave the sticky
 // stranded above them with nothing scheduled to fix it.
 const rerunNeeded = new Set<string>();
+// Message ids of stickies WE posted. Recorded synchronously on send so the
+// messageCreate for our own sticky can be ignored without waiting on the DB
+// write — otherwise the sticky would trigger itself and repost forever.
+const ownStickyIds = new Set<string>();
 
 function buildPayload(content: string, asEmbed: boolean, gold = false) {
   if (!asEmbed) return { content };
@@ -63,6 +67,7 @@ async function repost(channel: TextChannel, db: typeof import('../../utils/db'))
 
     // Delete the previous copy first so only one sticky exists at a time.
     if (sticky.message_id) {
+      ownStickyIds.delete(sticky.message_id);
       await channel.messages.delete(sticky.message_id).catch(() => {
         // Already gone (deleted manually, purged, etc.) — nothing to clean up.
       });
@@ -70,6 +75,7 @@ async function repost(channel: TextChannel, db: typeof import('../../utils/db'))
 
     const content = await resolveContent(sticky);
     const sent = await channel.send(buildPayload(content, sticky.embed === 1, sticky.kind === 'jackpot'));
+    ownStickyIds.add(sent.id);
     await db.setStickyMessageId(id, sent.id);
   } catch (err: any) {
     logger.warn(`[sticky] repost failed in ${channel.id}: ${err?.message ?? err}`);
@@ -105,9 +111,33 @@ const stickyModule: EventModule = {
   name: 'sticky',
   handlers: {
     messageCreate: async ({ data: [message], db }) => {
-      if (!message.guild || message.author.bot) return;
+      if (!message.guild) return;
       const channel = message.channel;
       if (!channel.isTextBased() || channel.isDMBased()) return;
+
+      // Only ignore the sticky itself (which would otherwise re-trigger and
+      // repost forever). Other bot messages MUST count: in channels like
+      // #claim or #plinko nearly all the content is this bot's own replies to
+      // slash commands, so skipping every bot message meant the sticky never
+      // moved and just sat above them.
+      if (ownStickyIds.has(message.id)) return;
+
+      const sticky = await db.getSticky(channel.id);
+      if (!sticky) return;
+      if (sticky.message_id && message.id === sticky.message_id) return;
+
+      scheduleRepost(channel as TextChannel, db);
+    },
+
+    // Slash-command replies are what fills channels like #claim and #plinko.
+    // Depending on how a reply is sent (interaction callback vs. follow-up),
+    // messageCreate isn't guaranteed to fire for it, so trigger off the
+    // interaction itself too. The debounce collapses the duplicate when both
+    // fire, and gives the reply time to land before we repost beneath it.
+    interactionCreate: async ({ data: [interaction], db }) => {
+      if (!interaction.isChatInputCommand() || !interaction.guildId) return;
+      const channel = interaction.channel;
+      if (!channel?.isTextBased?.() || channel.isDMBased?.()) return;
 
       const sticky = await db.getSticky(channel.id);
       if (!sticky) return;
