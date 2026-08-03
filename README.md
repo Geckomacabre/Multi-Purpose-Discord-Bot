@@ -118,6 +118,10 @@ Also runs automatically: if **5+ accounts under 3 days old** join within a 60-se
 
 Logged events: member join/leave, message edit/delete, bans/unbans, nickname changes, role changes, and (when enabled) **every slash command used** — who ran it, what command/subcommand/options, and which channel. Handy for tracing what a raid account did before it got banned. Per-category channels (member/message/voice/server/command) can be set individually from the [Web Dashboard](#web-dashboard); `/config logs channel` sets the fallback used when a category has no dedicated channel.
 
+**Message delete logs** now try to attribute *who* deleted a message and *why*, via a matching Discord audit-log entry — if a moderator or bot deleted someone else's message, the log shows who and (if given) their reason; if there's no matching entry, it was almost certainly deleted by its own author (Discord doesn't create audit-log entries for self-deletes). Also shows attachments, when the message was originally sent, and gracefully labels content that wasn't cached rather than showing it as empty. Bulk deletions (200+ at once via `/purge`, or an auto-spam purge) now get their own log entry too — previously only single-message deletes were logged individually and bulk deletions were invisible to the message log.
+
+**Member leave logs** now show how long the member had been in the server (relative to their join date) and every role they held. Leaves and kicks fire the same Discord event, so the log also checks the audit log to tell them apart — a kick shows as **Member Kicked** with who kicked them and the reason, instead of just **Member Left**.
+
 #### Role Management
 
 User commands:
@@ -224,14 +228,14 @@ Every removal posts an alert (domain/code, user, channel) to your modlog channel
 | `/config antiphishing view` | View current antiphishing settings. |
 
 #### Spam Detection
-Always active, no configuration needed. Detects and auto-punishes (24-hour timeout + purges the offender's last hour of messages across every channel) any of:
+Always active, no configuration needed. Detects and auto-punishes (24-hour timeout + purges the offender's last hour of messages across every channel, in text channels and voice-channel text chat alike) any of:
 - **Repeated messages** — the *same* message sent 4+ times within 10 seconds (the actual signature of spam bots/copy-paste raids).
 - **Flood rate** — 8+ messages in 6 seconds regardless of content, as a safety net for pure flooding. Typing several quick, distinct messages back to back (an enthusiastic chatter, not a spammer) won't trigger this.
-- **Cross-channel image spam** — posting images/videos in more than 3 different channels within 10 seconds.
-- **Cross-channel message spam** — posting the identical message in more than 3 different channels within 10 seconds.
+- **Cross-channel image spam** — posting images/videos in more than 3 different channels within 30 seconds.
+- **Cross-channel message/link spam** — posting the identical message, *or the identical link* (even if the surrounding text is varied to dodge exact-match detection), in 3 or more different channels within 45 seconds. This is the signature of a hijacked account or malicious bot running a scam (fake giveaway links, etc.) across a server.
 - **Command spam** — 6+ slash commands in 8 seconds, the signature of a raid script hammering the bot rather than a human clicking through the UI.
 
-Members with **Manage Messages** are exempt (staff/bots running legitimate bulk actions won't get caught). Every trigger posts a detailed report — reason, action taken, and a list of every purged message — to your configured member/message log channels and modlog.
+Members with **Manage Messages** are exempt from the rate/duplicate-content and image checks (staff running legitimate bulk actions won't get caught by those noisier signals) — but **not** from the cross-channel message/link check. Nothing legitimate posts identical content across several channels, so no role is trusted enough to skip that one; this closes a real gap where a compromised staff account (or a malicious bot with elevated permissions) could spam scam links across an entire server with zero detection. Every trigger posts a detailed report — reason, action taken, and a list of every purged message — to your configured member/message log channels and modlog.
 
 #### Utility
 | Command | Description |

@@ -299,6 +299,20 @@ All on by default. Known phishing domains are always blocked while antiphishing 
 
 Per-category channels (member/message/voice/server/command) can be set individually from the Web Dashboard.
 
+**Message delete logs** try to show who deleted a message and why (via the Discord audit log) — a moderator/bot deletion shows the deleter and their reason; no match usually just means the author deleted it themselves (Discord doesn't log self-deletes). Also shows attachments and when the message was sent, and bulk deletions (`/purge`, spam auto-purges) now get their own log entry instead of vanishing silently.
+
+**Member leave logs** show how long they'd been a member and every role they held, and distinguish a kick (shows who kicked them + reason) from a voluntary leave.
+
+### 🚨 Spam Detection
+
+Always active, no configuration needed. Auto-punishes (24-hour timeout + purge of the offender's last hour of messages, across every channel including voice-channel text chat) for:
+- **Repeated messages** — the same message 4+ times within 10 seconds
+- **Flood rate** — 8+ messages in 6 seconds regardless of content (a fast typer sending a few distinct messages won't trigger this)
+- **Cross-channel image spam** — images/videos posted in 4+ channels within 30 seconds
+- **Cross-channel message/link spam** — the identical message, or the identical link even if the wording around it changes per channel, posted in 3+ channels within 45 seconds — the fingerprint of a hijacked account or scam bot
+
+Manage Messages holders skip the noisier rate/duplicate/image checks, but **not** the cross-channel message/link check — nothing legitimate posts the same thing across several channels, so no role is exempt from that one. This closes a real gap where a compromised staff account could spam scam links across the whole server undetected.
+
 ### Birthday System
 - `/birthdayconfig channel [channel]` — Set the birthday announcement channel
 - `/birthdayconfig toggle` — Enable or disable birthday announcements

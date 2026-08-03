@@ -1,4 +1,4 @@
-import { ChatInputCommandInteraction, Colors, EmbedBuilder, GuildChannel, TextChannel } from 'discord.js';
+import { AuditLogEvent, ChatInputCommandInteraction, Colors, EmbedBuilder, Guild, GuildChannel, PartialUser, TextChannel, User } from 'discord.js';
 import { EventModule } from '../feature';
 import type * as Db from '../../utils/db';
 
@@ -19,6 +19,27 @@ async function getLogChannel(bot: any, channelId: string | null): Promise<TextCh
   try {
     const ch = await bot.channels.fetch(channelId);
     return ch instanceof TextChannel ? ch : null;
+  } catch {
+    return null;
+  }
+}
+
+// Correlates an event with a recent matching audit-log entry to attribute WHO
+// did it and WHY. Audit-log entries only exist for moderator/bot actions
+// taken against someone else — a message someone deletes themselves, or a
+// member who leaves voluntarily, never produces one, so a null return
+// usually just means "no one else was involved," not a failed lookup. Also
+// returns null (silently) if the bot lacks View Audit Log.
+async function findAuditEntry(
+  guild: Guild,
+  type: AuditLogEvent,
+  targetId: string,
+  withinMs = 10_000,
+): Promise<{ executor: User | PartialUser | null; reason: string | null } | null> {
+  try {
+    const logs = await guild.fetchAuditLogs({ type, limit: 5 });
+    const entry = logs.entries.find(e => e.targetId === targetId && Date.now() - e.createdTimestamp < withinMs);
+    return entry ? { executor: entry.executor, reason: entry.reason } : null;
   } catch {
     return null;
   }
@@ -85,13 +106,39 @@ const logsModule: EventModule = {
       if (!cfg?.log_leaves) return;
       const ch = await getLogChannel(bot, resolveChannelId(cfg, 'member'));
       if (!ch) return;
+
+      // A kick fires the same guildMemberRemove event as a voluntary leave —
+      // the only way to tell them apart is a matching MemberKick audit-log entry.
+      const kick = await findAuditEntry(member.guild, AuditLogEvent.MemberKick, member.id);
+
+      const roles = member.roles.cache.filter(r => r.id !== member.guild.id);
+      const rolesValue = roles.size
+        ? [...roles.values()].slice(0, 20).map(r => `<@&${r.id}>`).join(', ') + (roles.size > 20 ? ` *(+${roles.size - 20} more)*` : '')
+        : '*None*';
+
       const embed = new EmbedBuilder()
         .setColor(Colors.Red)
-        .setTitle('Member Left')
+        .setTitle(kick ? 'Member Kicked' : 'Member Left')
         .setThumbnail(member.user.displayAvatarURL())
         .setDescription(`<@${member.id}> **${member.user.tag}**`)
+        .addFields(
+          {
+            name: 'Joined',
+            value: member.joinedTimestamp ? `<t:${Math.floor(member.joinedTimestamp / 1000)}:R>` : '*Unknown*',
+            inline: true,
+          },
+          { name: 'Roles', value: rolesValue },
+        )
         .setFooter({ text: `ID: ${member.id}` })
         .setTimestamp();
+
+      if (kick) {
+        embed.addFields(
+          { name: 'Kicked By', value: kick.executor ? `<@${kick.executor.id}> (${kick.executor.tag})` : '*Unknown*', inline: true },
+          { name: 'Reason', value: kick.reason ?? 'No reason provided', inline: true },
+        );
+      }
+
       await ch.send({ embeds: [embed] }).catch(() => {});
     },
 
@@ -202,13 +249,63 @@ const logsModule: EventModule = {
       if (ignored.includes(message.channelId)) return;
       const ch = await getLogChannel(bot, resolveChannelId(cfg, 'message'));
       if (!ch) return;
+
+      const guild = message.guild ?? (message.guildId ? bot.guilds.cache.get(message.guildId) : null);
+      const deleter = guild && message.author ? await findAuditEntry(guild, AuditLogEvent.MessageDelete, message.author.id) : null;
+
+      const contentValue = message.partial
+        ? '*Content unavailable (message wasn\'t cached)*'
+        : (message.content || '*(no text content)*').slice(0, 1024);
+
       const embed = new EmbedBuilder()
         .setColor(Colors.Red)
         .setTitle('Message Deleted')
         .setDescription(`<@${message.author?.id}> in <#${message.channelId}>`)
-        .addFields({ name: 'Content', value: (message.content || '*empty*').slice(0, 1024) })
-        .setFooter({ text: `User: ${message.author?.id}` })
+        .addFields(
+          { name: 'Content', value: contentValue },
+          {
+            name: 'Deleted By',
+            value: deleter?.executor ? `<@${deleter.executor.id}> (${deleter.executor.tag})` : '*Self-deleted, or deleter unknown*',
+            inline: true,
+          },
+        )
+        .setFooter({ text: `Author: ${message.author?.id} · Message: ${message.id}` })
         .setTimestamp();
+
+      if (deleter?.reason) embed.addFields({ name: 'Reason', value: deleter.reason, inline: true });
+      if (!message.partial && message.createdTimestamp) {
+        embed.addFields({ name: 'Sent', value: `<t:${Math.floor(message.createdTimestamp / 1000)}:R>`, inline: true });
+      }
+      if (message.attachments.size) {
+        embed.addFields({ name: 'Attachments', value: [...message.attachments.values()].map(a => a.name).join(', ').slice(0, 1024) });
+      }
+
+      await ch.send({ embeds: [embed] }).catch(() => {});
+    },
+
+    messageDeleteBulk: async ({ data: [messages, channel], bot, db }) => {
+      const cfg = await db.getLogConfig(channel.guild.id);
+      if (!cfg?.log_message_deletes) return;
+      const ignored: string[] = cfg.ignored_channels ? JSON.parse(cfg.ignored_channels) : [];
+      if (ignored.includes(channel.id)) return;
+      const ch = await getLogChannel(bot, resolveChannelId(cfg, 'message'));
+      if (!ch) return;
+
+      const deleter = await findAuditEntry(channel.guild, AuditLogEvent.MessageBulkDelete, channel.id);
+
+      const embed = new EmbedBuilder()
+        .setColor(Colors.Red)
+        .setTitle('Messages Bulk Deleted')
+        .setDescription(`**${messages.size}** messages deleted in <#${channel.id}>`)
+        .addFields({
+          name: 'Deleted By',
+          value: deleter?.executor ? `<@${deleter.executor.id}> (${deleter.executor.tag})` : '*Unknown (bot or automated action)*',
+          inline: true,
+        })
+        .setTimestamp();
+
+      if (deleter?.reason) embed.addFields({ name: 'Reason', value: deleter.reason, inline: true });
+
       await ch.send({ embeds: [embed] }).catch(() => {});
     },
 
