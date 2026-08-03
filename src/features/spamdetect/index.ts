@@ -2,8 +2,17 @@ import { ChatInputCommandInteraction, EmbedBuilder, GuildMember, Message, TextCh
 import { EventModule } from '../feature';
 import { getLogConfig } from '../../utils/db.js';
 
-const WINDOW_MS = 10_000;       // 10-second sliding window for cross-channel spam
+const WINDOW_MS = 30_000;       // 30-second sliding window for cross-channel image spam
 const THRESHOLD = 3;            // more than 3 channels triggers action
+// The same-message/same-link cross-channel check gets its own window and
+// threshold — it's the exact fingerprint of a hijacked or malicious account
+// running a scam (a fake giveaway link posted in a bunch of channels), so
+// it's tuned wider than the image check to catch a campaign that takes its
+// time, and — unlike every other check here — it is NEVER skipped for
+// trusted accounts. See messageCreate below for why.
+const CROSS_CHANNEL_WINDOW_MS = 45_000;
+const CROSS_CHANNEL_MIN_CHANNELS = 3; // identical text/link in 3+ channels — nothing legitimate does this
+const URL_RE = /https?:\/\/[^\s<>]+/gi;
 // Two separate signals for same-channel flooding, so a fast typer sending several
 // *different* real messages isn't treated the same as a bot/paste spamming one line
 // over and over. Either one firing is enough to punish.
@@ -212,14 +221,24 @@ export async function checkCommandSpam(interaction: ChatInputCommandInteraction,
 const spamDetectModule: EventModule = {
   name: 'spamdetect',
   handlers: {
-    messageCreate: async ({ data: [message], db }) => {
+    messageCreate: async ({ data: [message], bot, db }) => {
       const msg = message as Message;
-      if (!msg.guildId || msg.author?.bot) return;
+      if (!msg.guildId || msg.author.id === bot.user?.id) return; // never police the bot itself
 
       const member = msg.member as GuildMember | null;
       if (!member) return;
 
-      if (member.permissions.has(PermissionFlagsBits.ManageMessages)) return;
+      // Manage Messages holders (staff, or a bot granted that role) skip the
+      // noisier same-channel checks below — those are more prone to false
+      // positives, so trusting elevated roles there is reasonable. They are
+      // NOT exempt from the cross-channel check further down: identical text
+      // or an identical link posted across several channels is never a
+      // legitimate action, no matter who's doing it. A previous version of
+      // this file exempted every bot-flagged account AND every Manage
+      // Messages holder from all of this — meaning a hijacked account with
+      // staff permissions, or a malicious/compromised bot, could spam a scam
+      // link across the whole server with zero detection. This closes that.
+      const trusted = member.permissions.has(PermissionFlagsBits.ManageMessages);
 
       const now = Date.now();
       const track = getTrack(msg.guildId, msg.author.id);
@@ -229,81 +248,90 @@ const spamDetectModule: EventModule = {
       track.msgHistory.push({ id: msg.id, channelId, timestamp: now, content: msg.content ?? '' });
       track.msgHistory = track.msgHistory.filter(m => now - m.timestamp <= MSG_HISTORY_MS);
 
-      // ── Rapid-fire / repeated-content detection ──────────────────────────────
-      // Raw flood rate is a safety net (an enthusiastic person typing distinct
-      // messages back to back can hit 3-4 in a few seconds — that's not spam).
-      // The stronger signal is the *same* message posted over and over, which is
-      // what real spam bots and copy-paste raids actually do.
-      track.recentMessages.push(now);
-      track.recentMessages = track.recentMessages.filter(ts => now - ts <= RAPID_WINDOW_MS);
+      if (!trusted) {
+        // ── Rapid-fire / repeated-content detection ────────────────────────────
+        // Raw flood rate is a safety net (an enthusiastic person typing distinct
+        // messages back to back can hit 3-4 in a few seconds — that's not spam).
+        // The stronger signal is the *same* message posted over and over, which is
+        // what real spam bots and copy-paste raids actually do.
+        track.recentMessages.push(now);
+        track.recentMessages = track.recentMessages.filter(ts => now - ts <= RAPID_WINDOW_MS);
 
-      const normalizedContent = msg.content.trim().toLowerCase().replace(/\s+/g, ' ');
-      track.recentContents.push({ content: normalizedContent, timestamp: now });
-      track.recentContents = track.recentContents.filter(c => now - c.timestamp <= DUPLICATE_WINDOW_MS);
-      const duplicateCount = normalizedContent.length >= 2
-        ? track.recentContents.filter(c => c.content === normalizedContent).length
-        : 0;
+        const normalizedContent = msg.content.trim().toLowerCase().replace(/\s+/g, ' ');
+        track.recentContents.push({ content: normalizedContent, timestamp: now });
+        track.recentContents = track.recentContents.filter(c => now - c.timestamp <= DUPLICATE_WINDOW_MS);
+        const duplicateCount = normalizedContent.length >= 2
+          ? track.recentContents.filter(c => c.content === normalizedContent).length
+          : 0;
 
-      const isFlooding = track.recentMessages.length >= RAPID_THRESHOLD;
-      const isRepeating = duplicateCount >= DUPLICATE_THRESHOLD;
+        const isFlooding = track.recentMessages.length >= RAPID_THRESHOLD;
+        const isRepeating = duplicateCount >= DUPLICATE_THRESHOLD;
 
-      if (isFlooding || isRepeating) {
-        const reason = isRepeating
-          ? `Repeated-message spam: sent the same message ${duplicateCount} times within ${DUPLICATE_WINDOW_MS / 1000} seconds`
-          : `Rapid-fire spam: ${track.recentMessages.length} messages in ${RAPID_WINDOW_MS / 1000} seconds`;
-        const history = [...track.msgHistory];
-        track.recentMessages = [];
-        track.recentContents = [];
-        track.msgHistory = [];
-        await punish(member, reason, db, history);
-        return;
-      }
-
-      // ── Image spam detection ─────────────────────────────────────────────────
-      const hasImage = msg.attachments.some(a =>
-        a.contentType?.startsWith('image/') || a.contentType?.startsWith('video/')
-      ) || msg.embeds.some(e => e.image || e.video || e.thumbnail);
-
-      if (hasImage) {
-        pruneWindow(track.imageChannels, now);
-        if (!track.imageChannels.has(channelId)) {
-          track.imageChannels.set(channelId, now);
-        }
-        if (track.imageChannels.size > THRESHOLD) {
-          const channelList = [...track.imageChannels.keys()].map(id => `<#${id}>`).join(', ');
+        if (isFlooding || isRepeating) {
+          const reason = isRepeating
+            ? `Repeated-message spam: sent the same message ${duplicateCount} times within ${DUPLICATE_WINDOW_MS / 1000} seconds`
+            : `Rapid-fire spam: ${track.recentMessages.length} messages in ${RAPID_WINDOW_MS / 1000} seconds`;
           const history = [...track.msgHistory];
-          track.imageChannels.clear();
+          track.recentMessages = [];
+          track.recentContents = [];
           track.msgHistory = [];
-          await punish(member, `Image spam: posted images in ${channelList} within 10 seconds`, db, history);
+          await punish(member, reason, db, history);
           return;
         }
-      }
 
-      // ── Same-message cross-channel spam detection ─────────────────────────────
-      const content = msg.content.trim().toLowerCase();
-      if (content.length < 3) return;
+        // ── Image spam detection ───────────────────────────────────────────────
+        const hasImage = msg.attachments.some(a =>
+          a.contentType?.startsWith('image/') || a.contentType?.startsWith('video/')
+        ) || msg.embeds.some(e => e.image || e.video || e.thumbnail);
 
-      if (!track.messageChannels.has(content)) {
-        track.messageChannels.set(content, new Set());
-      }
-      const channels = track.messageChannels.get(content)!;
-      channels.add(channelId);
-
-      setTimeout(() => {
-        const t = tracker.get(msg.guildId!)?.get(msg.author.id);
-        if (t) {
-          const ch = t.messageChannels.get(content);
-          if (ch) ch.delete(channelId);
-          if (ch?.size === 0) t.messageChannels.delete(content);
+        if (hasImage) {
+          pruneWindow(track.imageChannels, now);
+          if (!track.imageChannels.has(channelId)) {
+            track.imageChannels.set(channelId, now);
+          }
+          if (track.imageChannels.size > THRESHOLD) {
+            const channelList = [...track.imageChannels.keys()].map(id => `<#${id}>`).join(', ');
+            const history = [...track.msgHistory];
+            track.imageChannels.clear();
+            track.msgHistory = [];
+            await punish(member, `Image spam: posted images in ${channelList} within ${WINDOW_MS / 1000} seconds`, db, history);
+            return;
+          }
         }
-      }, WINDOW_MS);
+      }
 
-      if (channels.size > THRESHOLD) {
-        const channelList = [...channels].map(id => `<#${id}>`).join(', ');
-        const history = [...track.msgHistory];
-        track.messageChannels.clear();
-        track.msgHistory = [];
-        await punish(member, `Message spam: sent the same message in ${channelList} within 10 seconds`, db, history);
+      // ── Same-message / same-link cross-channel spam detection ───────────────
+      // Applies to everyone, no exceptions — see the comment on `trusted` above.
+      // Tracks both the exact message text AND any URLs found in it separately,
+      // so a scam script that varies the surrounding wording per channel but
+      // reuses the same link still gets caught.
+      const content = msg.content.trim().toLowerCase();
+      const urls = content.match(URL_RE) ?? [];
+      const keys = [content.length >= 3 ? content : null, ...urls].filter((k): k is string => !!k);
+
+      for (const key of keys) {
+        if (!track.messageChannels.has(key)) track.messageChannels.set(key, new Set());
+        const channels = track.messageChannels.get(key)!;
+        channels.add(channelId);
+
+        setTimeout(() => {
+          const t = tracker.get(msg.guildId!)?.get(msg.author.id);
+          const ch = t?.messageChannels.get(key);
+          if (ch) {
+            ch.delete(channelId);
+            if (ch.size === 0) t!.messageChannels.delete(key);
+          }
+        }, CROSS_CHANNEL_WINDOW_MS);
+
+        if (channels.size >= CROSS_CHANNEL_MIN_CHANNELS) {
+          const channelList = [...channels].map(id => `<#${id}>`).join(', ');
+          const history = [...track.msgHistory];
+          track.messageChannels.clear();
+          track.msgHistory = [];
+          const kind = key === content ? 'message' : 'link';
+          await punish(member, `Message spam: sent the same ${kind} in ${channelList} within ${CROSS_CHANNEL_WINDOW_MS / 1000} seconds`, db, history);
+          return;
+        }
       }
     },
   },
