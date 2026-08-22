@@ -13,3 +13,6 @@ Dockerfile
 *.rdb
 *.sqlite-*
 music-bot
+.git
+.gitattributes
+backups
