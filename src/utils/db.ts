@@ -1,4 +1,6 @@
 import { SQL } from 'bun';
+import { existsSync } from 'fs';
+import { resolve } from 'path';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -456,7 +458,41 @@ export type IStarboardPost = {
 
 // ─── DB instance ─────────────────────────────────────────────────────────────
 
-export const db = new SQL('sqlite://data/db.sqlite');
+// Resolved absolutely against this file's location, NOT the process cwd.
+// A relative path here silently created a brand-new empty database whenever the
+// bot was started from the wrong directory - that wiped all levels on 2026-08-18.
+const DB_PATH = process.env.DB_PATH
+  ? resolve(process.env.DB_PATH)
+  : resolve(import.meta.dir, '../../data/db.sqlite');
+
+// Refuse to start against a missing database unless creation is explicitly asked
+// for. Silently creating an empty DB looks identical to a total data loss.
+if (!existsSync(DB_PATH) && process.env.CREATE_DB !== '1') {
+  throw new Error(
+    `No database at ${DB_PATH}. Refusing to start, because creating an empty ` +
+      `one here would look exactly like every user losing their levels, economy ` +
+      `and config. If this really is a first run, start once with CREATE_DB=1.`,
+  );
+}
+
+export const db = new SQL(`sqlite://${DB_PATH}`);
+
+// Checkpoint the WAL into the main file and close cleanly. Without this every
+// restart left committed data sitting in db.sqlite-wal beside a stale main file.
+export async function closeDb() {
+  try {
+    if (db.options.adapter === 'sqlite') {
+      await db`PRAGMA wal_checkpoint(TRUNCATE);`;
+    }
+  } catch (err) {
+    console.error('[shutdown] WAL checkpoint failed:', err);
+  }
+  try {
+    await db.close();
+  } catch (err) {
+    console.error('[shutdown] DB close failed:', err);
+  }
+}
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
@@ -466,7 +502,7 @@ export async function initDb() {
       await db`PRAGMA foreign_keys = ON;`;
       await db`PRAGMA journal_mode = WAL;`;
       await db`PRAGMA busy_timeout = 5000;`;
-      await db`PRAGMA wal_autocheckpoint = 1000;`;
+      await db`PRAGMA wal_autocheckpoint = 200;`; // keep the WAL small; 1000 let it reach 1.79MB against a 4KB main file
       await db`PRAGMA synchronous = NORMAL;`;
     } catch (err) {
       console.error('Failed to set PRAGMA settings:', err);
