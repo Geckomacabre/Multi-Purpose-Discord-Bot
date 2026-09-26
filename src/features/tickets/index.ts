@@ -5,7 +5,7 @@ import {
 } from 'discord.js';
 import { EventModule } from '../feature';
 import { cv2Text } from '../../utils/components.js';
-import { archiveTicket, buildModPanel, fetchAllMessages, buildTranscriptFile } from '../../utils/tickets.js';
+import { archiveTicket, buildModPanel, fetchAllMessages, buildTranscriptFile, canCloseTicket, isTicketStaff } from '../../utils/tickets.js';
 
 async function createTicketChannel(
   interaction: ButtonInteraction | ModalSubmitInteraction,
@@ -98,9 +98,10 @@ const ticketsModule: EventModule = {
           await btn.deferReply({ flags: MessageFlags.Ephemeral });
           const ticket = await db.getTicketByChannel(channelId);
           if (!ticket) { await btn.editReply('This is not an open ticket.'); return; }
+          const cfg = await db.getTicketConfig(ticket.guild_id);
+          if (!isTicketStaff(btn, cfg)) { await btn.editReply('❌ Only support staff can claim tickets.'); return; }
           if (ticket.claimed_by) { await btn.editReply(`This ticket is already claimed by <@${ticket.claimed_by}>.`); return; }
           await db.claimTicket(channelId, btn.user.id);
-          const cfg = await db.getTicketConfig(ticket.guild_id);
           if (cfg?.support_role_id) {
             await (btn.channel as TextChannel).permissionOverwrites.delete(cfg.support_role_id).catch(() => {});
           }
@@ -139,6 +140,8 @@ const ticketsModule: EventModule = {
           await btn.deferReply({ flags: MessageFlags.Ephemeral });
           const ticket = await db.getTicketByChannel(channelId);
           if (!ticket) { await btn.editReply('This channel is not an open ticket.'); return; }
+          const check = canCloseTicket(btn, ticket);
+          if (!check.allowed) { await btn.editReply(check.reason); return; }
           await db.closeTicket(channelId);
           await btn.editReply('✅ Ticket closed. Generating transcript and deleting channel...');
           const cfg = await db.getTicketConfig(ticket.guild_id);

@@ -171,6 +171,8 @@ Admin configuration is under `/rolesconfig` (Manage Roles required):
 | `/ticket config set` | Configure ticket category, log channel, and support role. |
 | `/ticket config view` | View current ticket settings. |
 
+**Monthly maintenance** *(runs automatically on the 1st of each month, for any server with a log channel configured)*: tickets with 14+ days of no activity are auto-closed and archived like a normal close, then a synthetic "monthly bug check" ticket is created and closed to confirm the ticket system still works end-to-end. A **Monthly Ticket Report** embed is posted to the log channel with tickets opened/closed in the last 30 days, how many were auto-closed for staleness, average user feedback rating, and the bug-check result.
+
 #### Reminders
 | Command | Description |
 |---|---|
@@ -280,6 +282,8 @@ The hint sequence is shuffled once per round and shared by everyone — one hint
 **Song** — Powered by **Deezer's public API** — no key needed at all. Rounds post just the **first 5 seconds** of the track as a playable Discord audio attachment (not an image) — the rest is locked behind guessing or the Extended Snippet hint. Once someone guesses correctly, the full 30-second preview posts as a bonus reveal. Pulled from Deezer's charts across a rotating mix of mainstream genres so it's always something current and recognizable, not deep-cuts.
 
 All four suppress repeats per channel for 6 hours.
+
+**Monthly reset** *(runs automatically on the 1st of each month, shortly after the ticket check)*: for every configured guessing channel, a top-10 leaderboard embed (`/games leaderboard` data) is posted to that channel, then the current round is force-skipped so a fresh one starts — win/loss stats in `game_stats` are **not** cleared, this only cuts the current round short.
 
 #### Fun
 

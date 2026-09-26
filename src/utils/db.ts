@@ -1789,6 +1789,31 @@ export async function getModRatings(guild_id: string, user_id: string): Promise<
   ` as any;
 }
 
+// Only guilds that have somewhere to post results — a log channel configured.
+export async function getAllTicketConfigs(): Promise<ITicketConfig[]> {
+  const rows = await db`SELECT * FROM ticket_config WHERE log_channel_id IS NOT NULL`;
+  return rows as ITicketConfig[];
+}
+
+export async function getOpenTickets(guild_id: string): Promise<ITicket[]> {
+  const rows = await db`SELECT * FROM tickets WHERE guild_id = ${guild_id} AND status = 'open'`;
+  return rows as ITicket[];
+}
+
+export async function getMonthlyTicketStats(guild_id: string, since: number): Promise<{
+  opened: number; closed: number; avgRating: number | null; ratingCount: number;
+}> {
+  const [openedRow] = await db`SELECT COUNT(*) as c FROM tickets WHERE guild_id = ${guild_id} AND created_at >= ${since}`;
+  const [closedRow] = await db`SELECT COUNT(*) as c FROM tickets WHERE guild_id = ${guild_id} AND closed_at >= ${since}`;
+  const [ratingRow] = await db`SELECT AVG(rating) as avg, COUNT(rating) as c FROM tickets WHERE guild_id = ${guild_id} AND closed_at >= ${since} AND rating IS NOT NULL`;
+  return {
+    opened: Number((openedRow as any)?.c ?? 0),
+    closed: Number((closedRow as any)?.c ?? 0),
+    avgRating: (ratingRow as any)?.avg != null ? Number((ratingRow as any).avg) : null,
+    ratingCount: Number((ratingRow as any)?.c ?? 0),
+  };
+}
+
 // ─── Reminders ────────────────────────────────────────────────────────────────
 
 export async function createReminder(user_id: string, channel_id: string, guild_id: string | null, message: string, fires_at: number): Promise<IReminder> {
@@ -2287,9 +2312,30 @@ export async function setLotteryLastMessage(guild_id: string, channel_id: string
     ON CONFLICT(key) DO UPDATE SET value = excluded.value`;
 }
 
-export async function getRandomLotteryWinner(guild_id: string): Promise<string | null> {
+// Stores "winnerId:prize" for today's draw so a reroll can claw back the prize
+// from the outgoing winner before picking a replacement.
+export async function getLotteryLastWinner(guild_id: string): Promise<{ winnerId: string; prize: number } | null> {
+  const [row] = await db`SELECT value FROM bot_config WHERE key = ${'lottery_winner_' + guild_id}`;
+  if (!row) return null;
+  const [winnerId, prizeStr] = (row.value as string).split(':');
+  const prize = Number(prizeStr);
+  return winnerId && Number.isFinite(prize) ? { winnerId, prize } : null;
+}
+
+export async function setLotteryLastWinner(guild_id: string, winner_id: string, prize: number): Promise<void> {
+  const value = `${winner_id}:${prize}`;
+  await db`INSERT INTO bot_config (key, value) VALUES (${'lottery_winner_' + guild_id}, ${value})
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value`;
+}
+
+export async function getRandomLotteryWinner(guild_id: string, eligibleIds?: Set<string>): Promise<string | null> {
   const rows = await db`SELECT user_id FROM xp WHERE guild_id = ${guild_id}`;
-  if (!rows.length) return null;
+  // xp rows persist after a member leaves — restrict to current members so we
+  // never draw someone Discord can no longer resolve a mention for.
+  const candidates = eligibleIds
+    ? (rows as Array<{ user_id: string }>).filter(r => eligibleIds.has(r.user_id))
+    : (rows as Array<{ user_id: string }>);
+  if (!candidates.length) return null;
   // Loaded Dice holders get a second entry — double the chance to win.
   const boosted = await db`
     SELECT DISTINCT user_id FROM economy_boosts
@@ -2297,7 +2343,7 @@ export async function getRandomLotteryWinner(guild_id: string): Promise<string |
   `;
   const boostedIds = new Set((boosted as Array<{ user_id: string }>).map(r => r.user_id));
   const pool: string[] = [];
-  for (const r of rows as Array<{ user_id: string }>) {
+  for (const r of candidates) {
     pool.push(r.user_id);
     if (boostedIds.has(r.user_id)) pool.push(r.user_id);
   }

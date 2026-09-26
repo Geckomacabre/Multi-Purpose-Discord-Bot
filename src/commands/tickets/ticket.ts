@@ -7,7 +7,7 @@ import {
 import * as db from '../../utils/db';
 import { Command } from '../../interfaces/command';
 import { cv2Text } from '../../utils/components.js';
-import { archiveTicket, buildModPanel } from '../../utils/tickets.js';
+import { archiveTicket, buildModPanel, canCloseTicket, isTicketAdmin } from '../../utils/tickets.js';
 
 const IS_CV2 = MessageFlags.IsComponentsV2;
 
@@ -212,6 +212,8 @@ const Ticket: Command = {
     } else if (sub === 'close') {
       const ticket = await db.getTicketByChannel(interaction.channelId);
       if (!ticket) { await interaction.editReply('This channel is not an open ticket.'); return; }
+      const check = canCloseTicket(interaction, ticket);
+      if (!check.allowed) { await interaction.editReply(check.reason); return; }
       await db.closeTicket(interaction.channelId);
       await interaction.editReply('✅ Ticket closed. Generating transcript and deleting channel...');
       const cfg = await db.getTicketConfig(ticket.guild_id);
@@ -219,6 +221,10 @@ const Ticket: Command = {
 
     // ── Delete ───────────────────────────────────────────────────────────────
     } else if (sub === 'delete') {
+      if (!isTicketAdmin(interaction)) {
+        await interaction.editReply('❌ You need **Manage Server** to delete a ticket channel.');
+        return;
+      }
       const ticket = await db.getTicketByChannelAny(interaction.channelId);
       if (!ticket) { await interaction.editReply('No ticket record found for this channel.'); return; }
       await interaction.editReply('🗑️ Deleting channel in 3 seconds...');

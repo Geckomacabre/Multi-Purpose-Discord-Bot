@@ -1,4 +1,4 @@
-import { Client, EmbedBuilder, Colors, ButtonInteraction, TextChannel } from 'discord.js';
+import { Client, EmbedBuilder, Colors, ButtonInteraction, TextChannel, Guild } from 'discord.js';
 import * as db from '../../utils/db';
 
 function pickWinners(entries: string[], count: number): string[] {
@@ -6,12 +6,22 @@ function pickWinners(entries: string[], count: number): string[] {
   return shuffled.slice(0, Math.min(count, shuffled.length));
 }
 
+// Entries persist after a member leaves (or never belonged to this guild) —
+// restrict to current members so we never draw someone who can't collect the prize.
+export async function filterEligibleEntries(guild: Guild | null, entries: string[]): Promise<string[]> {
+  if (!guild) return [];
+  const members = await guild.members.fetch().catch(() => guild.members.cache);
+  const memberIds = new Set(members.keys());
+  return entries.filter(id => memberIds.has(id));
+}
+
 export async function endGiveawayById(bot: Client, giveaway: db.IGiveaway) {
   await db.endGiveaway(giveaway.id);
+  const guild = await bot.guilds.fetch(giveaway.guild_id).catch(() => null);
   const entries = await db.getGiveawayEntries(giveaway.id);
-  const winners = pickWinners(entries, giveaway.winner_count);
+  const eligibleEntries = await filterEligibleEntries(guild, entries);
+  const winners = pickWinners(eligibleEntries, giveaway.winner_count);
 
-  const guild = bot.guilds.cache.get(giveaway.guild_id);
   const channel = guild?.channels.cache.get(giveaway.channel_id) as TextChannel | null;
   if (!channel || !giveaway.message_id) return;
 
@@ -32,6 +42,8 @@ export async function endGiveawayById(bot: Client, giveaway: db.IGiveaway) {
 
   if (winners.length > 0) {
     await channel.send({ content: `🎊 Congratulations ${winnerMentions}! You won **${giveaway.prize}**!` }).catch(() => {});
+  } else if (entries.length > 0) {
+    await channel.send({ content: '😔 Everyone who entered has left the server — no valid winners.' }).catch(() => {});
   } else {
     await channel.send({ content: '😔 No one entered the giveaway.' }).catch(() => {});
   }

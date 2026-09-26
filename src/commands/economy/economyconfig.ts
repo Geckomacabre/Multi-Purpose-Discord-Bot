@@ -6,6 +6,7 @@ import {
 import { Command } from '../../interfaces/command';
 import { getEconomyConfig, setEconomyConfig, setLotteryConfig } from '../../utils/db';
 import { cv2Text } from '../../utils/components.js';
+import { rerollLottery } from '../../features/lottery/index';
 
 const IS_CV2 = MessageFlags.IsComponentsV2;
 
@@ -38,6 +39,7 @@ const EconomyConfig: Command = {
       .addIntegerOption(o => o.setName('max').setDescription('Maximum work reward').setRequired(true).setMinValue(1)))
     .addSubcommand(s => s.setName('lottery').setDescription('Configure the daily lottery')
       .addChannelOption(o => o.setName('channel').setDescription('Channel to announce lottery winners (omit to disable)').setRequired(false)))
+    .addSubcommand(s => s.setName('lottery-reroll').setDescription("Reroll today's daily lottery winner (e.g. if they left the server)"))
     .addSubcommand(s => s.setName('view').setDescription('View current economy settings')),
 
   async run(interaction: ChatInputCommandInteraction) {
@@ -87,6 +89,10 @@ const EconomyConfig: Command = {
         await setLotteryConfig(guildId, null, false);
         await interaction.reply({ ...cv2Text('Daily lottery disabled.'), flags: IS_CV2 | MessageFlags.Ephemeral });
       }
+    } else if (sub === 'lottery-reroll') {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      const result = await rerollLottery(interaction.client, guildId);
+      await interaction.editReply({ ...cv2Text(result.message) });
     } else {
       const cfg = await getEconomyConfig(guildId);
       const lotteryLine = cfg.lottery_enabled && cfg.lottery_channel_id

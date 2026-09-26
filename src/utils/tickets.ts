@@ -1,6 +1,6 @@
 import {
-  ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle,
-  Client, EmbedBuilder, Message, TextChannel,
+  ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonInteraction, ButtonStyle,
+  ChatInputCommandInteraction, Client, EmbedBuilder, Message, PermissionFlagsBits, TextChannel,
 } from 'discord.js';
 import type { ITicket, ITicketConfig } from './db';
 
@@ -119,4 +119,45 @@ export function buildModPanel(channelId: string): ActionRowBuilder<ButtonBuilder
     new ButtonBuilder().setCustomId(`ticket:close:${channelId}`).setLabel('🔒 Close').setStyle(ButtonStyle.Danger),
   );
   return [row1, row2];
+}
+
+// ─── Ticket permissions ───────────────────────────────────────────────────────
+
+type TicketInteraction = ButtonInteraction | ChatInputCommandInteraction;
+
+/** Server admins. `has()` resolves Administrator implicitly, so Manage Server covers both. */
+export function isTicketAdmin(interaction: TicketInteraction): boolean {
+  return interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) ?? false;
+}
+
+function memberRoleIds(interaction: TicketInteraction): string[] {
+  const member: any = interaction.member;
+  if (!member) return [];
+  if (Array.isArray(member.roles)) return member.roles;
+  return [...(member.roles?.cache?.keys() ?? [])];
+}
+
+/** Admins, the configured support role, or anyone with Manage Messages when no support role is set. */
+export function isTicketStaff(interaction: TicketInteraction, cfg: ITicketConfig | null): boolean {
+  if (isTicketAdmin(interaction)) return true;
+  if (cfg?.support_role_id) return memberRoleIds(interaction).includes(cfg.support_role_id);
+  return interaction.memberPermissions?.has(PermissionFlagsBits.ManageMessages) ?? false;
+}
+
+export type TicketPermCheck = { allowed: true } | { allowed: false; reason: string };
+
+/**
+ * Only admins and the staff member who claimed the ticket may close it.
+ * The person who opened the ticket never can, even if they otherwise qualify.
+ */
+export function canCloseTicket(interaction: TicketInteraction, ticket: ITicket): TicketPermCheck {
+  if (ticket.user_id === interaction.user.id) {
+    return {
+      allowed: false,
+      reason: '❌ You opened this ticket, so you can\'t close it. A staff member who claims it — or an admin — will close it for you.',
+    };
+  }
+  if (isTicketAdmin(interaction)) return { allowed: true };
+  if (ticket.claimed_by && ticket.claimed_by === interaction.user.id) return { allowed: true };
+  return { allowed: false, reason: '❌ Only an admin or the staff member who claimed this ticket can close it.' };
 }

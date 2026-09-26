@@ -5,7 +5,7 @@ import {
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
 import * as db from '../../utils/db';
-import { endGiveawayById } from '../../features/giveaway/index';
+import { endGiveawayById, filterEligibleEntries } from '../../features/giveaway/index';
 
 function parseDuration(s: string): number | null {
   const re = /^(\d+)(s|m|h|d)$/i;
@@ -118,10 +118,11 @@ const Giveaway: Command = {
 
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       const entries = await db.getGiveawayEntries(id);
-      if (!entries.length) return interaction.editReply('No entries to reroll from.');
+      const eligibleEntries = await filterEligibleEntries(interaction.guild!, entries);
+      if (!eligibleEntries.length) return interaction.editReply('No eligible entries to reroll from (entrants may have left the server).');
 
-      const count = Math.min(g.winner_count, entries.length);
-      const shuffled = [...entries].sort(() => Math.random() - 0.5);
+      const count = Math.min(g.winner_count, eligibleEntries.length);
+      const shuffled = [...eligibleEntries].sort(() => Math.random() - 0.5);
       const winners = shuffled.slice(0, count).map(id => `<@${id}>`).join(', ');
 
       const channel = interaction.guild!.channels.cache.get(g.channel_id) as TextChannel | null;
