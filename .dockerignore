@@ -7,7 +7,8 @@ dist
 .prettierignore
 README.md
 Dockerfile
-.env.example
+.env
+.env.*
 *.db
 *.sqlite
 *.rdb
