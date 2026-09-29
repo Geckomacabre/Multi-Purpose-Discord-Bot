@@ -1135,6 +1135,18 @@ export async function initDb() {
     PRIMARY KEY (guild_id, type)
   )`;
 
+  // Coins spent on The Range (ctiservers.org boosters/revives) through the
+  // /api/range bridge. `ref` is the Range's purchase id, so a retried spend
+  // is recognised and never charged twice.
+  await db`CREATE TABLE IF NOT EXISTS range_spends (
+    ref        TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL,
+    amount     INTEGER NOT NULL,
+    reason     TEXT,
+    balance    INTEGER,
+    created_at INTEGER NOT NULL
+  )`;
+
   try { await db`ALTER TABLE economy_config ADD COLUMN lottery_channel_id TEXT`; } catch {}
   try { await db`ALTER TABLE economy_config ADD COLUMN lottery_enabled INTEGER NOT NULL DEFAULT 0`; } catch {}
   try { await db`ALTER TABLE economy_config ADD COLUMN lottery_prize INTEGER NOT NULL DEFAULT 50000`; } catch {}
@@ -2183,6 +2195,48 @@ export async function adjustBalance(
   const earned = delta > 0 ? delta : 0;
   await db`UPDATE economy SET balance = ${newBalance}, total_earned = total_earned + ${earned} WHERE user_id = ${user_id}`;
   return { success: true, newBalance };
+}
+
+/** A user's balance without creating an economy row (0 if they have none). */
+export async function peekBalance(user_id: string): Promise<number> {
+  const [row] = await db`SELECT balance FROM economy WHERE user_id = ${user_id}`;
+  return row ? (row.balance as number) : 0;
+}
+
+/**
+ * Spend coins on The Range. Idempotent on `ref`: a repeat of a spend that
+ * already went through succeeds again without charging. The deduction is a
+ * single conditional UPDATE, so two spends racing can't overdraw.
+ */
+export async function rangeSpend(
+  user_id: string, amount: number, ref: string, reason: string | null
+): Promise<{ ok: true; balance: number } | { ok: false; balance: number }> {
+  const [done] = await db`SELECT user_id, balance FROM range_spends WHERE ref = ${ref}`;
+  if (done) {
+    if (done.user_id !== user_id) return { ok: false, balance: await peekBalance(user_id) };
+    return { ok: true, balance: (done.balance as number | null) ?? await peekBalance(user_id) };
+  }
+  const now = Date.now();
+  const claimed = await db`
+    INSERT INTO range_spends (ref, user_id, amount, reason, created_at)
+    VALUES (${ref}, ${user_id}, ${amount}, ${reason}, ${now})
+    ON CONFLICT(ref) DO NOTHING
+    RETURNING ref
+  `;
+  // Lost a race with an identical request: that one does the charging.
+  if (!claimed.length) return { ok: true, balance: await peekBalance(user_id) };
+
+  const [row] = await db`
+    UPDATE economy SET balance = balance - ${amount}
+    WHERE user_id = ${user_id} AND balance >= ${amount}
+    RETURNING balance
+  `;
+  if (!row) {
+    await db`DELETE FROM range_spends WHERE ref = ${ref}`;
+    return { ok: false, balance: await peekBalance(user_id) };
+  }
+  await db`UPDATE range_spends SET balance = ${row.balance} WHERE ref = ${ref}`;
+  return { ok: true, balance: row.balance as number };
 }
 
 export async function getEconomyLeaderboard(userIds: string[], limit = 10): Promise<IEconomy[]> {

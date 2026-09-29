@@ -27,6 +27,7 @@ import { topicsPage } from './pages/topics';
 import { birthdaysPage, handleBirthdaySave } from './pages/birthdays';
 import { timezonesPage } from './pages/timezones';
 import { statChannelsPage } from './pages/statchannels';
+import { mountRangeApi } from './range';
 
 const WEB_PORT = parseInt(Bun.env.WEB_PORT ?? '3000');
 const WEB_URL  = Bun.env.WEB_URL ?? `http://localhost:${WEB_PORT}`;
@@ -106,12 +107,18 @@ function getFlash(url: URL): { flash?: string; flashType?: 'success' | 'error' }
 // ─── App ──────────────────────────────────────────────────────────────────────
 
 export function startWebServer() {
+  const app = new Elysia();
+  const rangeApi = mountRangeApi(app);
+
   if (!CLIENT_SECRET) {
     console.warn('[web] DISCORD_CLIENT_SECRET not set — dashboard disabled');
+    // The Range bridge doesn't need the dashboard, so it can run on its own.
+    if (rangeApi) {
+      app.listen(WEB_PORT);
+      console.log(`[web] Listening on ${WEB_URL} (Range bridge only)`);
+    }
     return;
   }
-
-  const app = new Elysia();
 
   // ── Landing ──
   app.get('/', () => html(landingPage()));
