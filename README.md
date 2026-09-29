@@ -42,6 +42,7 @@ TENOR_API_KEY=           # GIF search (/gif) — free key at https://developers.
 TMDB_API_KEY=            # Movie/TV guessing games — free key at https://www.themoviedb.org/settings/api
 RAWG_API_KEY=            # Video game guessing game — free key at https://rawg.io/apidocs
 # Song guessing uses Deezer's public API — no key needed, nothing to add here
+RANGE_API_TOKEN=         # Lets ctiservers.org's Range spend coins — see "The Range bridge"
 ```
 
 ### Running
@@ -682,6 +683,24 @@ A YAGPDB-style dark-themed web panel for managing all bot settings without slash
 5. Visit `http://localhost:3000` and log in with Discord
 
 **Config pages:** Economy · Leveling & Level Roles · Welcome · Starboard · AutoMod · Logging · Reaction Roles · Giveaways · Topic Rotation · Birthdays · Timezones · Stat Channels
+
+---
+
+### The Range bridge (ctiservers.org)
+
+The minigames on ctiservers.org's **Range** sell boosters and revives for economy coins. Their leaderboard Worker charges players through two token-protected routes on the web server (same `WEB_PORT` as the dashboard, which doesn't have to be enabled):
+
+| Call | Answer |
+|---|---|
+| `GET /api/range/wallet/<discord user id>` | `{ "balance": 1234 }` |
+| `POST /api/range/spend` with `{ user, amount, ref, reason }` | `{ "ok": true, "balance": 834 }`, or **402** `{ "error": "insufficient_funds", "balance": 120 }` |
+
+Prices come from the website; the bot only deducts. Each `ref` is charged once, so a retried request never double-charges, and every spend is kept in the `range_spends` table.
+
+**Setup:**
+1. Set `RANGE_API_TOKEN` in `.env` to a long random string (16+ characters)
+2. Put `WEB_PORT` behind HTTPS on a public address (a reverse proxy or tunnel)
+3. On the Worker: `npx wrangler secret put ECONOMY_URL` (that address) and `npx wrangler secret put ECONOMY_TOKEN` (the same string)
 
 ---
 
