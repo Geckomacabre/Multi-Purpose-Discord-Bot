@@ -31,7 +31,7 @@ function pokerPanel(
     cards: hand,
     glow: held,
     dim: dimUnheld ? held.map(h => !h) : undefined,
-  }], '♠️ VIDEO POKER', footer);
+  }], '♠️ VIDEO POKER', footer, 'machine');
 
   const c = new ContainerBuilder()
     .setAccentColor(color)

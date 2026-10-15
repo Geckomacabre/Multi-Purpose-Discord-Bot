@@ -14,7 +14,7 @@ import { renderTable } from '../../utils/cardRender.js';
 
 type Outcome = 'win' | 'blackjack' | 'push' | 'lose';
 
-const TABLE_NAME = 'blackjack.png';
+const TABLE_NAME = 'blackjack.jpg';
 
 /**
  * Renders the felt as an image alongside the text. Blackjack is interactive, so

@@ -54,7 +54,7 @@ const HighRoll: Command = {
       gif, name: GIF_NAME, revealMs: HIGHROLL_REVEAL_MS,
       suspense: { content: `**🎲 High Roll** — Bet: ${sym} ${bet.toLocaleString()}\nRolling…`, color: Colors.Blurple },
       result: {
-        content: `**🎲 High Roll**\n**Your Roll:** ${playerRoll} | **Bot Roll:** ${botRoll}\n${result}${insuranceLine(sym, refund)}\n**Balance:** ${sym} **${(newBalance + refund + jp.won).toLocaleString()}**${xpLine}${jackpotLine(sym, jp.won)}`,
+        content: `**🎲 High Roll**\n**Your Roll:** ${playerRoll} | **House Roll:** ${botRoll}\n${result}${insuranceLine(sym, refund)}\n**Balance:** ${sym} **${(newBalance + refund + jp.won).toLocaleString()}**${xpLine}${jackpotLine(sym, jp.won)}`,
         color: win ? Colors.Green : tie ? Colors.Yellow : Colors.Red,
       },
     });

@@ -1,64 +1,39 @@
-import { createCanvas, GlobalFonts, SKRSContext2D } from '@napi-rs/canvas';
-import { spawn } from 'node:child_process';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const FONTS_DIR = path.resolve(__dirname, '../../assets/fonts');
-
-let fontsReady = false;
-function ensureFonts() {
-  if (fontsReady) return;
-  try {
-    GlobalFonts.registerFromPath(path.join(FONTS_DIR, 'mplus.ttf'), 'Plinko');
-    GlobalFonts.registerFromPath(path.join(FONTS_DIR, 'bold.ttf'), 'PlinkoB');
-  } catch { /* fall back to system fonts */ }
-  fontsReady = true;
-}
+import { createCanvas, SKRSContext2D, Canvas } from '@napi-rs/canvas';
+import {
+  ensureFonts, roundedRect, encodeGif, grabFrame, brass, goldText, drawVignette, FONT,
+} from './casinoRender.js';
 
 // 10 bounces -> 11 buckets. Fewer rows than a "classic" 12 on purpose: the
 // binomial gets sharper with every extra row, and at 12 the middle three
 // buckets swallowed 61% of all drops, so anything good was unreachable.
 export const ROWS = 10;
-const HALF_UNITS = 2 * ROWS;             // ball x lives on 0..24 half-units
+const HALF_UNITS = 2 * ROWS;             // ball x lives on 0..20 half-units
 const START_X = ROWS;                    // enters dead centre
 
-const W = 460;
-const H = 560;
-const PAD_X = 26;
-const TOP_Y = 40;
-const BUCKET_H = 46;
-const BUCKET_Y = H - BUCKET_H - 14;
+const W = 480;
+const H = 600;
+const PAD_X = 30;
+const TOP_Y = 70;
+const BUCKET_H = 50;
+const BUCKET_Y = H - BUCKET_H - 20;
 const ROW_H = (BUCKET_Y - TOP_Y) / (ROWS + 1);
 const UNIT = (W - PAD_X * 2) / HALF_UNITS;
-const BALL_R = 7;
+const CHIP_R = 11;
 
 const FPS = 25;
-const FRAMES_PER_ROW = 5;                // 12 rows * 5 = 60 frames (~2.4s)
+const FRAMES_PER_ROW = 5;                // 10 rows * 5 = 50 frames (~2s)
 const HOLD_FRAMES = 22;                  // freeze on the result at the end
 
 const px = (x: number) => PAD_X + x * UNIT;
 const py = (row: number) => TOP_Y + row * ROW_H;
 
-// Colour per multiplier tier — hot at the edges, cold in the middle.
+// Paint colour per multiplier tier — hot at the edges, cool in the middle.
 function bucketColor(mult: number): string {
-  if (mult >= 100) return '#ff3d5a';
-  if (mult >= 20) return '#ff8a3d';
-  if (mult >= 4) return '#ffc93d';
-  if (mult >= 2) return '#8ee06b';
-  if (mult >= 1) return '#4dd0e1';
-  if (mult >= 0.3) return '#5a6b7d';
-  return '#3c4756';
-}
-
-function roundedRect(ctx: SKRSContext2D, x: number, y: number, w: number, h: number, r: number) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
+  if (mult >= 20) return '#b3202a';
+  if (mult >= 4) return '#d8661e';
+  if (mult >= 2) return '#d9a93a';
+  if (mult >= 1) return '#3f8f4f';
+  return '#3a4a6b';
 }
 
 /**
@@ -96,78 +71,135 @@ function buildTrajectory(steps: number[]): { x: number; y: number; squash: numbe
   return pts;
 }
 
-function drawFrame(
-  ctx: SKRSContext2D, mults: number[], bucket: number,
-  ball: { x: number; y: number; squash: number }, trail: { x: number; y: number }[],
-  landed: boolean,
-) {
-  // Background
-  const bg = ctx.createLinearGradient(0, 0, 0, H);
-  bg.addColorStop(0, '#0e1116');
-  bg.addColorStop(1, '#171d26');
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, W, H);
+const boardCache = new Map<string, Canvas>();
 
-  // Pegs
+/** Lacquered board, brass pegs, slot dividers and painted multiplier tiles. */
+function buildBoard(mults: number[]): Canvas {
+  const key = mults.join(',');
+  const hit = boardCache.get(key);
+  if (hit) return hit;
+  const c = createCanvas(W, H);
+  const ctx = c.getContext('2d');
+
+  // Brass frame around a deep-blue lacquered panel
+  ctx.fillStyle = brass(ctx, 0, 0, W, H);
+  ctx.fillRect(0, 0, W, H);
+  roundedRect(ctx, 8, 8, W - 16, H - 16, 8);
+  const lacquer = ctx.createLinearGradient(0, 0, 0, H);
+  lacquer.addColorStop(0, '#16285e');
+  lacquer.addColorStop(1, '#0a1436');
+  ctx.fillStyle = lacquer;
+  ctx.fill();
+  // Diagonal sheen on the lacquer
+  const sheen = ctx.createLinearGradient(0, 0, W, H);
+  sheen.addColorStop(0, 'rgba(255,255,255,0.07)');
+  sheen.addColorStop(0.3, 'rgba(255,255,255,0)');
+  ctx.fillStyle = sheen;
+  ctx.fill();
+
+  goldText(ctx, 'PLINKO', W / 2, 38, 34, { spacing: 8 });
+
+  // Brass pegs with a little cast shadow
   for (let r = 1; r <= ROWS; r++) {
     for (let hx = START_X - r; hx <= START_X + r; hx += 2) {
-      const cx = px(hx), cy = py(r);
+      const x = px(hx), y = py(r);
       ctx.beginPath();
-      ctx.arc(cx, cy, 3.1, 0, Math.PI * 2);
-      ctx.fillStyle = '#5b6879';
+      ctx.arc(x + 1.2, y + 1.8, 4.8, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(x, y, 4.8, 0, Math.PI * 2);
+      const g = ctx.createRadialGradient(x - 1.4, y - 1.4, 0.4, x, y, 4.8);
+      g.addColorStop(0, '#fff3c4');
+      g.addColorStop(0.5, '#d8b25a');
+      g.addColorStop(1, '#6b4e17');
+      ctx.fillStyle = g;
       ctx.fill();
     }
   }
 
-  // Buckets
-  const bw = UNIT * 2 - 3;
-  for (let k = 0; k <= ROWS; k++) {
-    const cx = px(k * 2);
-    const col = bucketColor(mults[k]!);
-    const win = landed && k === bucket;
-    ctx.globalAlpha = win ? 1 : 0.82;
-    roundedRect(ctx, cx - bw / 2, BUCKET_Y, bw, BUCKET_H, 6);
-    ctx.fillStyle = win ? col : col + '33';
-    ctx.fill();
-    ctx.lineWidth = win ? 2.5 : 1;
-    ctx.strokeStyle = col;
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-
-    const label = mults[k]! >= 1 ? `${mults[k]}x` : `${mults[k]}x`;
-    ctx.font = `${win ? 'bold ' : ''}13px PlinkoB, sans-serif`;
-    ctx.fillStyle = win ? '#0e1116' : col;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(label, cx, BUCKET_Y + BUCKET_H / 2);
+  // Slot dividers between buckets
+  const divTop = py(ROWS) + 14;
+  for (let k = 0; k <= ROWS + 1; k++) {
+    const x = px(k * 2 - 1);
+    ctx.fillStyle = brass(ctx, x - 2, 0, x + 2, 0);
+    ctx.fillRect(x - 2, divTop, 4, BUCKET_Y + BUCKET_H - divTop);
   }
 
-  // Trail
-  trail.forEach((t, i) => {
-    const a = ((i + 1) / (trail.length + 1)) * 0.5;
-    ctx.globalAlpha = a;
-    ctx.beginPath();
-    ctx.arc(px(t.x), py(t.y), BALL_R * (0.45 + a), 0, Math.PI * 2);
-    ctx.fillStyle = '#ffd76a';
-    ctx.fill();
-  });
-  ctx.globalAlpha = 1;
+  // Painted multiplier tiles (unlit)
+  for (let k = 0; k <= ROWS; k++) drawTile(ctx, k, mults[k]!, false);
+  drawVignette(ctx, W, H, 0.3);
+  boardCache.set(key, c);
+  return c;
+}
 
-  // Ball (with squash on peg contact + glow)
-  const bx = px(ball.x), by = py(ball.y);
+function drawTile(ctx: SKRSContext2D, k: number, mult: number, lit: boolean) {
+  const cx = px(k * 2);
+  const w = UNIT * 2 - 6;
+  const col = bucketColor(mult);
   ctx.save();
-  ctx.translate(bx, by);
-  ctx.scale(1 / ball.squash, ball.squash);
-  ctx.shadowColor = '#ffcf4d';
-  ctx.shadowBlur = 16;
-  ctx.beginPath();
-  ctx.arc(0, 0, BALL_R, 0, Math.PI * 2);
-  ctx.fillStyle = '#ffd76a';
+  roundedRect(ctx, cx - w / 2, BUCKET_Y, w, BUCKET_H, 4);
+  if (lit) { ctx.shadowColor = col; ctx.shadowBlur = 18; }
+  ctx.fillStyle = col;
+  ctx.globalAlpha = lit ? 1 : 0.72;
   ctx.fill();
-  ctx.shadowBlur = 0;
+  ctx.restore();
+  if (lit) {
+    roundedRect(ctx, cx - w / 2, BUCKET_Y, w, BUCKET_H, 4);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#fff1c4';
+    ctx.stroke();
+  }
+  ctx.save();
+  ctx.font = `${lit ? 19 : 16}px ${FONT.sign}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = lit ? '#ffffff' : 'rgba(246,241,228,0.85)';
+  // Narrow tiles: "0.35x" is squeezed horizontally rather than shrunk.
+  const label = `${mult}x`;
+  const tw = ctx.measureText(label).width;
+  const fit = Math.min(1, (w - 6) / tw);
+  ctx.translate(cx, BUCKET_Y + BUCKET_H / 2 + 1);
+  ctx.scale(fit, 1);
+  ctx.fillText(label, 0, 0);
+  ctx.restore();
+}
+
+/** Red casino chip seen face-on, spinning as it rolls off each peg. */
+function drawChip(ctx: SKRSContext2D, x: number, y: number, squash: number, spin: number) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.save();
+  ctx.translate(1.5, 2.5);
+  ctx.scale(1 / squash, squash);
   ctx.beginPath();
-  ctx.arc(-2.2, -2.4, BALL_R * 0.36, 0, Math.PI * 2);
-  ctx.fillStyle = '#fff6d0';
+  ctx.arc(0, 0, CHIP_R, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.fill();
+  ctx.restore();
+  ctx.scale(1 / squash, squash);
+  ctx.rotate(spin);
+  ctx.beginPath();
+  ctx.arc(0, 0, CHIP_R, 0, Math.PI * 2);
+  ctx.fillStyle = '#c4122f';
+  ctx.fill();
+  // Edge spots
+  ctx.fillStyle = '#f6f1e4';
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    ctx.save();
+    ctx.rotate(a);
+    ctx.fillRect(-1.6, -CHIP_R, 3.2, 3.4);
+    ctx.restore();
+  }
+  ctx.beginPath();
+  ctx.arc(0, 0, CHIP_R * 0.55, 0, Math.PI * 2);
+  ctx.lineWidth = 1.2;
+  ctx.strokeStyle = '#f6f1e4';
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(-2.5, -3, 2.6, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
   ctx.fill();
   ctx.restore();
 }
@@ -183,39 +215,19 @@ export const PLINKO_REVEAL_MS = Math.round(((ROWS * FRAMES_PER_ROW + 7) / FPS) *
 export async function renderPlinkoGif(steps: number[], mults: number[], bucket: number): Promise<Buffer> {
   ensureFonts();
   const traj = buildTrajectory(steps);
+  const board = buildBoard(mults);
   const canvas = createCanvas(W, H);
   const ctx = canvas.getContext('2d');
 
   const frames: Buffer[] = [];
+  const landedAt = traj.length - HOLD_FRAMES - 7;
   for (let i = 0; i < traj.length; i++) {
-    const trail = traj.slice(Math.max(0, i - 3), i).map(p => ({ x: p.x, y: p.y }));
-    drawFrame(ctx, mults, bucket, traj[i]!, trail, i >= traj.length - HOLD_FRAMES - 7);
-    frames.push(canvas.toBuffer('image/png') as unknown as Buffer);
+    const p = traj[i]!;
+    ctx.drawImage(board, 0, 0);
+    if (i >= landedAt) drawTile(ctx, bucket, mults[bucket]!, true);
+    // Spin follows horizontal travel, so it rolls the way it bounces.
+    drawChip(ctx, px(p.x), py(p.y), p.squash, (p.x - START_X) * 1.3);
+    frames.push(grabFrame(canvas));
   }
-  return encodeGif(frames);
-}
-
-// Pipes PNG frames through ffmpeg (already in the image) into a palette-
-// optimised GIF. -loop -1 plays it once instead of looping forever.
-function encodeGif(frames: Buffer[]): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const ff = spawn('ffmpeg', [
-      '-y', '-f', 'image2pipe', '-vcodec', 'png', '-r', String(FPS), '-i', 'pipe:0',
-      '-filter_complex', '[0:v] split [a][b];[a] palettegen=max_colors=64 [p];[b][p] paletteuse=dither=bayer:bayer_scale=3',
-      '-loop', '-1', '-f', 'gif', 'pipe:1',
-    ], { stdio: ['pipe', 'pipe', 'pipe'] });
-
-    const out: Buffer[] = [];
-    let err = '';
-    ff.stdout.on('data', (c) => out.push(c));
-    ff.stderr.on('data', (c) => { err += c.toString(); });
-    ff.on('error', reject);
-    ff.on('close', (code) => {
-      if (code === 0 && out.length) resolve(Buffer.concat(out));
-      else reject(new Error(`ffmpeg exited ${code}: ${err.slice(-300)}`));
-    });
-
-    for (const f of frames) ff.stdin.write(f);
-    ff.stdin.end();
-  });
+  return encodeGif(frames, { fps: FPS, colors: 96, width: W, height: H });
 }
