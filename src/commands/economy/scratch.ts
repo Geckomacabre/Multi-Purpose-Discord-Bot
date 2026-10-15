@@ -14,7 +14,7 @@ import { mediaPanel } from '../../utils/casinoReveal.js';
 import { AttachmentBuilder } from 'discord.js';
 import { IS_CV2 } from '../../utils/components.js';
 
-const CARD_NAME = 'scratch.png';
+const CARD_NAME = 'scratch.jpg';
 
 // Paytable tuned to ~99% RTP with a 52% hit rate: you need FOUR of the same
 // symbol among the 9 cells. 4 cherries = money back; everything rarer profits.
@@ -108,7 +108,7 @@ async function resolveGame(
 // Final payoff image: the full grid with the matching symbols lit up.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function finishedCard(content: string, win: boolean, symbols: string[], winEmoji: string | null): any {
-  const png = renderScratchCard(symbols, winEmoji);
+  const png = renderScratchCard(symbols, winEmoji, MATCH_NEEDED);
   return {
     flags: IS_CV2,
     components: [mediaPanel(content, win ? Colors.Green : Colors.Red, `attachment://${CARD_NAME}`)],
@@ -119,7 +119,7 @@ function finishedCard(content: string, win: boolean, symbols: string[], winEmoji
 const Scratch: Command = {
   data: new SlashCommandBuilder()
     .setName('scratch')
-    .setDescription('Buy a scratch card — reveal all 9 symbols and match 3 to win!')
+    .setDescription('Buy a scratch card — reveal all 9 symbols and match 4 to win!')
     .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
     .setContexts([InteractionContextType.Guild])
     .addIntegerOption(o => o.setName('bet').setDescription('Cost of the scratch card').setRequired(true).setMinValue(1)),
