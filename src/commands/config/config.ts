@@ -13,9 +13,9 @@ import { fetchAllFreeGames } from '../../features/freegames/index.js';
 
 const IS_CV2 = MessageFlags.IsComponentsV2;
 
-const STAT_TYPES = ['members', 'humans', 'bots', 'boosters', 'channels', 'roles'] as const;
+const STAT_TYPES = ['members', 'humans', 'bots', 'boosters', 'channels', 'roles', 'text'] as const;
 type StatType = typeof STAT_TYPES[number];
-const STAT_LABELS: Record<StatType, string> = { members: 'Members', humans: 'Humans', bots: 'Bots', boosters: 'Boosters', channels: 'Channels', roles: 'Roles' };
+const STAT_LABELS: Record<StatType, string> = { members: 'Members', humans: 'Humans', bots: 'Bots', boosters: 'Boosters', channels: 'Channels', roles: 'Roles', text: 'Custom Text' };
 
 const TRIGGER_TYPES = ['spam', 'caps', 'links', 'words', 'mentions', 'regex'] as const;
 const ACTION_TYPES  = ['delete', 'warn', 'timeout', 'kick', 'ban'] as const;
@@ -176,7 +176,7 @@ const ConfigCommand: Command = {
       .addSubcommand(s => s.setName('add').setDescription('Create an auto-updating stat channel')
         .addStringOption(o => o.setName('type').setDescription('What stat to display').setRequired(true)
           .addChoices(...STAT_TYPES.map(t => ({ name: STAT_LABELS[t], value: t }))))
-        .addStringOption(o => o.setName('label').setDescription('Label prefix (defaults to stat type name)')))
+        .addStringOption(o => o.setName('label').setDescription('Label prefix (defaults to stat type name). For Custom Text, the full channel name.').setMaxLength(100)))
       .addSubcommand(s => s.setName('remove').setDescription('Remove a stat channel')
         .addIntegerOption(o => o.setName('id').setDescription('ID from /config serverstats list').setRequired(true)))
       .addSubcommand(s => s.setName('list').setDescription('List all stat channels')))
@@ -625,10 +625,12 @@ const ConfigCommand: Command = {
         if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) { await interaction.reply({ ...cv2Text('❌ You need **Manage Server** to manage stat channels.'), flags: IS_CV2 | MessageFlags.Ephemeral }); return; }
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         const type  = interaction.options.getString('type', true) as StatType;
-        const label = interaction.options.getString('label') ?? STAT_LABELS[type];
-        const channel = await guild.channels.create({ name: `${label}: 0`, type: ChannelType.GuildVoice, permissionOverwrites: [{ id: guild.roles.everyone, deny: ['Connect'] }, { id: interaction.client.user!.id, allow: ['ManageChannels', 'Connect'] }] });
+        const isText = type === 'text';
+        if (isText && !interaction.options.getString('label')?.trim()) { await interaction.editReply(cv2Text('❌ Custom Text needs a `label`, e.g. `label:🌐 ctiservers.org`.')); return; }
+        const label = interaction.options.getString('label')?.trim() ?? STAT_LABELS[type];
+        const channel = await guild.channels.create({ name: isText ? label : `${label}: 0`, type: ChannelType.GuildVoice, permissionOverwrites: [{ id: guild.roles.everyone, deny: ['Connect'] }, { id: interaction.client.user!.id, allow: ['ManageChannels', 'Connect'] }] });
         await db.addStatChannel(guild.id, channel.id, type, label);
-        await interaction.editReply(cv2Text(`✅ Created stat channel <#${channel.id}>. It will update every 10 minutes.`));
+        await interaction.editReply(cv2Text(isText ? `✅ Created text channel <#${channel.id}>.` : `✅ Created stat channel <#${channel.id}>. It will update every 10 minutes.`));
       } else if (sub === 'remove') {
         if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) { await interaction.reply({ ...cv2Text('❌ You need **Manage Server** to manage stat channels.'), flags: IS_CV2 | MessageFlags.Ephemeral }); return; }
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });

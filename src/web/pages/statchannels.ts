@@ -10,6 +10,7 @@ const STAT_TYPES = [
   { value: 'boosters', label: 'Server Boosters', example: 'Boosters: {count}' },
   { value: 'channels', label: 'Channel Count', example: 'Channels: {count}' },
   { value: 'roles',    label: 'Role Count',    example: 'Roles: {count}' },
+  { value: 'text',     label: 'Custom Text',   example: '🌐 ctiservers.org (no count)' },
 ];
 
 export async function statChannelsPage(
@@ -22,7 +23,7 @@ export async function statChannelsPage(
     <div class="card">
       <h2 class="text-lg font-bold mb-2 text-white">Stat Channels</h2>
       <p class="text-sm text-gray-400 mb-4">
-        Creates voice channels with live-updating counts. Use <code>/statschannels add</code> in Discord to create them,
+        Creates voice channels with live-updating counts. Use <code>/config serverstats add</code> in Discord to create them,
         or manage existing ones here.
       </p>
 
@@ -57,7 +58,7 @@ export async function statChannelsPage(
         <ul class="mt-2 space-y-1">
           ${STAT_TYPES.map(t => `<li><code class="text-blue-400">${t.value}</code> — ${t.label} (e.g. <em>${t.example}</em>)</li>`).join('')}
         </ul>
-        <p class="mt-2">Use <code>/statschannels add type:members label:"Members: {count}"</code> in Discord to add new ones.</p>
+        <p class="mt-2">Use <code>/config serverstats add type:members</code> in Discord to add new ones, or <code>type:text label:"🌐 ctiservers.org"</code> for a fixed name with no count.</p>
       </div>
     </div>
   `;

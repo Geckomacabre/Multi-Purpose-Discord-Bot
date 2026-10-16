@@ -26,7 +26,8 @@ export function startStatChannelUpdater(bot: Client) {
         continue;
       }
 
-      const newName = `${sc.label}: ${getStatValue(guild, sc.type)}`;
+      // 'text' channels show the label as-is, with no count
+      const newName = sc.type === 'text' ? sc.label : `${sc.label}: ${getStatValue(guild, sc.type)}`;
       if (channel.name !== newName) {
         await channel.setName(newName).catch(() => {});
       }
