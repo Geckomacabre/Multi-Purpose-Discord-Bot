@@ -6,6 +6,7 @@ function getStatValue(guild: any, type: string): string {
     case 'members':  return guild.memberCount.toLocaleString();
     case 'humans':   return guild.members.cache.filter((m: any) => !m.user.bot).size.toLocaleString();
     case 'bots':     return guild.members.cache.filter((m: any) => m.user.bot).size.toLocaleString();
+    case 'boosters': return guild.members.cache.filter((m: any) => m.premiumSince).size.toLocaleString();
     case 'channels': return guild.channels.cache.filter((c: any) => c.type !== ChannelType.GuildCategory).size.toLocaleString();
     case 'roles':    return (guild.roles.cache.size - 1).toLocaleString();
     default:         return '?';

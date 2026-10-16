@@ -7,6 +7,7 @@ const STAT_TYPES = [
   { value: 'members',  label: 'Total Members', example: 'Members: {count}' },
   { value: 'humans',   label: 'Human Members', example: 'Humans: {count}' },
   { value: 'bots',     label: 'Bot Count',     example: 'Bots: {count}' },
+  { value: 'boosters', label: 'Server Boosters', example: 'Boosters: {count}' },
   { value: 'channels', label: 'Channel Count', example: 'Channels: {count}' },
   { value: 'roles',    label: 'Role Count',    example: 'Roles: {count}' },
 ];

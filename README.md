@@ -210,7 +210,7 @@ A locked voice channel (e.g. a streamer's private VC). Setting the channel **aut
 | Command | Description |
 |---|---|
 | `/config serverstats view [hours]` | Show server activity for the last N hours (default 24, max 168). Displays total messages, joins, leaves, and current member count. |
-| `/config serverstats channels add <type>` | Create an auto-updating stat channel. Types: `members`, `humans`, `bots`, `channels`, `roles`. |
+| `/config serverstats channels add <type>` | Create an auto-updating stat channel. Types: `members`, `humans`, `bots`, `boosters`, `channels`, `roles`. |
 | `/config serverstats channels remove <id>` | Delete a stat channel by ID. |
 | `/config serverstats channels list` | List all stat channels. |
 

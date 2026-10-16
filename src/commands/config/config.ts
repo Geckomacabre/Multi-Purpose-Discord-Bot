@@ -13,9 +13,9 @@ import { fetchAllFreeGames } from '../../features/freegames/index.js';
 
 const IS_CV2 = MessageFlags.IsComponentsV2;
 
-const STAT_TYPES = ['members', 'humans', 'bots', 'channels', 'roles'] as const;
+const STAT_TYPES = ['members', 'humans', 'bots', 'boosters', 'channels', 'roles'] as const;
 type StatType = typeof STAT_TYPES[number];
-const STAT_LABELS: Record<StatType, string> = { members: 'Members', humans: 'Humans', bots: 'Bots', channels: 'Channels', roles: 'Roles' };
+const STAT_LABELS: Record<StatType, string> = { members: 'Members', humans: 'Humans', bots: 'Bots', boosters: 'Boosters', channels: 'Channels', roles: 'Roles' };
 
 const TRIGGER_TYPES = ['spam', 'caps', 'links', 'words', 'mentions', 'regex'] as const;
 const ACTION_TYPES  = ['delete', 'warn', 'timeout', 'kick', 'ban'] as const;
