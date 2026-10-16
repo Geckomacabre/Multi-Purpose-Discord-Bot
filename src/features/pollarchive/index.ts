@@ -12,13 +12,17 @@ import logger from '../../utils/logger';
 //   1. post a results card (+ a .txt log of the discussion) to the archive channel
 //   2. delete the poll, the "poll ended" notice, and everything posted in the
 //      channel while the poll was running (except pinned messages and other polls)
-// A periodic sweep catches polls that ended while the bot was offline.
+// A periodic sweep catches polls that ended while the bot was offline, and a
+// full-history backfill (on setup, or /config pollarchive sweep) archives polls
+// that ended before the channel was set up.
 
 const MAX_DISCUSSION = 1000;   // messages archived per poll
 const MAX_VOTERS = 100;        // voters listed per answer in the log
+const MAX_SCAN = 50_000;       // messages a full-history backfill will look through
 const SWEEP_EVERY_MS = 10 * 60 * 1000;
 
-const inFlight = new Set<string>();
+const inFlight = new Set<string>();  // polls being archived
+const scanning = new Set<string>();  // poll channels being scanned
 
 /** Permissions the bot lacks for archiving between these channels. */
 export function missingPollArchivePerms(guild: Guild, sourceId: string, archiveId: string): string[] {
@@ -170,27 +174,72 @@ async function archivePoll(bot: Client, pollMsg: Message, endMessage: Message | 
   }
 }
 
-/** Archive any ended polls still sitting in configured channels. Returns how many were archived. */
-export async function sweepEndedPolls(bot: Client, guildId?: string): Promise<number> {
-  const configs = guildId ? await db.getPollArchiveConfigs(guildId) : await db.getAllPollArchiveConfigs();
-  let count = 0;
-  for (const cfg of configs) {
-    const channel = await bot.channels.fetch(cfg.source_channel_id).catch(() => null);
-    if (!channel?.isTextBased() || channel.isDMBased()) continue;
-    const recent = await channel.messages.fetch({ limit: 100 }).catch(() => null);
-    if (!recent) continue;
-    // Oldest first, so discussion windows are cleared in order.
-    const ended = [...recent.values()].filter(pollEnded).sort((a, b) => a.createdTimestamp - b.createdTimestamp);
-    for (const poll of ended) {
-      const endMessage = recent.find(m => m.type === MessageType.PollResult && m.reference?.messageId === poll.id) ?? null;
-      if (await archivePoll(bot, poll, endMessage)) count++;
+export type BackfillProgress = { scanned: number; found: number; archived: number };
+
+/**
+ * Archive every ended poll in a poll channel, oldest first. `depth` is how many
+ * of the newest messages to scan: the periodic sweep only looks at the last 100,
+ * while a backfill walks the channel's whole history (up to MAX_SCAN).
+ */
+export async function archiveEndedPolls(
+  bot: Client,
+  sourceChannelId: string,
+  depth = MAX_SCAN,
+  onProgress?: (p: BackfillProgress) => void,
+): Promise<BackfillProgress> {
+  const progress: BackfillProgress = { scanned: 0, found: 0, archived: 0 };
+  if (scanning.has(sourceChannelId)) return progress;
+  const channel = await bot.channels.fetch(sourceChannelId).catch(() => null);
+  if (!channel?.isTextBased() || channel.isDMBased()) return progress;
+
+  scanning.add(sourceChannelId);
+  try {
+    // Only ended polls and "poll ended" notices are kept from the scan, so even a
+    // long history stays small in memory.
+    const polls: Message[] = [];
+    const notices = new Map<string, Message>();
+    let before: string | undefined;
+    while (progress.scanned < depth) {
+      const batch = await channel.messages.fetch({ limit: Math.min(100, depth - progress.scanned), ...(before ? { before } : {}) }).catch(() => null);
+      if (!batch?.size) break;
+      for (const m of batch.values()) {
+        if (pollEnded(m)) polls.push(m);
+        else if (m.type === MessageType.PollResult && m.reference?.messageId) notices.set(m.reference.messageId, m);
+      }
+      progress.scanned += batch.size;
+      before = batch.lastKey();
+      onProgress?.(progress);
+      if (batch.size < 100) break;
     }
+
+    const pending: Message[] = [];
+    for (const p of polls) if (!(await db.isPollArchived(p.id))) pending.push(p);
+    // Oldest first, so the archive channel reads in order and each poll's
+    // discussion window is cleared before the next one's.
+    pending.sort((a, b) => a.createdTimestamp - b.createdTimestamp);
+    progress.found = pending.length;
+    onProgress?.(progress);
+
+    for (const poll of pending) {
+      if (await archivePoll(bot, poll, notices.get(poll.id) ?? null)) progress.archived++;
+      onProgress?.(progress);
+    }
+    return progress;
+  } finally {
+    scanning.delete(sourceChannelId);
   }
-  return count;
 }
 
+/** Is a channel's history being scanned right now? */
+export const isScanning = (sourceChannelId: string) => scanning.has(sourceChannelId);
+
 export function startPollArchiveSweeper(bot: Client) {
-  const sweep = () => sweepEndedPolls(bot).catch(err => logger.error(`[pollarchive] sweep failed: ${err}`));
+  const sweep = async () => {
+    for (const cfg of await db.getAllPollArchiveConfigs()) {
+      await archiveEndedPolls(bot, cfg.source_channel_id, 100)
+        .catch(err => logger.error(`[pollarchive] sweep of ${cfg.source_channel_id} failed: ${err}`));
+    }
+  };
   setTimeout(sweep, 60_000);
   setInterval(sweep, SWEEP_EVERY_MS);
 }

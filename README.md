@@ -401,17 +401,17 @@ Keeps a poll channel clean. When a **Discord poll** (the built-in Poll button) e
 2. Attaches a **`.txt` log** with who voted for what and every message posted in the poll channel while the poll was running.
 3. Deletes the poll, Discord's "poll ended" notice, and that discussion from the poll channel. Pinned messages and other polls that are still running are left alone.
 
-Polls that end while the bot is offline are picked up within 10 minutes of it coming back. Jade needs **Manage Messages** and **Read Message History** in the poll channel, and **Send Messages**, **Embed Links**, and **Attach Files** in the archive channel. `/config pollarchive view` flags any that are missing.
+**Polls that already ended** are archived too. Setting up a channel searches its full history and archives every finished poll, oldest first, with the same results card, log, and cleanup. Polls that end while the bot is offline are picked up within 10 minutes of it coming back. Jade needs **Manage Messages** and **Read Message History** in the poll channel, and **Send Messages**, **Embed Links**, and **Attach Files** in the archive channel. `/config pollarchive view` flags any that are missing.
 
 <details>
 <summary><b>Commands</b></summary>
 
 | Command | Description |
 |---|---|
-| `/config pollarchive set <poll_channel> <archive_channel>` | Archive polls from one channel into another. Run it again to change the archive channel. |
+| `/config pollarchive set <poll_channel> <archive_channel> [include_old]` | Archive polls from one channel into another, starting with any that already ended (`include_old:false` skips those). Run it again to change the archive channel. |
 | `/config pollarchive remove <poll_channel>` | Stop archiving a channel. |
 | `/config pollarchive view` | List poll channels, where they archive to, and any missing permissions. |
-| `/config pollarchive sweep` | Archive any polls that have already ended, right now. |
+| `/config pollarchive sweep [poll_channel]` | Search the full history and archive every poll that has already ended. Shows progress as it goes. |
 
 </details>
 

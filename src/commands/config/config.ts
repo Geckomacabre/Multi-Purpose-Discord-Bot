@@ -10,7 +10,7 @@ import { Command } from '../../interfaces/command.js';
 import { cv2Text } from '../../utils/components.js';
 import { findTimezoneMatch, generateTimezoneMessage, offsetToString } from '../../features/timezone/index.js';
 import { fetchAllFreeGames } from '../../features/freegames/index.js';
-import { missingPollArchivePerms, sweepEndedPolls } from '../../features/pollarchive/index.js';
+import { archiveEndedPolls, isScanning, missingPollArchivePerms } from '../../features/pollarchive/index.js';
 
 const IS_CV2 = MessageFlags.IsComponentsV2;
 
@@ -32,6 +32,42 @@ function parseDuration(s: string): number | null {
   const units: Record<string, number> = { m: 60, h: 3600, d: 86400, w: 604800 };
   return n * (units[m[2].toLowerCase()] ?? 0) || null;
 }
+// Archives every already-ended poll in the given poll channels, keeping the
+// (deferred, ephemeral) reply updated with progress. Interaction tokens expire
+// after 15 minutes, so a longer run reports its result by DM instead.
+async function runPollBackfill(interaction: ChatInputCommandInteraction, sourceIds: string[], intro: string) {
+  const REPLY_DEADLINE_MS = 14 * 60 * 1000;
+  const started = Date.now();
+  const totals = { scanned: 0, found: 0, archived: 0 };
+  const busy: string[] = [];
+  const withIntro = (text: string) => (intro ? `${intro}\n\n${text}` : text);
+  let lastEdit = 0;
+
+  for (const id of sourceIds) {
+    if (isScanning(id)) { busy.push(id); continue; }
+    const base = { ...totals };
+    const p = await archiveEndedPolls(interaction.client, id, undefined, (cur) => {
+      const now = Date.now();
+      if (now - lastEdit < 5_000 || now - started > REPLY_DEADLINE_MS) return;
+      lastEdit = now;
+      const status = cur.found
+        ? `🗄️ Archiving old polls from <#${id}>… **${base.archived + cur.archived}/${base.found + cur.found}** done.`
+        : `🔎 Searching <#${id}> for polls that already ended… ${(base.scanned + cur.scanned).toLocaleString()} messages checked.`;
+      interaction.editReply(withIntro(status)).catch(() => {});
+    });
+    totals.scanned += p.scanned; totals.found += p.found; totals.archived += p.archived;
+  }
+
+  let summary = totals.found
+    ? `🗄️ Archived **${totals.archived}** of **${totals.found}** poll(s) that had already ended (checked ${totals.scanned.toLocaleString()} messages).`
+    : `🗄️ No old polls to archive (checked ${totals.scanned.toLocaleString()} messages).`;
+  if (totals.archived < totals.found) summary += ' The rest failed; check the bot\'s permissions and logs.';
+  if (busy.length) summary += `\n${busy.map(id => `<#${id}>`).join(', ')} was already being scanned, so it was skipped.`;
+
+  if (Date.now() - started < REPLY_DEADLINE_MS) await interaction.editReply(withIntro(summary)).catch(() => {});
+  else await interaction.user.send(`Poll archive finished. ${summary}`).catch(() => {});
+}
+
 function formatDuration(seconds: number): string {
   if (seconds >= 604800) return `${Math.floor(seconds / 604800)}w`;
   if (seconds >= 86400)  return `${Math.floor(seconds / 86400)}d`;
@@ -186,11 +222,13 @@ const ConfigCommand: Command = {
     .addSubcommandGroup(g => g.setName('pollarchive').setDescription('Archive finished polls and their discussion')
       .addSubcommand(s => s.setName('set').setDescription('Archive polls from one channel into another when they end')
         .addChannelOption(o => o.setName('poll_channel').setDescription('Channel where polls are posted').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement).setRequired(true))
-        .addChannelOption(o => o.setName('archive_channel').setDescription('Channel that receives the results and discussion log').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement).setRequired(true)))
+        .addChannelOption(o => o.setName('archive_channel').setDescription('Channel that receives the results and discussion log').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement).setRequired(true))
+        .addBooleanOption(o => o.setName('include_old').setDescription('Also archive polls that already ended before now (default: yes)')))
       .addSubcommand(s => s.setName('remove').setDescription('Stop archiving polls from a channel')
         .addChannelOption(o => o.setName('poll_channel').setDescription('Poll channel to stop archiving').setRequired(true)))
       .addSubcommand(s => s.setName('view').setDescription('View poll archive settings'))
-      .addSubcommand(s => s.setName('sweep').setDescription('Archive any polls that have already ended, right now')))
+      .addSubcommand(s => s.setName('sweep').setDescription('Search the full history and archive every poll that has already ended')
+        .addChannelOption(o => o.setName('poll_channel').setDescription('Only this poll channel (default: all of them)'))))
   ) as any,
 
   async run(interaction: ChatInputCommandInteraction) {
@@ -668,14 +706,19 @@ const ConfigCommand: Command = {
       if (sub === 'set') {
         const source  = interaction.options.getChannel('poll_channel', true);
         const archive = interaction.options.getChannel('archive_channel', true);
+        const includeOld = interaction.options.getBoolean('include_old') ?? true;
         if (source.id === archive.id) { await interaction.reply({ content: '❌ The poll channel and archive channel must be different.', flags: MessageFlags.Ephemeral }); return; }
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         await db.setPollArchive(guild.id, source.id, archive.id);
+        const intro = `✅ When a poll in <#${source.id}> ends, its results and discussion will be archived to <#${archive.id}>, then cleared from <#${source.id}>.`;
         const missing = missingPollArchivePerms(guild, source.id, archive.id);
-        await interaction.reply({
-          content: `✅ When a poll in <#${source.id}> ends, its results and discussion will be archived to <#${archive.id}>, then cleared from <#${source.id}>.` +
-            (missing.length ? `\n\n⚠️ I'm missing permissions: ${missing.join(', ')}. Archiving won't work until those are granted.` : ''),
-          flags: MessageFlags.Ephemeral,
-        });
+        if (missing.length) {
+          await interaction.editReply(`${intro}\n\n⚠️ I'm missing permissions: ${missing.join(', ')}. Archiving won't work until those are granted. Then run \`/config pollarchive sweep\` to archive polls that already ended.`);
+        } else if (!includeOld) {
+          await interaction.editReply(intro);
+        } else {
+          await runPollBackfill(interaction, [source.id], intro);
+        }
       } else if (sub === 'remove') {
         const source = interaction.options.getChannel('poll_channel', true);
         const removed = await db.removePollArchive(guild.id, source.id);
@@ -689,9 +732,14 @@ const ConfigCommand: Command = {
         await interaction.reply({ flags: MessageFlags.Ephemeral, embeds: [new EmbedBuilder().setColor(Colors.Blurple).setTitle('🗳️ Poll Archive')
           .setDescription(lines.length ? lines.join('\n') : 'No poll channels set up. Use `/config pollarchive set`.')] });
       } else if (sub === 'sweep') {
+        const only = interaction.options.getChannel('poll_channel');
+        const configs = (await db.getPollArchiveConfigs(guild.id)).filter(c => !only || c.source_channel_id === only.id);
+        if (!configs.length) {
+          await interaction.reply({ content: only ? `❌ <#${only.id}> isn't set up for poll archiving.` : 'No poll channels set up. Use `/config pollarchive set`.', flags: MessageFlags.Ephemeral });
+          return;
+        }
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-        const count = await sweepEndedPolls(interaction.client, guild.id);
-        await interaction.editReply(count ? `✅ Archived **${count}** ended poll(s).` : 'No ended polls waiting to be archived.');
+        await runPollBackfill(interaction, configs.map(c => c.source_channel_id), '');
       }
     }
   },
