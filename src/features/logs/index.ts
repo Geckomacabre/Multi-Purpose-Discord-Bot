@@ -1,6 +1,7 @@
 import { AuditLogEvent, ChatInputCommandInteraction, Colors, EmbedBuilder, Guild, GuildChannel, PartialUser, TextChannel, User } from 'discord.js';
 import { EventModule } from '../feature';
 import type * as Db from '../../utils/db';
+import { isBotDeleting } from '../../utils/deleteMessages';
 
 type LogCategory = 'member' | 'message' | 'voice' | 'server' | 'command';
 
@@ -243,6 +244,7 @@ const logsModule: EventModule = {
 
     messageDelete: async ({ data: [message], bot, db }) => {
       if (!message.guildId || message.author?.bot) return;
+      if (isBotDeleting(message.id)) return; // part of a /purge or poll-archive wipe
       const cfg = await db.getLogConfig(message.guildId);
       if (!cfg?.log_message_deletes) return;
       const ignored: string[] = cfg.ignored_channels ? JSON.parse(cfg.ignored_channels) : [];
