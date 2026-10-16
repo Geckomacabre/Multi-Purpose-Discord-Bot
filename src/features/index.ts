@@ -30,6 +30,7 @@ import streamVcModule from './streamvc';
 import { startLottery } from './lottery';
 import raidguardModule from './raidguard';
 import stickyModule, { startStickyRefresh } from './sticky';
+import pollArchiveModule, { startPollArchiveSweeper } from './pollarchive';
 
 const features = [
   countingModule,
@@ -56,6 +57,7 @@ const features = [
   streamVcModule,
   raidguardModule,
   stickyModule,
+  pollArchiveModule,
 ];
 
 export function registerFeatures(bot: Client) {
@@ -82,5 +84,6 @@ export function registerFeatures(bot: Client) {
     startMediaGames(bot);
     startLottery(bot);
     startStickyRefresh(bot);
+    startPollArchiveSweeper(bot);
   });
 }

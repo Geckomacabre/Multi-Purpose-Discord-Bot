@@ -117,7 +117,7 @@ Each action is its own command. Members who lack the matching permission don't s
 | `/timeout <user> <duration>` | Time out a member using Discord's native timeout (up to 28 days). |
 | `/untimeout <user>` | Remove a member's active timeout. |
 | `/warn <user> <reason>` | Warn a member. Warnings are stored and DM'd to the user. |
-| `/purge <amount>` | Bulk-delete up to 200 messages. Filter by user, keyword, bots, attachments, or embeds. |
+| `/purge <amount>` | Delete up to 1,000 messages of any age (pinned messages are kept). Filter by user, keyword, bots, attachments, or embeds. Messages older than 14 days are deleted one at a time (about 1 per second), with a progress counter. |
 | `/report <user> <reason>` | Report a member to staff via the modlog channel. Available to everyone. |
 | `/case <number>` | View a mod case. |
 | `/reason <case> <reason>` | Edit the reason on an existing mod case. |
@@ -209,7 +209,7 @@ The bot can log these events:
 The logs add useful detail:
 
 - **Deletes** show *who* deleted the message and *why*, taken from the audit log. If there's no audit-log entry, the author deleted it themselves.
-- **Bulk deletes** from `/purge` or a spam purge get their own log entry.
+- **Bulk deletes** from `/purge` or a spam purge get their own log entry. Messages older than 14 days that `/purge` or the poll archive delete one at a time aren't logged individually.
 - **Leaves** show how long the member had been in the server and the roles they held.
 - **Kicks** show as **Member Kicked**, with who kicked them and the reason.
 
@@ -392,6 +392,28 @@ Keeps a message at the bottom of a channel by re-posting it as people chat. It's
 | `/sticky set <message> [channel] [embed]` | Stick a message (as an embed by default; `embed:false` for plain text). Running it again replaces the old one. |
 | `/sticky remove [channel]` | Remove the sticky and clean up its last copy. |
 | `/sticky list` | List every sticky in the server. |
+
+### 🗳️ Poll Archive
+
+Keeps a poll channel clean. When a **Discord poll** (the built-in Poll button) ends in a poll channel, Jade:
+
+1. Posts a **results card** to the archive channel, with each answer's votes and percentage, the winner 🏆, who asked, and when it ran.
+2. Attaches a **`.txt` log** with who voted for what and every message posted in the poll channel while the poll was running.
+3. Deletes the poll, Discord's "poll ended" notice, and that discussion from the poll channel. Pinned messages and other polls that are still running are left alone.
+
+Polls that end while the bot is offline are picked up within 10 minutes of it coming back. Jade needs **Manage Messages** and **Read Message History** in the poll channel, and **Send Messages**, **Embed Links**, and **Attach Files** in the archive channel. `/config pollarchive view` flags any that are missing.
+
+<details>
+<summary><b>Commands</b></summary>
+
+| Command | Description |
+|---|---|
+| `/config pollarchive set <poll_channel> <archive_channel>` | Archive polls from one channel into another. Run it again to change the archive channel. |
+| `/config pollarchive remove <poll_channel>` | Stop archiving a channel. |
+| `/config pollarchive view` | List poll channels, where they archive to, and any missing permissions. |
+| `/config pollarchive sweep` | Archive any polls that have already ended, right now. |
+
+</details>
 
 ### 💬 Topic Rotation
 

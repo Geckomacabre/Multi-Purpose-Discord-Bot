@@ -440,6 +440,12 @@ export type ITopic = {
   order_index: number;
 };
 
+export type IPollArchiveConfig = {
+  source_channel_id: string;
+  guild_id: string;
+  archive_channel_id: string;
+};
+
 export type IStarboardConfig = {
   guild_id: string;
   channel_id: string | null;
@@ -1040,6 +1046,20 @@ export async function initDb() {
     UNIQUE(guild_id, source_message_id)
   )`;
 
+  // Poll archive: when a native Discord poll in source_channel_id ends, its results
+  // and discussion are posted to archive_channel_id and cleared from the source.
+  await db`CREATE TABLE IF NOT EXISTS poll_archive_config (
+    source_channel_id  TEXT PRIMARY KEY,
+    guild_id           TEXT NOT NULL,
+    archive_channel_id TEXT NOT NULL
+  )`;
+
+  await db`CREATE TABLE IF NOT EXISTS poll_archive_done (
+    message_id  TEXT PRIMARY KEY,
+    guild_id    TEXT NOT NULL,
+    archived_at INTEGER NOT NULL
+  )`;
+
   await db`CREATE TABLE IF NOT EXISTS bot_config (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -1311,7 +1331,7 @@ export async function removeGuild(guild_id: string) {
     'topic_channels', 'topics', 'starboard_config', 'starboard_posts',
     'tags', 'music_config', 'news_config', 'verify_config',
     'streamvc_config', 'streamvc_approvers', 'antiphishing_config', 'mediaguess_rounds', 'mediaguess_config',
-    'economy_drought',
+    'economy_drought', 'poll_archive_config', 'poll_archive_done',
   ]) {
     await db`DELETE FROM ${db(table)} WHERE guild_id = ${guild_id}`.catch(() => {});
   }
@@ -2983,6 +3003,42 @@ export async function createStarboardPost(guild_id: string, source_message_id: s
 
 export async function updateStarboardPostStars(guild_id: string, source_message_id: string, stars: number) {
   await db`UPDATE starboard_posts SET stars = ${stars} WHERE guild_id = ${guild_id} AND source_message_id = ${source_message_id}`;
+}
+
+// ─── Poll Archive ─────────────────────────────────────────────────────────────
+
+export async function getPollArchiveConfigs(guild_id: string): Promise<IPollArchiveConfig[]> {
+  return (await db`SELECT * FROM poll_archive_config WHERE guild_id = ${guild_id}`) as IPollArchiveConfig[];
+}
+
+export async function getAllPollArchiveConfigs(): Promise<IPollArchiveConfig[]> {
+  return (await db`SELECT * FROM poll_archive_config`) as IPollArchiveConfig[];
+}
+
+export async function getPollArchiveForChannel(source_channel_id: string): Promise<IPollArchiveConfig | null> {
+  const [row] = await db`SELECT * FROM poll_archive_config WHERE source_channel_id = ${source_channel_id}`;
+  return (row as IPollArchiveConfig) || null;
+}
+
+export async function setPollArchive(guild_id: string, source_channel_id: string, archive_channel_id: string) {
+  await ensureConfig(guild_id);
+  await db`INSERT INTO poll_archive_config (source_channel_id, guild_id, archive_channel_id)
+    VALUES (${source_channel_id}, ${guild_id}, ${archive_channel_id})
+    ON CONFLICT(source_channel_id) DO UPDATE SET archive_channel_id = excluded.archive_channel_id`;
+}
+
+export async function removePollArchive(guild_id: string, source_channel_id: string): Promise<boolean> {
+  const result = await db`DELETE FROM poll_archive_config WHERE guild_id = ${guild_id} AND source_channel_id = ${source_channel_id} RETURNING source_channel_id`;
+  return result.length > 0;
+}
+
+export async function isPollArchived(message_id: string): Promise<boolean> {
+  const [row] = await db`SELECT 1 AS hit FROM poll_archive_done WHERE message_id = ${message_id}`;
+  return !!row;
+}
+
+export async function markPollArchived(guild_id: string, message_id: string) {
+  await db`INSERT OR IGNORE INTO poll_archive_done (message_id, guild_id, archived_at) VALUES (${message_id}, ${guild_id}, ${Date.now()})`;
 }
 
 // ─── Tags ─────────────────────────────────────────────────────────────────────

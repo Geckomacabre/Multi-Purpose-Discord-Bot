@@ -10,6 +10,7 @@ import { Command } from '../../interfaces/command.js';
 import { cv2Text } from '../../utils/components.js';
 import { findTimezoneMatch, generateTimezoneMessage, offsetToString } from '../../features/timezone/index.js';
 import { fetchAllFreeGames } from '../../features/freegames/index.js';
+import { missingPollArchivePerms, sweepEndedPolls } from '../../features/pollarchive/index.js';
 
 const IS_CV2 = MessageFlags.IsComponentsV2;
 
@@ -180,6 +181,16 @@ const ConfigCommand: Command = {
       .addSubcommand(s => s.setName('remove').setDescription('Remove a stat channel')
         .addIntegerOption(o => o.setName('id').setDescription('ID from /config serverstats list').setRequired(true)))
       .addSubcommand(s => s.setName('list').setDescription('List all stat channels')))
+
+    // ── Poll Archive ──────────────────────────────────────────────────────────
+    .addSubcommandGroup(g => g.setName('pollarchive').setDescription('Archive finished polls and their discussion')
+      .addSubcommand(s => s.setName('set').setDescription('Archive polls from one channel into another when they end')
+        .addChannelOption(o => o.setName('poll_channel').setDescription('Channel where polls are posted').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement).setRequired(true))
+        .addChannelOption(o => o.setName('archive_channel').setDescription('Channel that receives the results and discussion log').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement).setRequired(true)))
+      .addSubcommand(s => s.setName('remove').setDescription('Stop archiving polls from a channel')
+        .addChannelOption(o => o.setName('poll_channel').setDescription('Poll channel to stop archiving').setRequired(true)))
+      .addSubcommand(s => s.setName('view').setDescription('View poll archive settings'))
+      .addSubcommand(s => s.setName('sweep').setDescription('Archive any polls that have already ended, right now')))
   ) as any,
 
   async run(interaction: ChatInputCommandInteraction) {
@@ -648,6 +659,39 @@ const ConfigCommand: Command = {
         await interaction.reply({ flags: IS_CV2 | MessageFlags.Ephemeral, components: [new ContainerBuilder().setAccentColor(Colors.Blue).addTextDisplayComponents(new TextDisplayBuilder().setContent(
           `**📊 Stat Channels**\n\n${all.map(s => `**ID ${s.id}** — <#${s.channel_id}> (${s.type})`).join('\n')}`
         ))] });
+      }
+    }
+
+    // ── Poll Archive ──────────────────────────────────────────────────────────
+    if (group === 'pollarchive') {
+      const guild = interaction.guild!;
+      if (sub === 'set') {
+        const source  = interaction.options.getChannel('poll_channel', true);
+        const archive = interaction.options.getChannel('archive_channel', true);
+        if (source.id === archive.id) { await interaction.reply({ content: '❌ The poll channel and archive channel must be different.', flags: MessageFlags.Ephemeral }); return; }
+        await db.setPollArchive(guild.id, source.id, archive.id);
+        const missing = missingPollArchivePerms(guild, source.id, archive.id);
+        await interaction.reply({
+          content: `✅ When a poll in <#${source.id}> ends, its results and discussion will be archived to <#${archive.id}>, then cleared from <#${source.id}>.` +
+            (missing.length ? `\n\n⚠️ I'm missing permissions: ${missing.join(', ')}. Archiving won't work until those are granted.` : ''),
+          flags: MessageFlags.Ephemeral,
+        });
+      } else if (sub === 'remove') {
+        const source = interaction.options.getChannel('poll_channel', true);
+        const removed = await db.removePollArchive(guild.id, source.id);
+        await interaction.reply({ content: removed ? `✅ Polls in <#${source.id}> will no longer be archived.` : `❌ <#${source.id}> isn't set up for poll archiving.`, flags: MessageFlags.Ephemeral });
+      } else if (sub === 'view') {
+        const all = await db.getPollArchiveConfigs(guild.id);
+        const lines = all.map(c => {
+          const missing = missingPollArchivePerms(guild, c.source_channel_id, c.archive_channel_id);
+          return `<#${c.source_channel_id}> → <#${c.archive_channel_id}>${missing.length ? `\n-# ⚠️ Missing: ${missing.join(', ')}` : ''}`;
+        });
+        await interaction.reply({ flags: MessageFlags.Ephemeral, embeds: [new EmbedBuilder().setColor(Colors.Blurple).setTitle('🗳️ Poll Archive')
+          .setDescription(lines.length ? lines.join('\n') : 'No poll channels set up. Use `/config pollarchive set`.')] });
+      } else if (sub === 'sweep') {
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        const count = await sweepEndedPolls(interaction.client, guild.id);
+        await interaction.editReply(count ? `✅ Archived **${count}** ended poll(s).` : 'No ended polls waiting to be archived.');
       }
     }
   },
