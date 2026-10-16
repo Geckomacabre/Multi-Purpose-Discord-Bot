@@ -3,7 +3,9 @@
 #  - downloads the pinned Lavalink and plugin jars from their official GitHub
 #    releases and checks their SHA-256,
 #  - generates a random LAVALINK_PASSWORD into ../.env if there isn't one,
-#  - writes application.yml (gitignored, it contains the password).
+#  - saves the YouTube sign-in token Lavalink logs after google.com/device sign-in
+#    into ../.env as YOUTUBE_REFRESH_TOKEN,
+#  - writes application.yml (gitignored, it contains the password and token).
 
 $ErrorActionPreference = 'Stop'
 $here = $PSScriptRoot
@@ -59,7 +61,35 @@ if ($line) {
     Write-Host 'Generated a new LAVALINK_PASSWORD in .env'
 }
 
+# YouTube sign-in. After someone signs in at google.com/device, Lavalink logs the
+# account's refresh token once; keep it in .env so the sign-in survives restarts.
+# A newer token in the log (from signing in again) replaces the saved one.
+$tokenLine = Get-Content $envFile | Where-Object { $_ -match '^\s*YOUTUBE_REFRESH_TOKEN\s*=\s*\S' } | Select-Object -Last 1
+$refreshToken = if ($tokenLine) { ($tokenLine -split '=', 2)[1].Trim().Trim('"', "'") } else { $null }
+$springLog = Join-Path $here 'logs\spring.log'
+if (Test-Path $springLog) {
+    $found = Select-String -Path $springLog -Pattern 'Store your refresh token as this can be reused\. \((\S+)\)' |
+        Select-Object -Last 1
+    if ($found) {
+        $logged = $found.Matches[0].Groups[1].Value
+        if ($logged -ne $refreshToken) {
+            $refreshToken = $logged
+            $lines = @(Get-Content $envFile | Where-Object { $_ -notmatch '^\s*YOUTUBE_REFRESH_TOKEN\s*=' -and $_ -notmatch '^# Saved by lavalink/setup-lavalink.ps1' })
+            $lines += '# Saved by lavalink/setup-lavalink.ps1 after signing in to YouTube'
+            $lines += "YOUTUBE_REFRESH_TOKEN=$refreshToken"
+            [IO.File]::WriteAllLines($envFile, $lines, (New-Object Text.UTF8Encoding $false))
+            Write-Host 'Saved the YouTube sign-in to .env'
+        }
+    }
+}
+
 $yml = Get-Content (Join-Path $here 'application.template.yml') -Raw
 $yml = $yml.Replace('__LAVALINK_PASSWORD__', $password)
+if ($refreshToken) {
+    $yml = $yml.Replace('__YOUTUBE_REFRESH_TOKEN__', $refreshToken)
+} else {
+    # No token yet: leave it out, so Lavalink starts the google.com/device sign-in.
+    $yml = ($yml -split "`r?`n" | Where-Object { $_ -notmatch '__YOUTUBE_REFRESH_TOKEN__' }) -join "`n"
+}
 # UTF-8 without a BOM: Lavalink's YAML parser rejects a BOM.
 [IO.File]::WriteAllText((Join-Path $here 'application.yml'), $yml, (New-Object Text.UTF8Encoding $false))

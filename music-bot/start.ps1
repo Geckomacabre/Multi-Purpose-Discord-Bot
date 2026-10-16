@@ -1,5 +1,6 @@
 # Keeps the music bot running.
-#  - Prepares Lavalink (lavalink/setup-lavalink.ps1: pinned jars, password, config).
+#  - Prepares Lavalink before each start (lavalink/setup-lavalink.ps1: pinned jars,
+#    password, saved YouTube sign-in, config).
 #  - Starts Lavalink with Java 21 and waits until it answers before starting the bot.
 #  - Runs the bot, and restarts both 10 seconds after the bot exits for any reason.
 #    The bot exits on its own if it loses Lavalink for 30 seconds, so a Lavalink
@@ -84,6 +85,13 @@ function Start-Lavalink {
     if ($script:lava -and -not $script:lava.HasExited) { return $true }
     $java = Find-Java
     if (-not $java) { Write-Log 'Java is not installed. Install Java 21 (Temurin or Oracle) to run Lavalink.'; return $false }
+    # Before every start, so a YouTube sign-in from the last run is saved and used.
+    try {
+        & (Join-Path $lavaDir 'setup-lavalink.ps1')
+    } catch {
+        Write-Log "Lavalink setup failed: $_"
+        return $false
+    }
     Write-Log 'Starting Lavalink'
     # application.yml is read from the working directory.
     $script:lava = Start-Process -FilePath $java -ArgumentList '-Xmx512m', '-jar', "`"$lavaJar`"" `
@@ -106,12 +114,6 @@ function Start-Lavalink {
 
 try {
     Stop-Leftovers
-    try {
-        & (Join-Path $lavaDir 'setup-lavalink.ps1')
-    } catch {
-        Write-Log "Lavalink setup failed: $_"
-        exit 1
-    }
     # Keeps node_modules in step with package.json after a git pull. Fast when nothing changed.
     & bun install 2>&1 | Out-Null
 

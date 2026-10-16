@@ -52,14 +52,22 @@ plugins:
     allowSearch: true # ytsearch: and ytmsearch:
     allowDirectVideoIds: true
     allowDirectPlaylistIds: true
-    # Tried in order. These are the plugin's recommended clients that work
-    # without signing in.
+    # Tried in order. MUSIC only searches; TV plays using the signed-in account
+    # below, and the rest are logged-out fallbacks.
     clients:
       - MUSIC
+      - TV
       - ANDROID_VR
       - WEB
       - WEBEMBEDDED
       - TVHTML5_SIMPLY
+    # YouTube blocks logged-out playback ("Sign in to confirm you're not a bot"),
+    # so play signed in to a Google account. With no saved token, Lavalink logs a
+    # code to enter at google.com/device; setup-lavalink.ps1 then saves the token
+    # it logs into ../.env as YOUTUBE_REFRESH_TOKEN and fills it in below.
+    oauth:
+      enabled: true
+      refreshToken: "__YOUTUBE_REFRESH_TOKEN__"
 
 metrics:
   prometheus:

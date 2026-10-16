@@ -106,10 +106,27 @@ Fill in `.env` with the **main Jade bot's** values:
 | `CLIENT_ID` | The main bot's application ID: `1517192967000031253` |
 | `GUILD_ID` | The server to register the music commands in: `337294816641679370` |
 | `LAVALINK_PASSWORD` | *Leave it out.* `setup-lavalink.ps1` generates a random one on first run. |
+| `YOUTUBE_REFRESH_TOKEN` | *Leave it out.* Saved automatically after the YouTube sign-in below. |
 
 > [!IMPORTANT]
 > `GUILD_ID` is required when sharing Jade's token. Without it, the music commands
 > would be registered globally, where the main bot deletes them on every restart.
+
+#### YouTube sign-in
+
+YouTube blocks logged-out playback ("Sign in to confirm you're not a bot"), so
+Lavalink plays YouTube signed in to a Google account. Use a **spare account**,
+not your main one: the YouTube plugin warns that Google can suspend accounts used
+this way. To sign in (or switch accounts, after deleting `YOUTUBE_REFRESH_TOKEN`
+from `.env`):
+
+1. Start the bot. With no saved token, Lavalink logs a line like
+   `OAUTH INTEGRATION: ... go to https://www.google.com/device and enter code XXX-XXX-XXXX`
+   in `lavalink/logs/spring.log`.
+2. Open google.com/device, enter the code, sign in and allow access.
+3. Lavalink logs the account's refresh token, and on its next start
+   `setup-lavalink.ps1` saves it to `.env` as `YOUTUBE_REFRESH_TOKEN`. Keep `.env`
+   private: the token gives access to that YouTube account.
 
 Lavalink's settings live in `lavalink/application.template.yml`. Edit that file,
 not `application.yml`, which is generated from it (with the password) on every start.
@@ -149,7 +166,8 @@ the bot on file changes.
 | Symptom | Fix |
 |---|---|
 | "The music server is still starting" | Lavalink isn't connected yet. It takes about 6 seconds after a restart. If it lasts, check `music-bot.log`, `lavalink/stderr.log` and `lavalink/logs/spring.log`. |
-| YouTube songs fail to load | YouTube changed something. Update the YouTube plugin in `setup-lavalink.ps1` to its latest release. |
+| YouTube songs fail with "Sign in to confirm you're not a bot" or "requires login" | The YouTube sign-in is missing or was revoked. Delete `YOUTUBE_REFRESH_TOKEN` from `.env`, restart, and sign in again (see YouTube sign-in above). |
+| YouTube songs fail to load for another reason | YouTube changed something. Update the YouTube plugin in `setup-lavalink.ps1` to its latest release. |
 | SoundCloud links don't play | Known problem: SoundCloud changed its stream format and Lavalink can't play it yet ([lavaplayer#189](https://github.com/lavalink-devs/lavaplayer/issues/189)), so SoundCloud is turned off in `application.template.yml`. |
 | Short audio dropouts every few seconds | A known Lavalink 4.2.2 problem with Discord's voice encryption ([Lavalink#1222](https://github.com/lavalink-devs/Lavalink/issues/1222)). A fix is proposed in [Lavalink#1235](https://github.com/lavalink-devs/Lavalink/pull/1235); upgrade Lavalink once it's released. |
 | A command disappeared | It's re-registered within 5 minutes automatically. Restarting the music bot also brings it back immediately. |
