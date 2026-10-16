@@ -110,11 +110,19 @@ powershell -ExecutionPolicy Bypass -File start.ps1
 ```
 
 `start.ps1` updates yt-dlp, starts the bot, restarts it if it ever exits, and logs
-to `music-bot.log`. Leave the window open, or run it at sign-in with Task Scheduler:
+to `music-bot.log`. Leave the window open, or run it at sign-in with Task Scheduler.
+
+On this PC, the **TMCBot Music** task already does that: it starts `start.ps1` hidden
+at sign-in, with no time limit and no stop on battery power. To set it up elsewhere:
 
 ```powershell
-schtasks /Create /TN "TMCBot Music" /SC ONLOGON /RL LIMITED /TR "powershell -WindowStyle Hidden -ExecutionPolicy Bypass -File D:\Bots\TMCBot-PROD\music-bot\start.ps1"
+$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "D:\Bots\TMCBot-PROD\music-bot\start.ps1"'
+$settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew
+Register-ScheduledTask -TaskName 'TMCBot Music' -Action $action -Trigger (New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME) -Settings $settings
 ```
+
+Start it now without signing out with `Start-ScheduledTask -TaskName 'TMCBot Music'`,
+and watch `music-bot.log` to see it come up.
 
 For development, `bun run dev` restarts the bot on file changes.
 
