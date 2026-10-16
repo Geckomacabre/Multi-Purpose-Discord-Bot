@@ -31,8 +31,29 @@ function Update-YtDlp {
     if ($before -ne $after) { Write-Log "Updated yt-dlp $before -> $after" } else { Write-Log "yt-dlp $after is up to date" }
 }
 
-if (-not (Test-Path (Join-Path $PSScriptRoot '.env'))) {
-    Write-Host 'No .env file found. Copy .env.example to .env and fill in TOKEN, CLIENT_ID and GUILD_ID first.'
+$envFile = Join-Path $PSScriptRoot '.env'
+if (-not (Test-Path $envFile)) {
+    Write-Log 'No .env file found. Copy .env.example to .env and fill in CLIENT_ID and GUILD_ID first.'
+    exit 1
+}
+
+# The music bot runs under the main bot's account, so by default it uses the
+# main bot's secrets straight from the prod deploy folder: one copy of the token,
+# and rotating it there updates both bots. A value filled in .env wins instead.
+$prodEnvFiles = 'C:\TMCBot-PROD\secrets.env', 'C:\TMCBot-PROD\bot.env'  # same order as the prod compose file
+function Import-ProdSecret($name) {
+    if (Select-String -Path $envFile -Pattern "^\s*$name\s*=\s*\S" -Quiet) { return }  # set in .env; Bun loads it
+    $value = $null
+    foreach ($file in $prodEnvFiles | Where-Object { Test-Path $_ }) {
+        $line = Get-Content $file | Where-Object { $_ -match "^\s*$name\s*=" } | Select-Object -Last 1
+        if ($line) { $value = ($line -split '=', 2)[1].Trim().Trim('"', "'") }
+    }
+    if ($value) { Set-Item "env:$name" $value }
+}
+Import-ProdSecret 'TOKEN'
+Import-ProdSecret 'YOUTUBE_COOKIE'
+if (-not $env:TOKEN -and -not (Select-String -Path $envFile -Pattern '^\s*TOKEN\s*=\s*\S' -Quiet)) {
+    Write-Log "No TOKEN in .env or $($prodEnvFiles -join ' / '). The music bot can't log in."
     exit 1
 }
 if (-not (Test-Path (Join-Path $PSScriptRoot 'node_modules'))) {
@@ -46,7 +67,13 @@ while ($true) {
     }
     Update-YtDlp
     Write-Log 'Starting music bot'
-    & bun run index.ts 2>&1 | ForEach-Object { "$_" } | Tee-Object -FilePath $log -Append
+    # Not Tee-Object: on Windows PowerShell 5.1 it appends UTF-16, which garbles a
+    # log the launcher writes as UTF-8.
+    & bun run index.ts 2>&1 | ForEach-Object {
+        $line = "$_"
+        Write-Host $line
+        Add-Content -Path $log -Value $line -Encoding utf8
+    }
     Write-Log "Music bot exited (code $LASTEXITCODE). Restarting in 10 seconds..."
     Start-Sleep -Seconds 10
 }

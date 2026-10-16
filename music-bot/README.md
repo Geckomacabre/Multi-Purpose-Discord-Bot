@@ -94,10 +94,10 @@ Fill in `.env` with the **main Jade bot's** values:
 
 | Variable | Value |
 |---|---|
-| `TOKEN` | The main bot's token (same as `TOKEN` in `C:\TMCBot-PROD\secrets.env`) |
-| `CLIENT_ID` | The main bot's application ID |
+| `TOKEN` | *Leave blank.* `start.ps1` reads the main bot's token from `C:\TMCBot-PROD\secrets.env` each time it starts, so there's only one copy. Fill it in only to run as a different bot. |
+| `CLIENT_ID` | The main bot's application ID: `1517192967000031253` |
 | `GUILD_ID` | The server to register `/music` in: `337294816641679370` |
-| `YOUTUBE_COOKIE` | *Optional.* A YouTube cookie string, which helps with rate limits |
+| `YOUTUBE_COOKIE` | *Optional.* A YouTube cookie string, which helps with rate limits. Blank uses the main bot's. |
 
 > [!IMPORTANT]
 > `GUILD_ID` is required when sharing Jade's token. Without it, `/music` would be
