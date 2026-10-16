@@ -2,6 +2,7 @@
 #  - Prepares Lavalink before each start (lavalink/setup-lavalink.ps1: pinned jars,
 #    password, saved YouTube sign-in, config).
 #  - Starts Lavalink with Java 21 and waits until it answers before starting the bot.
+#  - Updates yt-dlp, the fallback for YouTube songs Lavalink can't play.
 #  - Runs the bot, and restarts both 10 seconds after the bot exits for any reason.
 #    The bot exits on its own if it loses Lavalink for 30 seconds, so a Lavalink
 #    crash restarts both too.
@@ -79,6 +80,22 @@ function Stop-Leftovers {
         }
 }
 
+# yt-dlp is the fallback when Lavalink's YouTube plugin can't play a song (see
+# fallback.ts). YouTube regularly breaks older versions, so update it on each start.
+function Update-YtDlp {
+    $ytdlp = Get-Command yt-dlp -ErrorAction SilentlyContinue
+    if (-not $ytdlp) { Write-Log 'yt-dlp is not installed or not on PATH, so there is no fallback when YouTube playback breaks.'; return }
+    $before = (& yt-dlp --version) 2>$null
+    if ($ytdlp.Source -match 'Python') {
+        # Installed with pip: its built-in self-update doesn't work, so use pip.
+        & python -m pip install -U --quiet --disable-pip-version-check 'yt-dlp[default]' 2>&1 | Out-Null
+    } else {
+        & yt-dlp -U 2>&1 | Out-Null
+    }
+    $after = (& yt-dlp --version) 2>$null
+    if ($before -ne $after) { Write-Log "Updated yt-dlp $before -> $after" } else { Write-Log "yt-dlp $after is up to date" }
+}
+
 $script:lava = $null
 
 function Start-Lavalink {
@@ -126,6 +143,7 @@ try {
             Start-Sleep -Seconds 10
             continue
         }
+        Update-YtDlp
         Write-Log 'Starting music bot'
         # Not Tee-Object: on Windows PowerShell 5.1 it appends UTF-16, which garbles a
         # log the launcher writes as UTF-8. The full path to index.ts lets

@@ -10,6 +10,7 @@ import {
 import {
   LavalinkManager, type Player, type SearchResult, type SponsorBlockSegment, type Track, type UnresolvedTrack,
 } from 'lavalink-client';
+import { canFallBack, queueFallback } from './fallback';
 import type { LinkTrack } from './links';
 import { getMusicConfig } from './store';
 import logger from './logger';
@@ -21,6 +22,7 @@ export type Requester = { id: string; autoplay?: boolean };
 const QUEUE_END_LEAVE_MS = 5 * 60_000;
 const EMPTY_CHANNEL_LEAVE_MS = 30_000;
 const LAVALINK_DOWN_EXIT_MS = 30_000;
+const FALLBACK_ADVANCE_MS = 3_000;
 // Sponsor reads, self-promotion, "like and subscribe" and non-music parts of music videos.
 const SPONSORBLOCK_CATEGORIES: SponsorBlockSegment[] = ['sponsor', 'selfpromo', 'interaction', 'music_offtopic'];
 
@@ -384,10 +386,16 @@ export function createManager(client: Client, password: string) {
     }
   }, 5_000);
 
-  manager.on('trackStart', async (player) => {
+  manager.on('trackStart', async (player, track) => {
     const s = session(player.guildId);
     s.skipVotes.clear();
     cancelLeave(player.guildId, 'idle');
+    // A yt-dlp fallback for a song that broke partway through resumes where it stopped.
+    const startAt = Number(track?.userData?.startAt ?? 0);
+    if (startAt) {
+      delete track!.userData!.startAt; // only once, not again on loop
+      player.seek(startAt).catch(() => {});
+    }
     await syncSponsorBlock(player);
     await postPanel(player);
   });
@@ -395,6 +403,19 @@ export function createManager(client: Client, password: string) {
   manager.on('trackError', (player, track, payload: any) => {
     const why = payload?.exception?.message ?? payload?.message ?? payload?.error ?? 'unknown error';
     logger.warn(`[music] couldn't play "${track?.info?.title}": ${why}`);
+    // Must stay synchronous: the stand-in has to be queued before lavalink-client
+    // handles the track-end event that follows and moves to the next song.
+    if (payload?.type === 'TrackExceptionEvent' && canFallBack(track)) {
+      logger.info(`[music] retrying "${track.info.title}" through yt-dlp`);
+      const standIn = queueFallback(player, track);
+      // Lavalink normally follows the error with a track-end event that moves the
+      // queue on, but not always (it didn't for a player with no audio being pulled).
+      // If the queue is still stuck on the failed song, move on to the stand-in.
+      setTimeout(() => {
+        if (player.queue.current === track && player.queue.tracks[0] === standIn) player.skip(0, false).catch(() => {});
+      }, FALLBACK_ADVANCE_MS);
+      return;
+    }
     if (track) sendToTextChannel(player, { content: `⚠️ Couldn't play ${link(track)} (${why}), so I skipped it.`, flags: MessageFlags.SuppressEmbeds });
   });
 

@@ -24,6 +24,10 @@ delay the voice packets, because they're sent by a different program. This setup
 - **Spotify and Apple Music** are played from the same song on YouTube Music, since
   their own audio is DRM-protected. No API keys are needed: the song list is read
   from the link's public page.
+- **YouTube failsafe:** if Lavalink can't play a YouTube song (YouTube changed
+  something, the sign-in was revoked, or the cipher server is down), the bot gets
+  the audio with **yt-dlp** instead and plays that. The song plays in its place
+  about 5 seconds later, picking up where it stopped if it broke mid-song.
 - **Live control panel:** the Now Playing message has ⏮️ ⏯️ ⏭️ ⏹️ 🔁 🔀 📜 🎤
   buttons. It replaces itself on each new song instead of filling the channel.
 - **Search as you type:** `/play` suggests YouTube Music results while you type.
@@ -79,6 +83,9 @@ leaves, unless 24/7 mode is on.
 - **Java 21** (Lavalink 4.2 runs on Java 17 or newer). `start.ps1` looks for a
   `jdk-21*` folder under `C:\Program Files\Java`, Eclipse Adoptium or Microsoft,
   and falls back to the `java` on PATH.
+- **yt-dlp** on PATH, for the YouTube failsafe. `start.ps1` updates it on every
+  start, since YouTube regularly breaks older versions. **Deno** on PATH lets
+  yt-dlp solve YouTube's player challenges.
 
 Lavalink itself is downloaded for you: `lavalink/setup-lavalink.ps1` fetches the
 pinned versions from their official GitHub releases and checks their SHA-256.
@@ -174,6 +181,8 @@ the bot on file changes.
 | "The music server is still starting" | Lavalink isn't connected yet. It takes about 6 seconds after a restart. If it lasts, check `music-bot.log`, `lavalink/stderr.log` and `lavalink/logs/spring.log`. |
 | YouTube songs fail with "Sign in to confirm you're not a bot" or "requires login" | The YouTube sign-in is missing or was revoked. Delete `YOUTUBE_REFRESH_TOKEN` from `.env`, restart, and sign in again (see YouTube sign-in above). |
 | YouTube songs fail with "Must find sig function" or a cipher error | The cipher server is down or out of date. Check that `https://cipher.kikkia.dev/` responds, or host yt-cipher yourself and point `remoteCipher.url` at it. |
+| The log says `playing "..." through yt-dlp` | Lavalink's YouTube playback is failing and the failsafe is covering for it. Songs still play, but check the error logged just before it (and the rows above). |
+| A song fails even through yt-dlp | yt-dlp is out of date or YouTube broke it too. Restart `start.ps1` (it updates yt-dlp), or run `python -m pip install -U "yt-dlp[default]"`. |
 | YouTube songs fail to load for another reason | YouTube changed something. Update the YouTube plugin in `setup-lavalink.ps1` to its latest release. |
 | SoundCloud links don't play | Known problem: SoundCloud changed its stream format and Lavalink can't play it yet ([lavaplayer#189](https://github.com/lavalink-devs/lavaplayer/issues/189)), so SoundCloud is turned off in `application.template.yml`. |
 | Short audio dropouts every few seconds | A known Lavalink 4.2.2 problem with Discord's voice encryption ([Lavalink#1222](https://github.com/lavalink-devs/Lavalink/issues/1222)). A fix is proposed in [Lavalink#1235](https://github.com/lavalink-devs/Lavalink/pull/1235); upgrade Lavalink once it's released. |
@@ -187,8 +196,9 @@ the bot on file changes.
 | `index.ts` | Startup, command registration, interaction routing |
 | `commands.ts` | The slash commands, panel buttons and autocomplete |
 | `lavalink.ts` | Lavalink connection, Now Playing panel, DJ permissions, idle timers, autoplay |
+| `fallback.ts` | The yt-dlp failsafe for YouTube songs Lavalink can't play |
 | `links.ts` | Reads Spotify and Apple Music links without API keys |
 | `store.ts` | Per-server settings in `music-config.json` |
-| `start.ps1` | Launcher: starts Lavalink and the bot, restarts both |
+| `start.ps1` | Launcher: starts Lavalink and the bot, restarts both, updates yt-dlp |
 | `lavalink/setup-lavalink.ps1` | Downloads and checks the Lavalink jars, writes its config |
 | `lavalink/application.template.yml` | Lavalink settings |
