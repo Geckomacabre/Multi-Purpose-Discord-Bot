@@ -68,6 +68,12 @@ plugins:
     oauth:
       enabled: true
       refreshToken: "__YOUTUBE_REFRESH_TOKEN__"
+    # YouTube's stream signatures are no longer decoded inside the plugin; this
+    # server does it (https://github.com/kikkia/yt-cipher, a wrapper for yt-dlp's
+    # solver). It only receives YouTube's player script ID and signature strings.
+    remoteCipher:
+      url: "https://cipher.kikkia.dev/"
+      userAgent: "TMCBot-music"
 
 metrics:
   prometheus:

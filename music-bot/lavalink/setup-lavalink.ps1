@@ -16,9 +16,13 @@ $jars = @(
     @{ Path = 'Lavalink.jar'
        Url  = 'https://github.com/lavalink-devs/Lavalink/releases/download/4.2.2/Lavalink.jar'
        Sha  = '8cb801e591072c3689fafd71ccf571a95a4ead3cc35dfc045e157d763d89119a' },
-    @{ Path = 'plugins\youtube-plugin-1.18.2.jar'
-       Url  = 'https://github.com/lavalink-devs/youtube-source/releases/download/1.18.2/youtube-plugin-1.18.2.jar'
-       Sha  = 'dd4b3bce50dbc7582c80776bad47bad87bef1dc683c69d66ab4a084aa3006238' },
+    # A snapshot of youtube-source main (2026-09-17) from the project's own Maven
+    # repo: release 1.18.2 can't play signed in, because YouTube rejects its TV
+    # client user agent (lavalink-devs/youtube-source#226, fixed in #233 but not
+    # released yet). Switch back to a release once one includes the fix.
+    @{ Path = 'plugins\youtube-plugin-2be8e542d3f6f178e048dca565892684c2e40177.jar'
+       Url  = 'https://maven.lavalink.dev/snapshots/dev/lavalink/youtube/youtube-plugin/2be8e542d3f6f178e048dca565892684c2e40177/youtube-plugin-2be8e542d3f6f178e048dca565892684c2e40177.jar'
+       Sha  = 'b062effdda6abeaa46913dfd1b5d5600120b65f239ce88f30948c7213a3ca1c0' },
     @{ Path = 'plugins\sponsorblock-plugin-3.0.1.jar'
        Url  = 'https://github.com/topi314/Sponsorblock-Plugin/releases/download/3.0.1/sponsorblock-plugin-3.0.1.jar'
        Sha  = '7a79e78d91677dbb45c1d33f442a01343c28ce6ac8998a4dd6549809ab047bbd' }

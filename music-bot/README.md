@@ -86,10 +86,16 @@ pinned versions from their official GitHub releases and checks their SHA-256.
 | Component | Version | Source |
 |---|---|---|
 | Lavalink | 4.2.2 | [lavalink-devs/Lavalink](https://github.com/lavalink-devs/Lavalink/releases) |
-| YouTube plugin | 1.18.2 | [lavalink-devs/youtube-source](https://github.com/lavalink-devs/youtube-source/releases) |
+| YouTube plugin | snapshot `2be8e54` (2026-09-17) | [lavalink-devs/youtube-source](https://github.com/lavalink-devs/youtube-source), from its [Maven snapshots](https://maven.lavalink.dev/#/snapshots/dev/lavalink/youtube/youtube-plugin). Release 1.18.2 can't play signed in ([#226](https://github.com/lavalink-devs/youtube-source/issues/226)); move back to a release once one includes the fix. |
 | SponsorBlock plugin | 3.0.1 | [topi314/Sponsorblock-Plugin](https://github.com/topi314/Sponsorblock-Plugin/releases) |
 
 To upgrade one, change its URL and SHA-256 in `setup-lavalink.ps1`.
+
+YouTube's stream signatures are decoded by a separate cipher server,
+[yt-cipher](https://github.com/kikkia/yt-cipher) (a wrapper for yt-dlp's solver).
+Lavalink uses its author's public instance, `https://cipher.kikkia.dev/`, set under
+`remoteCipher` in `application.template.yml`. It only receives YouTube's player
+script ID and the scrambled signatures, nothing about the signed-in account.
 
 ### 2. Configure
 
@@ -167,6 +173,7 @@ the bot on file changes.
 |---|---|
 | "The music server is still starting" | Lavalink isn't connected yet. It takes about 6 seconds after a restart. If it lasts, check `music-bot.log`, `lavalink/stderr.log` and `lavalink/logs/spring.log`. |
 | YouTube songs fail with "Sign in to confirm you're not a bot" or "requires login" | The YouTube sign-in is missing or was revoked. Delete `YOUTUBE_REFRESH_TOKEN` from `.env`, restart, and sign in again (see YouTube sign-in above). |
+| YouTube songs fail with "Must find sig function" or a cipher error | The cipher server is down or out of date. Check that `https://cipher.kikkia.dev/` responds, or host yt-cipher yourself and point `remoteCipher.url` at it. |
 | YouTube songs fail to load for another reason | YouTube changed something. Update the YouTube plugin in `setup-lavalink.ps1` to its latest release. |
 | SoundCloud links don't play | Known problem: SoundCloud changed its stream format and Lavalink can't play it yet ([lavaplayer#189](https://github.com/lavalink-devs/lavaplayer/issues/189)), so SoundCloud is turned off in `application.template.yml`. |
 | Short audio dropouts every few seconds | A known Lavalink 4.2.2 problem with Discord's voice encryption ([Lavalink#1222](https://github.com/lavalink-devs/Lavalink/issues/1222)). A fix is proposed in [Lavalink#1235](https://github.com/lavalink-devs/Lavalink/pull/1235); upgrade Lavalink once it's released. |
