@@ -25,8 +25,16 @@ export const onReady = async (Bot: Client) => {
       });
       logger.info(`Successfully registered ${commandData.length} guild commands`);
     } else {
-      await rest.put(Routes.applicationGuildCommands(Config.CLIENT_ID, Config.GUILD_ID), { body: [] });
-      logger.info('Cleared guild commands');
+      // Remove leftover dev-mode guild copies of our own commands, but leave every
+      // other guild command alone: the standalone music bot (music-bot/) can share
+      // this application and registers /music as a guild command here.
+      const ownNames = new Set(commandData.map((c) => c.name));
+      const guildCommands = await rest.get(Routes.applicationGuildCommands(Config.CLIENT_ID, Config.GUILD_ID)) as { id: string; name: string }[];
+      const stale = guildCommands.filter((c) => ownNames.has(c.name));
+      for (const c of stale) {
+        await rest.delete(Routes.applicationGuildCommand(Config.CLIENT_ID, Config.GUILD_ID, c.id));
+      }
+      logger.info(`Cleared ${stale.length} stale guild command(s)`);
 
       logger.info('Production mode: Registering global commands...');
       await rest.put(Routes.applicationCommands(Config.CLIENT_ID), { body: commandData });

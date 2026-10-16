@@ -1,179 +1,51 @@
 import {
-  ActionRowBuilder, ApplicationIntegrationType, ChatInputCommandInteraction, Colors, ComponentType, EmbedBuilder,
-  GuildMember, InteractionContextType, MessageFlags, PermissionFlagsBits, SlashCommandBuilder, StringSelectMenuBuilder,
+  ActionRowBuilder, ApplicationIntegrationType, ButtonBuilder, ButtonStyle, Colors, ComponentType, EmbedBuilder,
+  InteractionContextType, MessageFlags, SlashCommandBuilder, StringSelectMenuBuilder,
+  type AutocompleteInteraction, type ButtonInteraction, type ChatInputCommandInteraction, type GuildMember,
 } from 'discord.js';
+import { QueryType, QueueRepeatMode, SearchResult, Track, useQueue, type GuildQueue, type Player } from 'discord-player';
 import { Command } from './command';
-import { Player, QueryType, useQueue, GuildQueue, Track, onBeforeCreateStream as registerBeforeCreateStream } from 'discord-player';
-import { DefaultExtractors } from '@discord-player/extractor';
-import { YoutubeExtractor } from 'discord-player-youtubei';
-import { Readable } from 'node:stream';
-import { spawn } from 'node:child_process';
-import * as db from './store';
+import { prefetch } from './audio';
+import {
+  FILTERS, LOOP_LABEL, VOICE_CONNECT_OPTIONS, applyAlwaysOn, applyFilters, botChannel, describeError, formatMs, getPlayer,
+  isAdmin, isDJ, link, listenerCount, musicMessageIds, namedFilters, nodeOptions, nowPlayingEmbed, panelPayload,
+  refreshPanel, requester, sameChannelError, session, waitForExtractors,
+} from './player';
+import { getMusicConfig, setMusicConfig } from './store';
 import logger from './logger';
 
-let player: Player | null = null;
-let extractorsReady: Promise<unknown> | null = null;
+type Ctx = ChatInputCommandInteraction | ButtonInteraction;
 
-// Don't pre-download tracks longer than this (or live streams, durationMS 0) — a
-// normal song is a few MB, but this would be unbounded for a long mix / stream.
-const MAX_PREBUFFER_MS = 30 * 60 * 1000; // 30 minutes
+const NOT_DJ = '🎧 Only DJs can do that. Use `/music skip` to vote instead.';
 
-// Fully downloaded audio (compressed, ~3-4MB), keyed by track.id. We download the
-// whole file up front with yt-dlp and play from that complete in-memory copy via
-// onBeforeCreateStream. This is the literal "download the song, then play it" —
-// yt-dlp handles YouTube's throttling/obfuscation robustly (far more reliably than
-// the library's own streaming), and playing from a complete local buffer removes
-// any source-side gaps. Prefetching the NEXT track while the current one plays
-// makes transitions seamless.
-const prebufferCache = new Map<string, Promise<Buffer | null>>();
+// ── Small helpers ────────────────────────────────────────────────────────────
 
-// Download a track's audio to memory with yt-dlp (already installed in the image).
-function downloadAudio(url: string): Promise<Buffer> {
-  return new Promise<Buffer>((resolve, reject) => {
-    const dl = spawn('yt-dlp', [
-      '-f', 'bestaudio/best', '--no-playlist', '--quiet', '--no-warnings', '-o', '-', url,
-    ], { stdio: ['ignore', 'pipe', 'pipe'] });
-    const chunks: Buffer[] = [];
-    let err = '';
-    dl.stdout.on('data', (c) => chunks.push(c));
-    dl.stderr.on('data', (c) => { err += c.toString(); });
-    dl.on('error', reject); // e.g. yt-dlp not found
-    dl.on('close', (code) => {
-      if (code === 0 && chunks.length) resolve(Buffer.concat(chunks));
-      else reject(new Error(`yt-dlp exited ${code}: ${err.slice(0, 300)}`));
-    });
-  });
+async function deny(i: Ctx, content: string): Promise<null> {
+  if (i.deferred || i.replied) await i.followUp({ content, flags: MessageFlags.Ephemeral }).catch(() => {});
+  else await i.reply({ content, flags: MessageFlags.Ephemeral }).catch(() => {});
+  return null;
 }
 
-// Start (or reuse) a background download of a track's audio.
-function prebuffer(track: Track): Promise<Buffer | null> {
-  const durMs = track?.durationMS ?? 0;
-  if (!track?.id || !track.url || !durMs || durMs > MAX_PREBUFFER_MS) return Promise.resolve(null);
-  let p = prebufferCache.get(track.id);
-  if (!p) {
-    p = downloadAudio(track.url).catch((e) => {
-      logger.warn(`[music] download failed for "${track.title}", will stream on demand: ${describeError(e)}`);
-      prebufferCache.delete(track.id); // allow a later retry / fall back to streaming
-      return null;
-    });
-    prebufferCache.set(track.id, p);
-  }
-  return p;
+/**
+ * The guild's queue, if this member may control it from where they are.
+ * `dj` requires DJ controls; `requesterOk` also lets the current track's requester through.
+ */
+async function controlQueue(i: Ctx, { dj = true, requesterOk = false, playing = true } = {}): Promise<GuildQueue | null> {
+  const q = useQueue(i.guildId!);
+  if (!q || (playing && !q.currentTrack)) return deny(i, '❌ Nothing is playing.');
+  const member = i.member as GuildMember;
+  const where = sameChannelError(member);
+  if (where) return deny(i, where);
+  const isRequester = requesterOk && q.currentTrack?.requestedBy?.id === member.id;
+  if (dj && !isDJ(member) && !isRequester) return deny(i, NOT_DJ);
+  return q;
 }
 
-// Discord ENFORCES the DAVE (E2EE) voice protocol for all non-stage voice calls
-// as of 2026-03-01: connecting with DAVE disabled (max_dave_protocol_version: 0)
-// is rejected by the voice gateway with close code 4017 ("E2EE/DAVE protocol
-// required"), so the bot joins the channel but no audio ever flows. DAVE support
-// comes from the @snazzah/davey native package (a dependency of this project);
-// with it installed, the default connection options negotiate DAVE correctly, so
-// we pass no special connection options. (Previously this passed
-// daveEncryption:false to dodge a crash when @snazzah/davey was missing — that
-// workaround now hard-breaks playback, so the package must stay installed.)
-const VOICE_CONNECT_OPTIONS = {} as const;
-
-// Guilds with karaoke mode enabled — blocks new tracks from non-DJs.
-const karaokeGuilds = new Set<string>();
-// guildId -> userId the bot should follow between voice channels.
-const followMap = new Map<string, string>();
-
-// pino's logger hook JSON-stringifies a 2-arg call (logger.error('label', err)),
-// but native Error objects serialize to "{}" since message/stack aren't own
-// enumerable properties — silently swallowing the actual error. Pulling them
-// out explicitly (and passing a single pre-built string) avoids that.
-function describeError(err: any): string {
-  if (!(err instanceof Error)) return typeof err === 'object' ? JSON.stringify(err) : String(err);
-  return JSON.stringify({ ...err, name: err.name, message: err.message }, null, 0) + `\n${err.stack ?? ''}`;
-}
-
-export function getPlayer(client: any): Player {
-  if (!player) {
-    player = new Player(client, { skipFFmpeg: false });
-    // Play from the pre-downloaded compressed buffer when available (smooth start).
-    // Returning null falls back to discord-player's normal on-the-fly extraction.
-    registerBeforeCreateStream(async (track: Track) => {
-      // Serve ONLY from an already-prefetched buffer. We must NOT call prebuffer()
-      // (which calls extractor.stream) here — this hook runs inside discord-player's
-      // own stream creation, and re-entering stream() fails with "Could not extract
-      // stream from this track source". Prefetching happens before play / on the
-      // next track, so by the time a track plays its buffer is already in the cache.
-      const cached = track?.id ? prebufferCache.get(track.id) : undefined;
-      const buf = cached ? await cached : null;
-      return buf ? Readable.from(buf) : null;
-    });
-    const loadDefaults = player.extractors.loadMulti(DefaultExtractors).catch(e => logger.error(`Failed to load extractors: ${describeError(e)}`));
-    // discord-player swallows extractor activation errors internally (register()
-    // resolves to null instead of rejecting), so without this listener a failed
-    // YouTube extractor activation is completely silent — it just shows up later
-    // as "no results found (extractor: N/A)" with no clue why.
-    player.extractors.on('error', (_ctx: any, extractor: any, err: any) =>
-      logger.error(`[music] extractor "${extractor?.identifier}" failed to activate: ${err?.message ?? err}`)
-    );
-    // discord-player v7 dropped YouTube support from @discord-player/extractor
-    // entirely (constant breakage from YouTube's side), so this extractor provides
-    // YouTube search/metadata. The actual audio is downloaded by yt-dlp (see
-    // prebuffer/onBeforeCreateStream above); the extractor's own streaming is only
-    // the fallback if a download fails. YOUTUBE_COOKIE is optional — it authenticates
-    // the session, which can help with rate-limiting/bot-detection on busy bots.
-    const ytCookieOpts = Bun.env.YOUTUBE_COOKIE ? { cookie: Bun.env.YOUTUBE_COOKIE } : {};
-    const loadYoutube = player.extractors.register(YoutubeExtractor, ytCookieOpts as any)
-      .catch(e => logger.error(`Failed to load YouTube extractor: ${describeError(e)}`));
-    // Extractor registration does a real network round-trip (bootstrapping the
-    // YouTube session), so it isn't done by the time this function returns.
-    // Anything that queues/searches must await this first, or the very first
-    // /music command after each restart races it and finds zero extractors
-    // ready — surfacing as "no results found (extractor: N/A)".
-    extractorsReady = Promise.allSettled([loadDefaults, loadYoutube]);
-    (player.events as any).on('playerError', (_queue: any, err: any) => logger.error(`Player error: ${describeError(err)}`));
-    (player.events as any).on('error', (_queue: any, err: any) => logger.error(`Queue error: ${describeError(err)}`));
-    player.events.on('playerStart', (queue, track) => {
-      const ch = queue.metadata as any;
-      if (ch?.send) ch.send({ embeds: [nowPlayingEmbed(track)] });
-      // Prefetch the next track in the background so its transition is seamless.
-      const next = queue.tracks.at(0);
-      if (next) prebuffer(next);
-    });
-    // When a track is queued while something plays, start pre-downloading whatever
-    // is now next-up (deduped by the cache; bounded to ~the next track's worth).
-    (player.events as any).on('audioTrackAdd', (queue: GuildQueue) => {
-      const next = queue.tracks.at(0);
-      if (next && queue.currentTrack) prebuffer(next);
-    });
-    // Free a track's buffer once it finishes so memory stays bounded.
-    (player.events as any).on('playerFinish', (_queue: any, track: Track) => {
-      if (track?.id) prebufferCache.delete(track.id);
-    });
-    (player.events as any).on('queueDelete', () => prebufferCache.clear());
-    client.on('voiceStateUpdate', (oldState: any, newState: any) => {
-      const followedId = followMap.get(newState.guild.id);
-      if (!followedId || newState.member?.id !== followedId) return;
-      if (oldState.channelId === newState.channelId || !newState.channel) return;
-      const q = useQueue(newState.guild.id);
-      if (!q) return;
-      q.connect(newState.channel, VOICE_CONNECT_OPTIONS).catch((e: any) =>
-        logger.warn(`[music] failed to follow user between channels: ${e.message}`)
-      );
-    });
-  }
-  return player;
-}
-
-async function waitForExtractors(): Promise<void> {
-  if (extractorsReady) await extractorsReady;
-}
-
-function checkKaraoke(guildId: string, member: GuildMember): string | null {
-  if (!karaokeGuilds.has(guildId) || member.permissions.has(PermissionFlagsBits.ManageGuild)) return null;
-  return '🎤 Karaoke mode is enabled — only a Manage Server member can add tracks right now.';
-}
-
-// YouTube "radio"/"mix" URLs (list=RD…, start_radio=1) are dynamically generated
-// per session and resolve to an empty playlist, so a watch URL carrying them yields
-// "No results found". When such a URL has a real video id, reduce it to the plain
-// video so the song itself plays. Real playlists (list=PL…) are left untouched.
+// YouTube "radio"/"mix" URLs (list=RD…, start_radio=1) resolve to an empty
+// playlist. When such a URL has a real video id, play just that video.
 function normalizeQuery(q: string): string {
   let u: URL;
-  try { u = new URL(q.trim()); } catch { return q; } // plain search text, not a URL
+  try { u = new URL(q.trim()); } catch { return q; }
   const isYouTube = u.hostname === 'youtu.be' || /(^|\.)youtube\.com$/.test(u.hostname);
   if (!isYouTube) return q;
   const vid = u.hostname === 'youtu.be' ? u.pathname.slice(1) : u.searchParams.get('v');
@@ -182,417 +54,669 @@ function normalizeQuery(q: string): string {
   return vid && isRadio ? `https://www.youtube.com/watch?v=${vid}` : q;
 }
 
-function requesterText(track: Track): string {
-  return track.requestedBy ? `${track.requestedBy}` : 'Unknown';
+/** "1:30", "90" or "1:02:03" → ms, or null if it isn't a time. */
+function parseTime(s: string): number | null {
+  const t = s.trim();
+  if (!/^\d+(:\d{1,2}){0,2}$/.test(t)) return null;
+  return t.split(':').map(Number).reduce((acc, n) => acc * 60 + n, 0) * 1000;
 }
 
-function nowPlayingEmbed(track: Track) {
-  return new EmbedBuilder()
-    .setColor(Colors.Blue)
-    .setTitle('Now Playing')
-    .setDescription(`**[${track.title}](${track.url})**`)
-    .addFields(
-      { name: 'Duration', value: track.duration, inline: true },
-      { name: 'Requested by', value: requesterText(track), inline: true },
-    )
-    .setThumbnail(track.thumbnail);
-}
-
-// Shown as the command reply when a track is added — so the flow reads "Added to
-// Queue" (command) then "Now Playing" (playerStart), instead of two Now Playing
-// embeds. `position` is the track's spot in the waiting queue (0 = plays next/now).
-function queuedEmbed(track: Track, position: number) {
+function addedEmbed(result: SearchResult, added: Track[], title: string, position: number) {
+  if (result.playlist) {
+    const total = added.reduce((sum, t) => sum + (t.durationMS || 0), 0);
+    return new EmbedBuilder()
+      .setColor(Colors.Green)
+      .setAuthor({ name: title })
+      .setTitle(result.playlist.title.slice(0, 256))
+      .setURL(result.playlist.url || null)
+      .setThumbnail(result.playlist.thumbnail || added[0]?.thumbnail || null)
+      .setDescription(`**${added.length}** tracks · ${formatMs(total)}`);
+  }
+  const t = added[0]!;
   const e = new EmbedBuilder()
     .setColor(Colors.Green)
-    .setTitle('Added to Queue')
-    .setDescription(`**[${track.title}](${track.url})**`)
-    .setThumbnail(track.thumbnail)
+    .setAuthor({ name: title })
+    .setDescription(`**${link(t)}**\nby ${t.author}`)
+    .setThumbnail(t.thumbnail || null)
     .addFields(
-      { name: 'Duration', value: track.duration, inline: true },
-      { name: 'Requested by', value: requesterText(track), inline: true },
+      { name: 'Duration', value: t.durationMS ? t.duration : '🔴 Live', inline: true },
+      { name: 'Requested by', value: requester(t), inline: true },
     );
   if (position > 0) e.addFields({ name: 'Position', value: `#${position}`, inline: true });
   return e;
 }
 
-function queueEmbed(queue: GuildQueue, page = 0) {
-  const tracks = queue.tracks.toArray();
+function queueView(q: GuildQueue, page: number) {
+  const tracks = q.tracks.toArray();
   const perPage = 10;
+  const pages = Math.max(1, Math.ceil(tracks.length / perPage));
+  page = Math.min(Math.max(page, 0), pages - 1);
   const start = page * perPage;
-  const slice = tracks.slice(start, start + perPage);
-  const current = queue.currentTrack;
-  return new EmbedBuilder()
-    .setColor(Colors.Blue)
-    .setTitle('Queue')
+  const total = tracks.reduce((sum, t) => sum + (t.durationMS || 0), 0);
+  const current = q.currentTrack;
+  const embed = new EmbedBuilder()
+    .setColor(Colors.Blurple)
+    .setTitle('📜 Queue')
     .setDescription(
-      (current ? `**Now playing:** [${current.title}](${current.url})\n\n` : '') +
-      (slice.length
-        ? slice.map((t, i) => `**${start + i + 1}.** [${t.title}](${t.url}) — ${t.duration}`).join('\n')
-        : '*Queue is empty*')
+      (current ? `**Now playing:** ${link(current)} — ${current.duration}\n\n` : '') +
+      (tracks.length
+        ? tracks.slice(start, start + perPage).map((t, n) => `**${start + n + 1}.** ${link(t)} — ${t.duration} · ${requester(t)}`).join('\n')
+        : '*Nothing queued.* Add songs with `/music play`.'),
     )
-    .setFooter({ text: `${tracks.length} track(s) in queue${tracks.length > perPage ? ` · Page ${page + 1}/${Math.ceil(tracks.length / perPage)}` : ''}` });
+    .setFooter({ text: `${tracks.length} track(s) · ${formatMs(total)} total · Loop ${LOOP_LABEL[q.repeatMode]}${pages > 1 ? ` · Page ${page + 1}/${pages}` : ''}` });
+  const components = pages > 1 ? [new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(`music:qpage:${page - 1}`).setEmoji('◀️').setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
+    new ButtonBuilder().setCustomId(`music:qpage:${page + 1}`).setEmoji('▶️').setStyle(ButtonStyle.Secondary).setDisabled(page >= pages - 1),
+  )] : [];
+  return { embeds: [embed], components };
 }
 
-const Music: Command = {
-  data: new SlashCommandBuilder()
-    .setName('music')
-    .setDescription('Music player')
-    .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
-    .setContexts([InteractionContextType.Guild])
-    .addSubcommand(s => s.setName('play').setDescription('Play a song or add it to the queue')
-      .addStringOption(o => o.setName('query').setDescription('Song name or URL').setRequired(true)))
-    .addSubcommand(s => s.setName('playnext').setDescription('Add a song to the front of the queue')
-      .addStringOption(o => o.setName('query').setDescription('Song name or URL').setRequired(true)))
-    .addSubcommand(s => s.setName('playnow').setDescription('Play a song immediately, skipping the current track')
-      .addStringOption(o => o.setName('query').setDescription('Song name or URL').setRequired(true)))
-    .addSubcommand(s => s.setName('search').setDescription('Search a service and pick a track to queue')
-      .addStringOption(o => o.setName('query').setDescription('Search query').setRequired(true))
-      .addStringOption(o => o.setName('source').setDescription('Service to search').setChoices(
-        { name: 'YouTube', value: 'youtube' },
-        { name: 'SoundCloud', value: 'soundcloud' },
-      )))
-    .addSubcommand(s => s.setName('stream').setDescription('Play a direct stream URL (e.g. a radio stream)')
-      .addStringOption(o => o.setName('url').setDescription('Stream URL').setRequired(true)))
-    .addSubcommand(s => s.setName('skip').setDescription('Skip the current track'))
-    .addSubcommand(s => s.setName('stop').setDescription('Stop music and clear the queue'))
-    .addSubcommand(s => s.setName('pause').setDescription('Pause or resume playback'))
-    .addSubcommand(s => s.setName('queue').setDescription('Show the queue')
-      .addIntegerOption(o => o.setName('page').setDescription('Page number').setMinValue(1)))
-    .addSubcommand(s => s.setName('nowplaying').setDescription('Show the currently playing track'))
-    .addSubcommand(s => s.setName('volume').setDescription('Set playback volume')
-      .addIntegerOption(o => o.setName('level').setDescription('Volume (1-200)').setRequired(true).setMinValue(1).setMaxValue(200)))
-    .addSubcommand(s => s.setName('speed').setDescription('Set the playback speed of the current track')
-      .addNumberOption(o => o.setName('multiplier').setDescription('Speed multiplier (0.5-100)').setRequired(true).setMinValue(0.5).setMaxValue(100)))
-    .addSubcommand(s => s.setName('loop').setDescription('Toggle loop mode')
-      .addStringOption(o => o.setName('mode').setDescription('Loop mode').setRequired(true).setChoices(
-        { name: 'Off', value: 'off' },
-        { name: 'Track', value: 'track' },
-        { name: 'Queue', value: 'queue' },
-        { name: 'Autoplay', value: 'autoplay' },
-      )))
-    .addSubcommand(s => s.setName('shuffle').setDescription('Shuffle the queue'))
-    .addSubcommand(s => s.setName('remove').setDescription('Remove a track from the queue')
-      .addIntegerOption(o => o.setName('position').setDescription('Track position in queue').setRequired(true).setMinValue(1)))
-    .addSubcommand(s => s.setName('move').setDescription('Move a track to a different position in the queue')
-      .addIntegerOption(o => o.setName('from').setDescription('Current position').setRequired(true).setMinValue(1))
-      .addIntegerOption(o => o.setName('to').setDescription('New position').setRequired(true).setMinValue(1)))
-    .addSubcommand(s => s.setName('clear').setDescription('Clear the upcoming queue without stopping the current track'))
-    .addSubcommand(s => s.setName('seek').setDescription('Seek to a position in the current track')
-      .addStringOption(o => o.setName('time').setDescription('Time (e.g. 1:30 or 90)').setRequired(true)))
-    .addSubcommand(s => s.setName('karaoke').setDescription('Toggle karaoke mode (blocks new tracks from non-DJs)'))
-    .addSubcommand(s => s.setName('summon').setDescription('Join your voice channel without playing anything'))
-    .addSubcommand(s => s.setName('follow').setDescription('Follow a user between voice channels')
-      .addUserOption(o => o.setName('user').setDescription('User to follow (defaults to you)')))
-    .addSubcommand(s => s.setName('clean').setDescription("Delete the bot's recent messages in this channel")
-      .addIntegerOption(o => o.setName('amount').setDescription('How many recent messages to search (max 100)').setMinValue(1).setMaxValue(100)))
-    .addSubcommand(s => s.setName('host').setDescription('Transfer DJ privileges to another user')
-      .addUserOption(o => o.setName('user').setDescription('User to transfer to').setRequired(true))) as any,
+async function lyricsEmbed(p: Player, query: string | Track) {
+  const search = (params: Parameters<Player['lyrics']['search']>[0]) => p.lyrics.search(params).catch(() => []);
+  let results = [] as Awaited<ReturnType<typeof search>>;
+  if (typeof query === 'string') {
+    results = await search({ q: query });
+  } else {
+    const title = query.cleanTitle || query.title;
+    results = await search({ trackName: title, artistName: query.author });
+    if (!results.some((r) => r.plainLyrics)) results = await search({ q: `${query.author} ${title}` });
+    if (!results.some((r) => r.plainLyrics)) results = await search({ q: title });
+  }
+  const hit = results.find((r) => r.plainLyrics);
+  if (!hit) return null;
+  const text = hit.plainLyrics.length > 4000 ? `${hit.plainLyrics.slice(0, 4000)}\n…` : hit.plainLyrics;
+  return new EmbedBuilder()
+    .setColor(Colors.Blurple)
+    .setTitle(`🎤 ${hit.trackName}`.slice(0, 256))
+    .setAuthor({ name: hit.artistName.slice(0, 256) })
+    .setDescription(text)
+    .setFooter({ text: 'Lyrics from LRCLIB' });
+}
 
-  async run(interaction: ChatInputCommandInteraction) {
-    const sub = interaction.options.getSubcommand();
-    const member = interaction.member as GuildMember;
-    const vc = member.voice.channel;
-    const p = getPlayer(interaction.client);
+// ── Shared actions (used by both slash commands and panel buttons) ───────────
 
-    const requireVC = async () => {
-      if (!vc) { await interaction.reply({ content: '❌ You must be in a voice channel.', flags: MessageFlags.Ephemeral }); return false; }
-      return true;
-    };
+/** Skip now for DJs, the track's requester, or anyone alone; otherwise count a vote. */
+async function skipOrVote(i: Ctx, q: GuildQueue): Promise<string> {
+  const member = i.member as GuildMember;
+  const current = q.currentTrack!;
+  if (isDJ(member) || current.requestedBy?.id === member.id) {
+    q.node.skip();
+    return `⏭️ Skipped ${link(current)}.`;
+  }
+  const s = session(q.guild.id);
+  const ch = botChannel(q.guild);
+  const needed = Math.max(1, Math.ceil((ch ? listenerCount(ch) : 1) / 2));
+  s.skipVotes.add(member.id);
+  if (s.skipVotes.size >= needed) {
+    q.node.skip();
+    return `⏭️ Vote passed. Skipped ${link(current)}.`;
+  }
+  return `🗳️ ${member} voted to skip ${link(current)} (**${s.skipVotes.size}/${needed}**).`;
+}
 
-    const requireQueue = async () => {
-      const q = useQueue(interaction.guildId!);
-      if (!q || !q.isPlaying()) { await interaction.reply({ content: '❌ Nothing is playing.', flags: MessageFlags.Ephemeral }); return null; }
-      return q;
-    };
+async function stopPlayback(q: GuildQueue) {
+  if (getMusicConfig(q.guild.id).alwaysOn) {
+    // 24/7: stop and clear, but stay in the channel.
+    q.tracks.clear();
+    q.node.stop();
+  } else {
+    q.delete();
+  }
+}
 
-    const requireNotKaraoke = async () => {
-      const block = checkKaraoke(interaction.guildId!, member);
-      if (block) { await interaction.reply({ content: block, flags: MessageFlags.Ephemeral }); return false; }
-      return true;
-    };
+function cycleLoop(q: GuildQueue): string {
+  const order = [QueueRepeatMode.OFF, QueueRepeatMode.QUEUE, QueueRepeatMode.TRACK, QueueRepeatMode.AUTOPLAY];
+  const next = order[(order.indexOf(q.repeatMode) + 1) % order.length]!;
+  q.setRepeatMode(next);
+  return LOOP_LABEL[next]!;
+}
 
-    const queueTrack = async (query: string | Track, extra: Record<string, any> = {}) => {
-      await waitForExtractors();
-      const resolved = typeof query === 'string' ? normalizeQuery(query) : query;
-      // Force text searches through YouTube. Auto-search otherwise resolves names
-      // via SoundCloud/Spotify (metadata-only extractors that discord-player then
-      // bridges to YouTube for audio) — that bridging path can't be prefetched and
-      // failed with "Could not extract stream from this track source". Searching
-      // YouTube directly yields a youtubei track we can both prefetch and stream.
-      const isUrl = typeof resolved === 'string' && /^https?:\/\//i.test(resolved);
-      const searchEngine = extra.searchEngine ?? (isUrl ? QueryType.AUTO : QueryType.YOUTUBE_SEARCH);
-      // Resolve to concrete tracks up front so we can prefetch the compressed audio
-      // into the cache BEFORE play (prefetch can't run inside the stream hook). For
-      // a single track, wait for the buffer so it starts from a complete local copy.
-      const result = typeof resolved === 'string'
-        ? await p.search(resolved, { requestedBy: interaction.user, searchEngine })
-        : resolved;
-      const firstTrack: Track | undefined = result instanceof Track ? result : (result as any)?.tracks?.[0];
-      const isPlaylist = !!(result as any)?.playlist;
-      if (firstTrack && !isPlaylist) await prebuffer(firstTrack).catch(() => {});
-      return p.play(vc!, result as any, {
-        // requestedBy populates track.requestedBy so embeds can credit the user.
-        requestedBy: interaction.user,
-        nodeOptions: {
-          metadata: interaction.channel,
-          volume: (await db.getMusicConfig(interaction.guildId!)).volume,
-          leaveOnEmpty: true,          // leave when no humans remain in the channel
-          leaveOnEmptyCooldown: 30000,
-          leaveOnEnd: false,           // stay after the queue finishes (don't leave on empty queue)
-        },
-        connectionOptions: VOICE_CONNECT_OPTIONS,
-        ...extra,
-      });
-    };
+// ── Adding tracks ────────────────────────────────────────────────────────────
 
-    // The command reply always shows "Added to Queue"; the actual "Now Playing"
-    // announcement comes from the playerStart event when the track starts. This
-    // gives a clean "Added to Queue → Now Playing" flow instead of two Now Playings.
-    if (sub === 'play') {
-      if (!await requireVC() || !await requireNotKaraoke()) return;
-      const query = interaction.options.getString('query', true);
-      await interaction.deferReply();
+/** Checks shared by every command that adds tracks. Replies and returns false when blocked. */
+async function canAdd(i: ChatInputCommandInteraction, { djOnly = false } = {}): Promise<boolean> {
+  const member = i.member as GuildMember;
+  const vc = member.voice.channel;
+  if (!vc) return !!(await deny(i, '❌ Join a voice channel first.'));
+  const current = botChannel(i.guild!);
+  if (current && current.id !== vc.id && listenerCount(current) > 0) {
+    return !!(await deny(i, `❌ I'm already playing in <#${current.id}>. Join it, or ask a DJ to \`/music summon\` me.`));
+  }
+  if (getMusicConfig(i.guildId!).karaoke && !isDJ(member)) {
+    return !!(await deny(i, '🎤 Karaoke mode is on, so only DJs can add tracks right now.'));
+  }
+  if (djOnly && !isDJ(member)) return !!(await deny(i, NOT_DJ));
+  return true;
+}
+
+type Placement = 'end' | 'next' | 'now';
+
+async function addTracks(i: ChatInputCommandInteraction, query: string | Track, placement: Placement = 'end', searchEngine?: any) {
+  const p = getPlayer(i.client);
+  await waitForExtractors();
+  const member = i.member as GuildMember;
+
+  let result: SearchResult;
+  if (typeof query === 'string') {
+    const q = normalizeQuery(query);
+    // Text searches go straight to YouTube. Auto-search would resolve names via
+    // Spotify/SoundCloud metadata and then have to bridge to a playable source.
+    const engine = searchEngine ?? (/^https?:\/\//i.test(q) ? QueryType.AUTO : QueryType.YOUTUBE_SEARCH);
+    result = await p.search(q, { requestedBy: i.user, searchEngine: engine });
+  } else {
+    result = new SearchResult(p, { query: query.url, tracks: [query], requestedBy: i.user });
+  }
+  if (!result.hasTracks()) throw new Error('No results found.');
+  const added = result.playlist ? result.tracks : [result.tracks[0]!];
+
+  const before = useQueue(i.guildId!);
+  const wasPlaying = !!before?.currentTrack;
+
+  // Start downloading the first track now so playback begins from a complete copy.
+  await prefetch(added[0]);
+
+  const { queue } = await p.play(member.voice.channel!, result, {
+    requestedBy: i.user,
+    nodeOptions: nodeOptions(i.guildId!, i.channel),
+    connectionOptions: VOICE_CONNECT_OPTIONS,
+  });
+  const s = session(i.guildId!);
+  if (!s.hostId) s.hostId = i.user.id;
+
+  if (wasPlaying && placement !== 'end') {
+    added.forEach((t, n) => queue.moveTrack(t, n));
+    if (placement === 'now') queue.node.skip(); // playerStart posts the new Now Playing panel
+    else refreshPanel(queue);
+  }
+  const position = wasPlaying && placement === 'end' ? queue.tracks.size - added.length + 1 : 0;
+  const title = placement === 'now' ? '▶️ Playing Now' : placement === 'next' ? '⏩ Playing Next'
+    : !wasPlaying ? '▶️ Starting Playback' : '➕ Added to Queue';
+  return addedEmbed(result, added, title, position);
+}
+
+// ── Command definition ───────────────────────────────────────────────────────
+
+const queryOption = (o: any) => o.setName('query').setDescription('Song name or link (YouTube, Spotify, SoundCloud, Apple Music)')
+  .setRequired(true).setAutocomplete(true);
+
+const data = new SlashCommandBuilder()
+  .setName('music')
+  .setDescription('Music player')
+  .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
+  .setContexts([InteractionContextType.Guild])
+  .addSubcommand((s) => s.setName('play').setDescription('Play a song or playlist, or add it to the queue').addStringOption(queryOption))
+  .addSubcommand((s) => s.setName('playnext').setDescription('Queue a song to play next (DJ)').addStringOption(queryOption))
+  .addSubcommand((s) => s.setName('playnow').setDescription('Play a song right now, skipping the current one (DJ)').addStringOption(queryOption))
+  .addSubcommand((s) => s.setName('search').setDescription('Search and pick a track from the results')
+    .addStringOption((o) => o.setName('query').setDescription('Search terms').setRequired(true))
+    .addStringOption((o) => o.setName('source').setDescription('Where to search').setChoices(
+      { name: 'YouTube', value: 'youtube' },
+      { name: 'SoundCloud', value: 'soundcloud' },
+    )))
+  .addSubcommand((s) => s.setName('stream').setDescription('Play a direct stream URL, like internet radio')
+    .addStringOption((o) => o.setName('url').setDescription('Stream URL').setRequired(true)))
+  .addSubcommand((s) => s.setName('skip').setDescription('Skip the current track (starts a vote if you are not a DJ)'))
+  .addSubcommand((s) => s.setName('skipto').setDescription('Jump to a track in the queue (DJ)')
+    .addIntegerOption((o) => o.setName('position').setDescription('Queue position').setRequired(true).setMinValue(1)))
+  .addSubcommand((s) => s.setName('previous').setDescription('Play the previous track again (DJ)'))
+  .addSubcommand((s) => s.setName('stop').setDescription('Stop the music and clear the queue (DJ)'))
+  .addSubcommand((s) => s.setName('pause').setDescription('Pause or resume playback'))
+  .addSubcommand((s) => s.setName('queue').setDescription('Show the queue')
+    .addIntegerOption((o) => o.setName('page').setDescription('Page number').setMinValue(1)))
+  .addSubcommand((s) => s.setName('nowplaying').setDescription('Show the current track with a progress bar'))
+  .addSubcommand((s) => s.setName('lyrics').setDescription('Show lyrics for the current song, or any song')
+    .addStringOption((o) => o.setName('query').setDescription('Song to look up (defaults to what is playing)')))
+  .addSubcommand((s) => s.setName('volume').setDescription('Set the volume (DJ, saved for this server)')
+    .addIntegerOption((o) => o.setName('level').setDescription('Volume (1-200)').setRequired(true).setMinValue(1).setMaxValue(200)))
+  .addSubcommand((s) => s.setName('speed').setDescription('Change the playback speed (DJ)')
+    .addNumberOption((o) => o.setName('multiplier').setDescription('Speed (0.5-3, 1 is normal)').setRequired(true).setMinValue(0.5).setMaxValue(3)))
+  .addSubcommand((s) => s.setName('seek').setDescription('Jump to a time in the current track (DJ)')
+    .addStringOption((o) => o.setName('time').setDescription('For example 1:30 or 90').setRequired(true)))
+  .addSubcommand((s) => s.setName('loop').setDescription('Set the loop mode (DJ)')
+    .addStringOption((o) => o.setName('mode').setDescription('Loop mode').setRequired(true).setChoices(
+      { name: 'Off', value: 'off' },
+      { name: 'Track', value: 'track' },
+      { name: 'Queue', value: 'queue' },
+      { name: 'Autoplay (keep playing similar songs)', value: 'autoplay' },
+    )))
+  .addSubcommand((s) => s.setName('shuffle').setDescription('Shuffle the queue (DJ)'))
+  .addSubcommand((s) => s.setName('remove').setDescription('Remove a track from the queue (DJ, or your own track)')
+    .addIntegerOption((o) => o.setName('position').setDescription('Queue position').setRequired(true).setMinValue(1)))
+  .addSubcommand((s) => s.setName('move').setDescription('Move a track to a different spot in the queue (DJ)')
+    .addIntegerOption((o) => o.setName('from').setDescription('Current position').setRequired(true).setMinValue(1))
+    .addIntegerOption((o) => o.setName('to').setDescription('New position').setRequired(true).setMinValue(1)))
+  .addSubcommand((s) => s.setName('clear').setDescription('Clear the upcoming queue but keep the current track (DJ)'))
+  .addSubcommand((s) => s.setName('filter').setDescription('Toggle an audio effect (DJ)')
+    .addStringOption((o) => o.setName('effect').setDescription('Effect to toggle').setRequired(true).setChoices(
+      { name: 'Turn all effects off', value: 'off' },
+      ...Object.entries(FILTERS).map(([value, name]) => ({ name, value })),
+    )))
+  .addSubcommand((s) => s.setName('summon').setDescription('Bring the bot to your voice channel (DJ if it is busy elsewhere)'))
+  .addSubcommand((s) => s.setName('clean').setDescription("Delete the music bot's recent messages here (DJ)")
+    .addIntegerOption((o) => o.setName('amount').setDescription('How many recent messages to check (max 100)').setMinValue(1).setMaxValue(100)))
+  .addSubcommandGroup((g) => g.setName('dj').setDescription('DJ and server music settings')
+    .addSubcommand((s) => s.setName('host').setDescription('Hand this session\'s DJ controls to someone else')
+      .addUserOption((o) => o.setName('user').setDescription('New host').setRequired(true)))
+    .addSubcommand((s) => s.setName('follow').setDescription('Make the bot follow someone between voice channels (DJ)')
+      .addUserOption((o) => o.setName('user').setDescription('User to follow (defaults to you)')))
+    .addSubcommand((s) => s.setName('karaoke').setDescription('Toggle karaoke mode: only DJs can add tracks (Manage Server)'))
+    .addSubcommand((s) => s.setName('247').setDescription('Toggle 24/7 mode: stay in voice when idle (Manage Server)'))
+    .addSubcommand((s) => s.setName('role').setDescription('Set or clear the DJ role (Manage Server)')
+      .addRoleOption((o) => o.setName('role').setDescription('DJ role (leave empty so everyone listening is a DJ)'))));
+
+// ── Command handlers ─────────────────────────────────────────────────────────
+
+async function runDJ(i: ChatInputCommandInteraction, sub: string) {
+  const member = i.member as GuildMember;
+  const guildId = i.guildId!;
+
+  if (sub === 'host') {
+    const target = i.options.getUser('user', true);
+    const s = session(guildId);
+    if (!isAdmin(member) && s.hostId && s.hostId !== member.id) return deny(i, '❌ Only the current host or a Manage Server member can hand over hosting.');
+    if (target.bot) return deny(i, '❌ Bots can\'t host.');
+    s.hostId = target.id;
+    return i.reply(`🎧 ${target} is now the host and has DJ controls for this session.`);
+  }
+
+  if (sub === 'follow') {
+    if (!isDJ(member)) return deny(i, NOT_DJ);
+    const target = i.options.getUser('user') ?? i.user;
+    const s = session(guildId);
+    if (s.followId === target.id) {
+      s.followId = null;
+      return i.reply(`👋 No longer following ${target}.`);
+    }
+    s.followId = target.id;
+    return i.reply(`👣 Now following ${target} between voice channels.`);
+  }
+
+  if (!isAdmin(member)) return deny(i, '❌ You need **Manage Server** to change music settings.');
+
+  if (sub === 'karaoke') {
+    const { karaoke } = setMusicConfig(guildId, { karaoke: !getMusicConfig(guildId).karaoke });
+    return i.reply(karaoke ? '🎤 Karaoke mode is **on**. Only DJs can add tracks.' : '🎤 Karaoke mode is **off**.');
+  }
+
+  if (sub === '247') {
+    const { alwaysOn } = setMusicConfig(guildId, { alwaysOn: !getMusicConfig(guildId).alwaysOn });
+    const q = useQueue(guildId);
+    if (q) applyAlwaysOn(q, alwaysOn);
+    return i.reply(alwaysOn ? '🌙 24/7 mode is **on**. I\'ll stay in voice even when the queue ends or everyone leaves.' : '🌙 24/7 mode is **off**.');
+  }
+
+  if (sub === 'role') {
+    const role = i.options.getRole('role');
+    setMusicConfig(guildId, { djRoleId: role?.id ?? null });
+    return i.reply(role
+      ? `🎧 DJ role set to ${role}. Members without it can still add songs and vote to skip.`
+      : '🎧 DJ role cleared. Everyone listening has DJ controls.');
+  }
+}
+
+async function run(i: ChatInputCommandInteraction) {
+  const group = i.options.getSubcommandGroup(false);
+  const sub = i.options.getSubcommand();
+  if (group === 'dj') return runDJ(i, sub);
+
+  const p = getPlayer(i.client);
+  const member = i.member as GuildMember;
+
+  switch (sub) {
+    case 'play':
+    case 'playnext':
+    case 'playnow': {
+      if (!await canAdd(i, { djOnly: sub !== 'play' })) return;
+      const query = i.options.getString('query', true);
+      await i.deferReply();
       try {
-        const { track } = await queueTrack(query);
-        const q = useQueue(interaction.guildId!);
-        await interaction.editReply({ embeds: [queuedEmbed(track, q?.tracks.size ?? 0)] });
+        const embed = await addTracks(i, query, sub === 'play' ? 'end' : sub === 'playnext' ? 'next' : 'now');
+        await i.editReply({ embeds: [embed] });
       } catch (e: any) {
-        await interaction.editReply(`❌ Could not play: ${e?.message ?? e}`);
+        logger.warn(`[music] /music ${sub} "${query}" failed: ${describeError(e)}`);
+        await i.editReply(`❌ Couldn't play that: ${e?.message ?? e}`);
       }
+      return;
     }
 
-    else if (sub === 'playnext' || sub === 'playnow') {
-      if (!await requireVC() || !await requireNotKaraoke()) return;
-      const query = interaction.options.getString('query', true);
-      await interaction.deferReply();
-      try {
-        const { track } = await queueTrack(query);
-        const q = useQueue(interaction.guildId!)!;
-        const playingSomethingElse = q.currentTrack && q.currentTrack !== track;
-        if (playingSomethingElse) {
-          q.moveTrack(track, 0);
-          if (sub === 'playnow') q.node.skip(); // playerStart will announce Now Playing
-        }
-        // position 0 → "playing now / next"; playerStart handles the Now Playing embed
-        await interaction.editReply({ embeds: [queuedEmbed(track, 0).setTitle(sub === 'playnow' ? 'Playing Now' : 'Playing Next')] });
-      } catch (e: any) {
-        await interaction.editReply(`❌ Could not play: ${e?.message ?? e}`);
-      }
-    }
-
-    else if (sub === 'search') {
-      if (!await requireVC() || !await requireNotKaraoke()) return;
-      const query = interaction.options.getString('query', true);
-      const source = interaction.options.getString('source') ?? 'youtube';
-      await interaction.deferReply();
+    case 'search': {
+      if (!await canAdd(i)) return;
+      const query = i.options.getString('query', true);
+      const source = i.options.getString('source') ?? 'youtube';
+      await i.deferReply();
       await waitForExtractors();
       const results = await p.search(query, {
         searchEngine: source === 'soundcloud' ? QueryType.SOUNDCLOUD_SEARCH : QueryType.YOUTUBE_SEARCH,
-        requestedBy: interaction.user,
-      });
-      if (!results.hasTracks()) { await interaction.editReply('❌ No results found.'); return; }
-      const tracks = results.tracks.slice(0, 5);
+        requestedBy: i.user,
+      }).catch(() => null);
+      if (!results?.hasTracks()) { await i.editReply('❌ No results found.'); return; }
+      const tracks = results.tracks.slice(0, 10);
       const menu = new StringSelectMenuBuilder()
         .setCustomId('music-search-select')
         .setPlaceholder('Choose a track to queue')
-        .addOptions(tracks.map((t, i) => ({
+        .addOptions(tracks.map((t, n) => ({
           label: t.title.slice(0, 100),
-          description: `${t.author} • ${t.duration}`.slice(0, 100),
-          value: String(i),
+          description: `${t.author} · ${t.duration}`.slice(0, 100),
+          value: String(n),
         })));
-      const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu);
-      const msg = await interaction.editReply({ content: `🔎 Results for **${query}**:`, components: [row] });
+      const msg = await i.editReply({ content: `🔎 Results for **${query}**:`, components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu)] });
+      let picked;
       try {
-        const picked = await msg.awaitMessageComponent({
-          componentType: ComponentType.StringSelect,
-          filter: (i) => i.user.id === interaction.user.id,
-          time: 60_000,
-        });
-        const chosen = tracks[Number(picked.values[0])]!;
-        await queueTrack(chosen);
-        await picked.update({ content: `✅ Added **${chosen.title}** to the queue.`, components: [] });
+        picked = await msg.awaitMessageComponent({ componentType: ComponentType.StringSelect, filter: (c) => c.user.id === i.user.id, time: 60_000 });
       } catch {
-        await interaction.editReply({ content: '⏱️ Search timed out.', components: [] }).catch(() => {});
+        await i.editReply({ content: '⏱️ Search timed out.', components: [] }).catch(() => {});
+        return;
       }
-    }
-
-    else if (sub === 'stream') {
-      if (!await requireVC() || !await requireNotKaraoke()) return;
-      const url = interaction.options.getString('url', true);
-      await interaction.deferReply();
+      await picked.deferUpdate();
       try {
-        const { track } = await queueTrack(url, { searchEngine: QueryType.ARBITRARY });
-        await interaction.editReply(`📡 Now streaming **${track.title}**.`);
+        const embed = await addTracks(i, tracks[Number(picked.values[0])]!);
+        await i.editReply({ content: null, embeds: [embed], components: [] });
       } catch (e: any) {
-        await interaction.editReply(`❌ Could not stream: ${e?.message ?? e}`);
+        await i.editReply({ content: `❌ Couldn't play that: ${e?.message ?? e}`, components: [] });
       }
+      return;
     }
 
-    else if (sub === 'skip') {
-      const q = await requireQueue(); if (!q) return;
-      q.node.skip();
-      await interaction.reply('⏭️ Skipped.');
+    case 'stream': {
+      if (!await canAdd(i)) return;
+      const url = i.options.getString('url', true);
+      if (!/^https?:\/\//i.test(url)) return deny(i, '❌ That needs to be a full http(s) link.');
+      await i.deferReply();
+      try {
+        const embed = await addTracks(i, url, 'end', QueryType.ARBITRARY);
+        await i.editReply({ embeds: [embed.setAuthor({ name: '📡 Streaming' })] });
+      } catch (e: any) {
+        await i.editReply(`❌ Couldn't stream that: ${e?.message ?? e}`);
+      }
+      return;
     }
 
-    else if (sub === 'stop') {
-      const q = useQueue(interaction.guildId!);
-      if (q) q.delete();
-      await interaction.reply('⏹️ Stopped and queue cleared.');
+    case 'skip': {
+      const q = await controlQueue(i, { dj: false }); if (!q) return;
+      return i.reply({ content: await skipOrVote(i, q), flags: MessageFlags.SuppressEmbeds });
     }
 
-    else if (sub === 'clear') {
-      const q = useQueue(interaction.guildId!);
-      if (!q || q.tracks.size === 0) { await interaction.reply({ content: '❌ The queue is already empty.', flags: MessageFlags.Ephemeral }); return; }
-      const count = q.tracks.size;
-      q.clear();
-      await interaction.reply(`🧹 Cleared **${count}** track(s) from the queue. Current track keeps playing.`);
+    case 'skipto': {
+      const q = await controlQueue(i); if (!q) return;
+      const track = q.tracks.at(i.options.getInteger('position', true) - 1);
+      if (!track) return deny(i, '❌ There\'s no track at that position.');
+      q.node.skipTo(track);
+      return i.reply({ content: `⏭️ Jumping to ${link(track)}.`, flags: MessageFlags.SuppressEmbeds });
     }
 
-    else if (sub === 'pause') {
-      const q = await requireQueue(); if (!q) return;
-      if (q.node.isPaused()) { q.node.resume(); await interaction.reply('▶️ Resumed.'); }
-      else { q.node.pause(); await interaction.reply('⏸️ Paused.'); }
+    case 'previous': {
+      const q = await controlQueue(i); if (!q) return;
+      if (!q.history.previousTrack) return deny(i, '❌ There\'s no previous track.');
+      await i.deferReply();
+      await q.history.previous().catch(() => {});
+      return i.editReply('⏮️ Playing the previous track.');
     }
 
-    else if (sub === 'queue') {
-      const q = useQueue(interaction.guildId!);
-      if (!q) { await interaction.reply({ content: '❌ Nothing in the queue.', flags: MessageFlags.Ephemeral }); return; }
-      const page = (interaction.options.getInteger('page') ?? 1) - 1;
-      await interaction.reply({ embeds: [queueEmbed(q, page)] });
+    case 'stop': {
+      const q = await controlQueue(i, { playing: false }); if (!q) return;
+      await stopPlayback(q);
+      return i.reply('⏹️ Stopped and cleared the queue.');
     }
 
-    else if (sub === 'nowplaying') {
-      const q = await requireQueue(); if (!q) return;
-      const track = q.currentTrack!;
-      const bar = q.node.createProgressBar();
-      await interaction.reply({ embeds: [nowPlayingEmbed(track).addFields({ name: 'Progress', value: bar ?? '―' })] });
+    case 'pause': {
+      const q = await controlQueue(i, { requesterOk: true }); if (!q) return;
+      q.node.setPaused(!q.node.isPaused());
+      return i.reply(q.node.isPaused() ? '⏸️ Paused.' : '▶️ Resumed.');
     }
 
-    else if (sub === 'volume') {
-      const q = useQueue(interaction.guildId!);
-      const level = interaction.options.getInteger('level', true);
-      if (q) q.node.setVolume(level);
-      await db.setMusicVolume(interaction.guildId!, level);
-      await interaction.reply(`🔊 Volume set to **${level}%**.`);
+    case 'queue': {
+      const q = useQueue(i.guildId!);
+      if (!q?.currentTrack && !q?.tracks.size) return deny(i, '❌ The queue is empty.');
+      return i.reply(queueView(q, (i.options.getInteger('page') ?? 1) - 1));
     }
 
-    else if (sub === 'speed') {
-      const q = await requireQueue(); if (!q) return;
-      const speed = interaction.options.getNumber('multiplier', true);
-      await q.filters.ffmpeg.setFilters([`atempo=${speed}`]);
-      await interaction.reply(`⏩ Playback speed set to **${speed}x**.`);
+    case 'nowplaying': {
+      const q = useQueue(i.guildId!);
+      if (!q?.currentTrack) return deny(i, '❌ Nothing is playing.');
+      return i.reply({ embeds: [nowPlayingEmbed(q, true)] });
     }
 
-    else if (sub === 'loop') {
-      const q = await requireQueue(); if (!q) return;
-      const { QueueRepeatMode } = await import('discord-player');
-      const mode = interaction.options.getString('mode', true);
-      const modeMap: Record<string, any> = { off: QueueRepeatMode.OFF, track: QueueRepeatMode.TRACK, queue: QueueRepeatMode.QUEUE, autoplay: QueueRepeatMode.AUTOPLAY };
-      q.setRepeatMode(modeMap[mode]);
-      await interaction.reply(`🔁 Loop mode set to **${mode}**.`);
+    case 'lyrics': {
+      const query = i.options.getString('query');
+      const current = useQueue(i.guildId!)?.currentTrack;
+      if (!query && !current) return deny(i, '❌ Nothing is playing. Give me a song to look up.');
+      await i.deferReply();
+      const embed = await lyricsEmbed(p, query ?? current!);
+      return i.editReply(embed ? { embeds: [embed] } : '❌ I couldn\'t find lyrics for that song.');
     }
 
-    else if (sub === 'shuffle') {
-      const q = await requireQueue(); if (!q) return;
-      q.tracks.shuffle();
-      await interaction.reply('🔀 Queue shuffled.');
+    case 'volume': {
+      const level = i.options.getInteger('level', true);
+      const q = useQueue(i.guildId!);
+      if (q) {
+        if (!await controlQueue(i, { playing: false })) return;
+        q.node.setVolume(level);
+        refreshPanel(q);
+      } else if (!isDJ(member)) {
+        return deny(i, NOT_DJ);
+      }
+      setMusicConfig(i.guildId!, { volume: level });
+      return i.reply(`🔊 Volume set to **${level}%**.`);
     }
 
-    else if (sub === 'remove') {
-      const q = await requireQueue(); if (!q) return;
-      const pos = interaction.options.getInteger('position', true) - 1;
-      const track = q.tracks.at(pos);
-      if (!track) { await interaction.reply({ content: '❌ No track at that position.', flags: MessageFlags.Ephemeral }); return; }
-      q.node.remove(track);
-      await interaction.reply(`🗑️ Removed **${track.title}** from the queue.`);
+    case 'speed': {
+      const q = await controlQueue(i); if (!q) return;
+      const speed = Math.round(i.options.getNumber('multiplier', true) * 100) / 100;
+      session(q.guild.id).speed = speed;
+      await i.deferReply();
+      await applyFilters(q, namedFilters(q));
+      refreshPanel(q);
+      return i.editReply(speed === 1 ? '⏩ Speed back to normal.' : `⏩ Playback speed set to **${speed}x**.`);
     }
 
-    else if (sub === 'move') {
-      const q = await requireQueue(); if (!q) return;
-      const from = interaction.options.getInteger('from', true) - 1;
-      const to = interaction.options.getInteger('to', true) - 1;
-      const track = q.tracks.at(from);
-      if (!track || to < 0 || to >= q.tracks.size) { await interaction.reply({ content: '❌ Position out of range.', flags: MessageFlags.Ephemeral }); return; }
-      q.moveTrack(track, to);
-      await interaction.reply(`🔀 Moved **${track.title}** to position #${to + 1}.`);
-    }
-
-    else if (sub === 'seek') {
-      const q = await requireQueue(); if (!q) return;
-      const timeStr = interaction.options.getString('time', true);
-      const parts = timeStr.split(':').map(Number);
-      let ms = 0;
-      if (parts.length === 1) ms = (parts[0] ?? 0) * 1000;
-      else if (parts.length === 2) ms = ((parts[0] ?? 0) * 60 + (parts[1] ?? 0)) * 1000;
-      else ms = ((parts[0] ?? 0) * 3600 + (parts[1] ?? 0) * 60 + (parts[2] ?? 0)) * 1000;
+    case 'seek': {
+      const q = await controlQueue(i); if (!q) return;
+      const raw = i.options.getString('time', true);
+      const ms = parseTime(raw);
+      if (ms === null) return deny(i, '❌ Use a time like `1:30`, `90` or `1:02:03`.');
+      if (!q.currentTrack!.durationMS) return deny(i, '❌ You can\'t seek in a live stream.');
+      if (ms >= q.currentTrack!.durationMS) return deny(i, `❌ This track is only ${q.currentTrack!.duration} long.`);
+      await i.deferReply();
       await q.node.seek(ms);
-      await interaction.reply(`⏩ Seeked to **${timeStr}**.`);
+      return i.editReply(`⏩ Jumped to **${formatMs(ms)}**.`);
     }
 
-    else if (sub === 'karaoke') {
-      const guildId = interaction.guildId!;
-      if (karaokeGuilds.has(guildId)) {
-        karaokeGuilds.delete(guildId);
-        await interaction.reply('🎤 Karaoke mode is now **disabled**.');
+    case 'loop': {
+      const q = await controlQueue(i); if (!q) return;
+      const modes: Record<string, QueueRepeatMode> = {
+        off: QueueRepeatMode.OFF, track: QueueRepeatMode.TRACK, queue: QueueRepeatMode.QUEUE, autoplay: QueueRepeatMode.AUTOPLAY,
+      };
+      q.setRepeatMode(modes[i.options.getString('mode', true)]!);
+      refreshPanel(q);
+      return i.reply(`🔁 Loop is now **${LOOP_LABEL[q.repeatMode]}**.`);
+    }
+
+    case 'shuffle': {
+      const q = await controlQueue(i); if (!q) return;
+      if (q.tracks.size < 2) return deny(i, '❌ There aren\'t enough tracks queued to shuffle.');
+      q.tracks.shuffle();
+      refreshPanel(q);
+      return i.reply(`🔀 Shuffled **${q.tracks.size}** tracks.`);
+    }
+
+    case 'remove': {
+      const q = await controlQueue(i, { dj: false, playing: false }); if (!q) return;
+      const track = q.tracks.at(i.options.getInteger('position', true) - 1);
+      if (!track) return deny(i, '❌ There\'s no track at that position.');
+      if (!isDJ(member) && track.requestedBy?.id !== member.id) return deny(i, '❌ You can only remove tracks you added.');
+      q.node.remove(track);
+      refreshPanel(q);
+      return i.reply({ content: `🗑️ Removed ${link(track)}.`, flags: MessageFlags.SuppressEmbeds });
+    }
+
+    case 'move': {
+      const q = await controlQueue(i, { playing: false }); if (!q) return;
+      const from = i.options.getInteger('from', true) - 1;
+      const to = i.options.getInteger('to', true) - 1;
+      const track = q.tracks.at(from);
+      if (!track || to >= q.tracks.size) return deny(i, `❌ Positions go from 1 to ${q.tracks.size}.`);
+      q.moveTrack(track, to);
+      refreshPanel(q);
+      return i.reply({ content: `↕️ Moved ${link(track)} to **#${to + 1}**.`, flags: MessageFlags.SuppressEmbeds });
+    }
+
+    case 'clear': {
+      const q = await controlQueue(i, { playing: false }); if (!q) return;
+      const count = q.tracks.size;
+      if (!count) return deny(i, '❌ The queue is already empty.');
+      q.tracks.clear();
+      refreshPanel(q);
+      return i.reply(`🧹 Cleared **${count}** track(s). The current song keeps playing.`);
+    }
+
+    case 'filter': {
+      const q = await controlQueue(i); if (!q) return;
+      const effect = i.options.getString('effect', true);
+      const current = namedFilters(q);
+      let named: string[];
+      let msg: string;
+      if (effect === 'off') {
+        named = [];
+        session(q.guild.id).speed = 1;
+        msg = '🎛️ All effects are off.';
+      } else if (current.includes(effect)) {
+        named = current.filter((f) => f !== effect);
+        msg = `🎛️ **${FILTERS[effect]}** is off.`;
       } else {
-        karaokeGuilds.add(guildId);
-        await interaction.reply('🎤 Karaoke mode is now **enabled** — only Manage Server members can add new tracks.');
+        named = [...current, effect];
+        msg = `🎛️ **${FILTERS[effect]}** is on.`;
       }
+      await i.deferReply();
+      await applyFilters(q, named);
+      refreshPanel(q);
+      return i.editReply(msg);
     }
 
-    else if (sub === 'summon') {
-      if (!await requireVC()) return;
-      let q = useQueue(interaction.guildId!);
-      if (!q) {
-        q = p.queues.create(interaction.guild!, {
-          metadata: interaction.channel,
-          volume: (await db.getMusicConfig(interaction.guildId!)).volume,
-          leaveOnEmpty: true,          // leave when no humans remain in the channel
-          leaveOnEmptyCooldown: 30000,
-          leaveOnEnd: false,           // stay after the queue finishes (don't leave on empty queue)
-        });
-      }
+    case 'summon': {
+      const vc = member.voice.channel;
+      if (!vc) return deny(i, '❌ Join a voice channel first.');
+      const current = botChannel(i.guild!);
+      if (current?.id === vc.id) return deny(i, '✅ I\'m already here.');
+      if (current && listenerCount(current) > 0 && !isDJ(member)) return deny(i, NOT_DJ);
+      const q = useQueue(i.guildId!) ?? p.queues.create(i.guild!, nodeOptions(i.guildId!, i.channel));
+      const s = session(i.guildId!);
+      if (!s.hostId) s.hostId = i.user.id;
       try {
-        await q.connect(vc!, VOICE_CONNECT_OPTIONS);
-        await interaction.reply(`🔊 Joined **${vc!.name}**.`);
+        await q.connect(vc, VOICE_CONNECT_OPTIONS);
+        return i.reply(`🔊 Joined <#${vc.id}>.`);
       } catch (e: any) {
-        await interaction.reply(`❌ Could not join: ${e?.message ?? e}`);
+        return deny(i, `❌ I couldn't join: ${e?.message ?? e}`);
       }
     }
 
-    else if (sub === 'follow') {
-      const target = interaction.options.getUser('user') ?? interaction.user;
-      const guildId = interaction.guildId!;
-      if (followMap.get(guildId) === target.id) {
-        followMap.delete(guildId);
-        await interaction.reply(`👋 No longer following **${target.tag}**.`);
-      } else {
-        followMap.set(guildId, target.id);
-        await interaction.reply(`👣 Now following **${target.tag}** between voice channels.`);
-      }
+    case 'clean': {
+      if (!isDJ(member)) return deny(i, NOT_DJ);
+      const channel = i.channel;
+      if (!channel?.isTextBased() || channel.isDMBased()) return deny(i, '❌ I can\'t clean this channel.');
+      await i.deferReply({ flags: MessageFlags.Ephemeral });
+      const me = i.client.user!.id;
+      const messages = await channel.messages.fetch({ limit: i.options.getInteger('amount') ?? 50 });
+      // Only music messages: this bot posts as the same user as the main bot, so
+      // "every message from me" would also delete giveaways, ticket panels and so on.
+      const music = messages.filter((m) =>
+        m.author.id === me && (musicMessageIds.has(m.id) || !!(m as any).interaction?.commandName?.startsWith('music')));
+      const deleted = await channel.bulkDelete(music, true).catch(() => null);
+      return i.editReply(`🧹 Deleted **${deleted?.size ?? 0}** music message(s).`);
     }
+  }
+}
 
-    else if (sub === 'clean') {
-      const channel = interaction.channel;
-      if (!channel || !channel.isTextBased() || channel.isDMBased()) {
-        await interaction.reply({ content: '❌ Cannot clean this channel.', flags: MessageFlags.Ephemeral }); return;
-      }
-      const me = interaction.guild!.members.me;
-      if (!me || !channel.permissionsFor(me).has(PermissionFlagsBits.ManageMessages)) {
-        await interaction.reply({ content: '❌ I need the **Manage Messages** permission to do that.', flags: MessageFlags.Ephemeral }); return;
-      }
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-      const amount = interaction.options.getInteger('amount') ?? 50;
-      const messages = await channel.messages.fetch({ limit: amount });
-      const botMessages = messages.filter(m => m.author.id === interaction.client.user!.id);
-      const deleted = await channel.bulkDelete(botMessages, true);
-      await interaction.editReply(`🧹 Cleaned **${deleted.size}** message(s).`);
-    }
+// ── Panel buttons ────────────────────────────────────────────────────────────
 
-    else if (sub === 'host') {
-      await interaction.reply({ content: 'DJ transfer is not implemented yet.', flags: MessageFlags.Ephemeral });
+async function button(i: ButtonInteraction) {
+  const [, action, arg] = i.customId.split(':');
+  const p = getPlayer(i.client);
+
+  if (action === 'qpage') {
+    const q = useQueue(i.guildId!);
+    if (!q) return i.update({ content: '❌ The queue is gone.', embeds: [], components: [] });
+    return i.update(queueView(q, Number(arg) || 0));
+  }
+
+  if (action === 'queue') {
+    const q = useQueue(i.guildId!);
+    if (!q) return deny(i, '❌ The queue is empty.');
+    return i.reply({ ...queueView(q, 0), flags: MessageFlags.Ephemeral });
+  }
+
+  if (action === 'lyrics') {
+    const current = useQueue(i.guildId!)?.currentTrack;
+    if (!current) return deny(i, '❌ Nothing is playing.');
+    await i.deferReply({ flags: MessageFlags.Ephemeral });
+    const embed = await lyricsEmbed(p, current);
+    return i.editReply(embed ? { embeds: [embed] } : '❌ I couldn\'t find lyrics for this song.');
+  }
+
+  switch (action) {
+    case 'pause': {
+      const q = await controlQueue(i, { requesterOk: true }); if (!q) return;
+      q.node.setPaused(!q.node.isPaused());
+      return i.update(panelPayload(q));
     }
-  },
-};
+    case 'loop': {
+      const q = await controlQueue(i); if (!q) return;
+      cycleLoop(q);
+      return i.update(panelPayload(q));
+    }
+    case 'shuffle': {
+      const q = await controlQueue(i); if (!q) return;
+      q.tracks.shuffle();
+      return i.update(panelPayload(q));
+    }
+    case 'skip': {
+      const q = await controlQueue(i, { dj: false }); if (!q) return;
+      const member = i.member as GuildMember;
+      if (isDJ(member) || q.currentTrack?.requestedBy?.id === member.id) {
+        await i.deferUpdate();
+        q.node.skip(); // playerStart replaces this panel
+        return;
+      }
+      return i.reply({ content: await skipOrVote(i, q), flags: MessageFlags.SuppressEmbeds });
+    }
+    case 'prev': {
+      const q = await controlQueue(i); if (!q) return;
+      if (!q.history.previousTrack) return deny(i, '❌ There\'s no previous track.');
+      await i.deferUpdate();
+      await q.history.previous().catch(() => {});
+      return;
+    }
+    case 'stop': {
+      const q = await controlQueue(i, { playing: false }); if (!q) return;
+      await i.deferUpdate();
+      await stopPlayback(q);
+      return;
+    }
+  }
+}
+
+// ── Autocomplete ─────────────────────────────────────────────────────────────
+
+async function autocomplete(i: AutocompleteInteraction) {
+  const typed = i.options.getFocused().trim();
+  if (typed.length < 2 || /^https?:\/\//i.test(typed)) return i.respond([]).catch(() => {});
+  try {
+    const p = getPlayer(i.client);
+    await waitForExtractors();
+    // Discord gives autocomplete 3 seconds to answer.
+    const res = await Promise.race([
+      p.search(typed, { searchEngine: QueryType.YOUTUBE_SEARCH }),
+      new Promise<null>((r) => setTimeout(() => r(null), 2_000)),
+    ]);
+    const choices = (res?.tracks ?? [])
+      .filter((t) => t.url.length <= 100)
+      .slice(0, 10)
+      .map((t) => ({ name: `${t.title} — ${t.author} (${t.duration})`.slice(0, 100), value: t.url }));
+    await i.respond(choices);
+  } catch {
+    await i.respond([]).catch(() => {});
+  }
+}
+
+const Music: Command = { data, run, button, autocomplete };
 
 export default Music;

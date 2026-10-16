@@ -1,0 +1,4 @@
+# Per-server settings and logs written at runtime
+music-config.json
+music-bot.log
+music-bot.log.old
