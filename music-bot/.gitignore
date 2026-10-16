@@ -2,3 +2,13 @@
 music-config.json
 music-bot.log
 music-bot.log.old
+music-bot.stderr.log
+
+# Lavalink: downloaded jars, generated config (contains the password), logs
+lavalink/*.jar
+lavalink/*.jar.download
+lavalink/plugins/
+lavalink/application.yml
+lavalink/logs/
+lavalink/stdout.log
+lavalink/stderr.log

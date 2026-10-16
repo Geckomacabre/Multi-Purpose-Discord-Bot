@@ -1,0 +1,81 @@
+# Lavalink config template. setup-lavalink.ps1 copies this to application.yml and
+# fills in the password. Edit this file, not application.yml.
+
+server:
+  port: 2333
+  address: 127.0.0.1 # local only: the bot runs on this same machine
+  http2:
+    enabled: false
+
+lavalink:
+  pluginsDir: "./plugins" # jars are downloaded there by setup-lavalink.ps1
+  server:
+    password: "__LAVALINK_PASSWORD__"
+    sources:
+      youtube: false # replaced by the youtube-source plugin below
+      bandcamp: true
+      # Off until lavaplayer supports SoundCloud's new stream format: every track
+      # fails with "Did not detect any supported formats" (lavalink-devs/lavaplayer#189).
+      soundcloud: false
+      twitch: true
+      vimeo: true
+      nico: false
+      http: true # direct links and internet radio streams
+      local: false
+    filters:
+      volume: true
+      equalizer: true
+      karaoke: true
+      timescale: true
+      tremolo: true
+      vibrato: true
+      distortion: true
+      rotation: true
+      channelMix: true
+      lowPass: true
+    # A larger frame buffer rides out short hiccups without audible gaps.
+    bufferDurationMs: 400
+    frameBufferDurationMs: 5000
+    opusEncodingQuality: 10
+    resamplingQuality: MEDIUM
+    trackStuckThresholdMs: 10000
+    useSeekGhosting: true
+    youtubePlaylistLoadLimit: 6 # pages of 100
+    playerUpdateInterval: 5
+    youtubeSearchEnabled: true
+    soundcloudSearchEnabled: false
+    gc-warnings: true
+
+plugins:
+  youtube:
+    enabled: true
+    allowSearch: true # ytsearch: and ytmsearch:
+    allowDirectVideoIds: true
+    allowDirectPlaylistIds: true
+    # Tried in order. These are the plugin's recommended clients that work
+    # without signing in.
+    clients:
+      - MUSIC
+      - ANDROID_VR
+      - WEB
+      - WEBEMBEDDED
+      - TVHTML5_SIMPLY
+
+metrics:
+  prometheus:
+    enabled: false
+
+logging:
+  file:
+    path: ./logs/
+  pattern:
+    console: "" # file log only; start.ps1 keeps stderr in lavalink/stderr.log for startup errors
+  level:
+    root: INFO
+    lavalink: INFO
+  request:
+    enabled: false
+  logback:
+    rollingpolicy:
+      max-file-size: 10MB
+      max-history: 5

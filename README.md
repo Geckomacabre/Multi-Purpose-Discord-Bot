@@ -781,31 +781,27 @@ bun run build:native
 ## 🎵 Music (separate bot)
 
 > [!NOTE]
-> Music runs as its own process in [`music-bot/`](music-bot/), natively on Windows rather than in Docker, because Docker Desktop's virtual network makes Discord voice choppy. It runs **under Jade's account** and registers `/music` as a server command. See [`music-bot/README.md`](music-bot/README.md) for setup.
+> Music runs as its own process in [`music-bot/`](music-bot/), natively on Windows rather than in Docker, because Docker Desktop's virtual network makes Discord voice choppy. It runs **under Jade's account** and registers its commands in the main server only. Audio plays through a local [Lavalink](https://github.com/lavalink-devs/Lavalink) server, so the bot's own work can't interrupt it, following [BeatDock](https://github.com/albertgmz/BeatDock)'s approach. See [`music-bot/README.md`](music-bot/README.md) for setup.
 
-- **Plays almost anything:** YouTube, SoundCloud, Spotify and Apple Music links (songs and playlists), search text, and radio streams
-- **Gap-free audio:** every track is fetched with yt-dlp, downloaded before it plays, with the next song prefetched
-- **Live control panel** with ⏮️ ⏯️ ⏭️ ⏹️ 🔁 🔀 📜 🎤 buttons, plus search-as-you-type on `/music play`
+- **Plays almost anything:** YouTube and YouTube Music, Spotify and Apple Music links (songs, albums, playlists, played from YouTube Music without API keys), Bandcamp, Twitch, Vimeo, radio streams, and search text
+- **Live control panel** with ⏮️ ⏯️ ⏭️ ⏹️ 🔁 🔀 📜 🎤 buttons, plus search-as-you-type on `/play`
 - **DJ system** with an optional DJ role, vote-skip, and a session host
-- **Effects** (bass boost, nightcore, 8D, lo-fi and more), playback speed, **lyrics**, **24/7**, karaoke and follow modes
+- **Effects** (bass boost, nightcore, vaporwave, 8D, vocal remover), playback speed, **lyrics**, **SponsorBlock**, **24/7** and autoplay
 
 <details>
 <summary><b>Commands</b></summary>
 
 | Command | Description |
 |---|---|
-| `/music play <query>` | Play a song or playlist, or add it to the queue. |
-| `/music playnext` · `playnow <query>` | *(DJ)* Queue a song next, or play it right away. |
-| `/music search <query> [source]` | Search YouTube or SoundCloud and pick a result. |
-| `/music stream <url>` | Play a direct stream, such as internet radio. |
-| `/music skip` | Skip, or start a vote if you aren't a DJ. |
-| `/music skipto` · `previous` · `pause` · `stop` | *(DJ)* Control playback. |
-| `/music queue [page]` · `nowplaying` · `lyrics [query]` | Show the queue, the current track, or lyrics. |
-| `/music volume` · `speed` · `seek` · `loop` · `filter` | *(DJ)* Adjust playback. |
-| `/music shuffle` · `move` · `clear` · `remove` | *(DJ)* Edit the queue. Anyone can remove their own tracks. |
-| `/music summon` · `clean [amount]` | *(DJ)* Move the bot to your channel, or delete its music messages. |
-| `/music dj host` · `follow` | Hand over the session, or have the bot follow someone. |
-| `/music dj karaoke` · `247` · `role` | *(Manage Server)* Karaoke mode, 24/7 mode, and the DJ role. |
+| `/play <query> [next]` | Play a song or playlist, or add it to the queue. *(DJ)* `next` queues it first. |
+| `/skip` | Skip, or start a vote if you aren't a DJ. |
+| `/stop` | *(DJ)* Stop, clear the queue and leave. |
+| `/queue [page]` · `/nowplaying` · `/lyrics [query]` | Show the queue, the current song, or lyrics. |
+| `/volume` · `/loop` · `/shuffle` · `/filter` | *(DJ)* Adjust playback. |
+| `/remove <position>` | Remove a song. Anyone can remove their own. |
+| `/music-settings` | *(Manage Server)* DJ role, 24/7 mode and SponsorBlock. |
+
+Pause, previous and stop are also buttons on the Now Playing panel.
 
 </details>
 

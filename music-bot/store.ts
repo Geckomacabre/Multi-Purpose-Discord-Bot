@@ -10,13 +10,13 @@ export type GuildMusicConfig = {
   volume: number;
   /** When set, only members with this role (or Manage Server) get full DJ controls. */
   djRoleId: string | null;
-  /** Only DJs can add tracks while this is on. */
-  karaoke: boolean;
   /** 24/7: stay in voice when the queue ends or everyone leaves. */
   alwaysOn: boolean;
+  /** Skip sponsor reads, self-promotion and non-music parts of YouTube videos. */
+  sponsorBlock: boolean;
 };
 
-const DEFAULTS: GuildMusicConfig = { volume: 100, djRoleId: null, karaoke: false, alwaysOn: false };
+const DEFAULTS: GuildMusicConfig = { volume: 100, djRoleId: null, alwaysOn: false, sponsorBlock: false };
 
 let config: Record<string, Partial<GuildMusicConfig>> = {};
 try {
