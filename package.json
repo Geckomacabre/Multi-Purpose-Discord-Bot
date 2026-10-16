@@ -17,9 +17,9 @@
     "url": "https://github.com/Venoxity-Development/TMCBot"
   },
   "keywords": [],
-  "author": "Venoxity Development",
+  "author": "Geckomacabre",
   "license": "GPL-3.0-or-later",
-  "homepage": "https://venoxity.dev",
+  "homepage": "https://ctiservers.org",
   "devDependencies": {
     "@types/bun": "latest",
     "cmake-js": "^7.3.0",
