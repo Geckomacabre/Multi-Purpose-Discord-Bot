@@ -362,6 +362,10 @@ Manage Messages holders skip the noisier rate/duplicate/image checks, but **not*
 
 ### Verification Gate
 - `/verify setup channel: member_role: [unverified_role] [title] [description]` — Post a verification button in a channel; members click it to receive their member role
+- `/verify rules channel: member_role: [message_id] [unverified_role] [lock]` — Members react ✅ on the rules post to receive their member role (removing the reaction takes it away); also locks the server unless `lock:false`
+- `/verify lock` — Hide every public channel from @everyone so only verified members see it (private channels are left alone; new channels are locked automatically)
+- `/verify unlock` — Restore every channel the lock changed
+- `/verify config` — Show the current verify settings
 
 ### Guessing Games
 - `/mediaguess setup type: channel:` — Set up a movie, TV show, video game, or song game in a channel (starts the first round immediately). Video game needs `RAWG_API_KEY` set; songs need no key at all.

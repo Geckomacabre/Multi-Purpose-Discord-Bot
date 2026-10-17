@@ -230,12 +230,19 @@ Each category (member, message, voice, server, command) can have its own channel
 
 ### ✅ Verification Gate
 
-Posts a **Verify** button. Clicking it gives the member a role, and can also remove an "unverified" role.
+Members get a role either by clicking a **Verify** button or by reacting ✅ on your rules post. Verifying can also remove an "unverified" role.
+
+The gate can also **lock the server**: every public channel is hidden from `@everyone` and shown only to the member role, so new members see just the rules channel until they verify. In the rules channel everyone can read but not chat or add new emojis. Channels already hidden from `@everyone` (staff/private) are never opened up, and channels created later are locked automatically.
 
 | Command | Description |
 |---|---|
-| `/verify setup <channel> <member_role> [unverified_role] [title] [description]` | Post the verify button. |
+| `/verify rules <channel> <member_role> [message_id] [unverified_role] [lock]` | Members react ✅ on the rules post (yours, or one the bot posts) to get the role; removing the reaction takes it away. Locks the server unless `lock:false`. |
+| `/verify setup <channel> <member_role> [unverified_role] [title] [description]` | Post the verify button instead. |
+| `/verify lock` | Hide all public channels until members verify. |
+| `/verify unlock` | Restore every channel the lock changed. |
 | `/verify config` | Show the current verify settings. |
+
+The bot's role must be above the member role. Members who already have the member role keep full access. Locking also gives the member role to every bot in the server (and to bots added later) so they don't lose access to channels.
 
 ---
 

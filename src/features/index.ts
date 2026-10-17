@@ -23,7 +23,7 @@ import { startTopicPoller } from './topics';
 import starboardModule from './starboard';
 import guildActionsModule from './guild-actions';
 import timezoneModule from './timezone';
-import verifyModule from './verify';
+import verifyModule, { startVerifyGate } from './verify';
 import spamDetectModule from './spamdetect';
 import mediaguessModule, { startMediaGames } from './mediaguess';
 import streamVcModule from './streamvc';
@@ -85,5 +85,6 @@ export function registerFeatures(bot: Client) {
     startLottery(bot);
     startStickyRefresh(bot);
     startPollArchiveSweeper(bot);
+    startVerifyGate(bot).catch(err => console.error(`Verify gate startup failed: ${err}`));
   });
 }

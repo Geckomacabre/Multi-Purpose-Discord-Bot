@@ -12,6 +12,8 @@ export type IVerifyConfig = {
   message_id: string | null;
   unverified_role_id: string | null;
   member_role_id: string;
+  /** JSON map of channel id -> @everyone's original View Channel state ('allow' | 'neutral') for channels the gate locked */
+  locked_channels: string | null;
 };
 
 export type ICounting = {
@@ -979,6 +981,7 @@ export async function initDb() {
     unverified_role_id TEXT,
     member_role_id     TEXT NOT NULL DEFAULT ''
   )`;
+  try { await db`ALTER TABLE verify_config ADD COLUMN locked_channels TEXT`; } catch {}
 
   await db`CREATE TABLE IF NOT EXISTS stat_channels (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2750,12 +2753,17 @@ export async function getVerifyConfig(guild_id: string): Promise<IVerifyConfig |
   return (row as IVerifyConfig) ?? null;
 }
 
+export async function getAllVerifyConfigs(): Promise<IVerifyConfig[]> {
+  return (await db`SELECT * FROM verify_config WHERE message_id IS NOT NULL`) as IVerifyConfig[];
+}
+
 export async function setVerifyConfig(guild_id: string, fields: Partial<Omit<IVerifyConfig, 'guild_id'>>) {
   await db`INSERT OR IGNORE INTO verify_config (guild_id, channel_id, member_role_id) VALUES (${guild_id}, '', '')`;
   if (fields.channel_id !== undefined) await db`UPDATE verify_config SET channel_id = ${fields.channel_id} WHERE guild_id = ${guild_id}`;
   if (fields.message_id !== undefined) await db`UPDATE verify_config SET message_id = ${fields.message_id} WHERE guild_id = ${guild_id}`;
   if (fields.unverified_role_id !== undefined) await db`UPDATE verify_config SET unverified_role_id = ${fields.unverified_role_id} WHERE guild_id = ${guild_id}`;
   if (fields.member_role_id !== undefined) await db`UPDATE verify_config SET member_role_id = ${fields.member_role_id} WHERE guild_id = ${guild_id}`;
+  if (fields.locked_channels !== undefined) await db`UPDATE verify_config SET locked_channels = ${fields.locked_channels} WHERE guild_id = ${guild_id}`;
 }
 
 // ─── Stat channels ────────────────────────────────────────────────────────────
