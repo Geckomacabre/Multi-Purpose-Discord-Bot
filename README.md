@@ -236,14 +236,14 @@ The gate can also **lock the server**: every public channel is hidden from `@eve
 
 | Command | Description |
 |---|---|
-| `/verify rules <channel> <member_role> [message_id] [unverified_role] [lock]` | Members react ✅ on the rules post (yours, or one the bot posts) to get the role; removing the reaction takes it away. Locks the server unless `lock:false`. |
+| `/verify rules <channel> <member_role> [message_id] [unverified_role] [lock] [existing_members]` | Members react ✅ on the rules post (yours, or one the bot posts) to get the role; removing the reaction takes it away. Locks the server unless `lock:false`. |
 | `/verify setup <channel> <member_role> [unverified_role] [title] [description]` | Post the verify button instead. |
-| `/verify lock` | Hide all public channels until members verify. |
+| `/verify lock [existing_members]` | Hide all public channels until members verify. |
 | `/verify unlock` | Restore every channel the lock changed. |
 | `/verify remove` | Turn verification off: unlocks channels and clears the ✅ reactions from the rules post. Members keep their role. |
 | `/verify config` | Show the current verify settings. |
 
-The bot's role must be above the member role. Members who already have the member role keep full access, and anyone with a role **above the bot's highest role** bypasses the lock entirely. If you move roles above or below the bot later, run `/verify lock` again to update it. Locking also gives the member role to every bot in the server (and to bots added later) so they don't lose access to channels.
+The bot's role must be above the member role. **Existing members are grandfathered in:** the first lock gives everyone already in the server the member role, so nobody loses access. Pick `existing_members: Must re-verify` instead to take the member role from anyone who hasn't reacted ✅ (bots and roles above the bot are never touched). Re-running a lock doesn't grandfather again. Anyone with a role **above the bot's highest role** bypasses the lock entirely. If you move roles above or below the bot later, run `/verify lock` again to update it. Channels in Server Onboarding stay public, because Discord requires it. Locking also gives the member role to every bot in the server (and to bots added later) so they don't lose access to channels.
 
 ---
 

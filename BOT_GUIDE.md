@@ -362,8 +362,8 @@ Manage Messages holders skip the noisier rate/duplicate/image checks, but **not*
 
 ### Verification Gate
 - `/verify setup channel: member_role: [unverified_role] [title] [description]` — Post a verification button in a channel; members click it to receive their member role
-- `/verify rules channel: member_role: [message_id] [unverified_role] [lock]` — Members react ✅ on the rules post to receive their member role (removing the reaction takes it away); also locks the server unless `lock:false`
-- `/verify lock` — Hide every public channel from @everyone so only verified members see it (private channels are left alone; new channels are locked automatically; roles above the bot's highest role bypass the lock, so re-run after moving roles)
+- `/verify rules channel: member_role: [message_id] [unverified_role] [lock] [existing_members]` — Members react ✅ on the rules post to receive their member role (removing the reaction takes it away); also locks the server unless `lock:false`
+- `/verify lock [existing_members]` — Hide every public channel from @everyone so only verified members see it (private channels are left alone; new channels are locked automatically; roles above the bot's highest role bypass the lock, so re-run after moving roles). On the first lock, existing members are grandfathered in with the member role; `existing_members: Must re-verify` removes it from anyone who hasn't reacted ✅ instead
 - `/verify unlock` — Restore every channel the lock changed
 - `/verify remove` — Turn verification off: unlocks channels and clears the ✅ reactions from the rules post (members keep their role)
 - `/verify config` — Show the current verify settings

@@ -2,11 +2,14 @@ import {
   ActionRowBuilder, ApplicationIntegrationType, ButtonBuilder, ButtonStyle, ChannelType,
   ChatInputCommandInteraction, Colors, EmbedBuilder,
   InteractionContextType, MessageFlags, PermissionFlagsBits, SlashCommandBuilder,
-  type Guild, type Role, type APIRole,
+  type Guild, type Role, type APIRole, type SlashCommandSubcommandBuilder,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
 import { deleteVerifyConfig, getVerifyConfig, setVerifyConfig } from '../../utils/db';
-import { VERIFY_EMOJI, getLockState, lockGuild, unlockGuild } from '../../features/verify';
+import {
+  VERIFY_EMOJI, applyExistingMembers, getLockState, lockGuild, unlockGuild, type ExistingMembers,
+} from '../../features/verify';
+import type { IVerifyConfig } from '../../utils/db';
 
 /** Why the bot can't hand out this role, or null if it can. */
 function roleProblem(guild: Guild, role: Role | APIRole): string | null {
@@ -17,10 +20,58 @@ function roleProblem(guild: Guild, role: Role | APIRole): string | null {
   return null;
 }
 
-function lockSummary(locked: number, failed: string[]) {
-  let text = `🔒 Locked **${locked}** channels. Only the member role and roles above mine can see them now; channels already hidden from @everyone were left alone.`;
-  if (failed.length) text += `\n⚠️ Couldn't edit: ${failed.slice(0, 20).join(', ')}. Check my permissions there.`;
-  return text;
+const existingMembersOption = (s: SlashCommandSubcommandBuilder) => s
+  .addStringOption(o => o.setName('existing_members')
+    .setDescription('People already in the server (default on first lock: keep access)')
+    .addChoices(
+      { name: 'Keep access (give them the member role)', value: 'keep' },
+      { name: `Must re-verify (remove the member role unless they reacted ${VERIFY_EMOJI})`, value: 'reverify' },
+    ));
+
+/** Edits the deferred reply at most every 3s, so long runs show they're still going. */
+function progress(interaction: ChatInputCommandInteraction, label: string) {
+  let last = 0;
+  return async (done: number, total: number) => {
+    if (done < total && Date.now() - last < 3000) return;
+    last = Date.now();
+    await interaction.editReply(`⏳ ${label}... ${done}/${total}`).catch(() => {});
+  };
+}
+
+/** Final reply. Interaction tokens expire after 15 minutes, so fall back to a channel message. */
+async function finish(interaction: ChatInputCommandInteraction, text: string) {
+  const ok = await interaction.editReply(text).then(() => true, () => false);
+  if (!ok && interaction.channel?.isSendable()) {
+    await interaction.channel.send({ content: `<@${interaction.user.id}> ${text}`, allowedMentions: { users: [interaction.user.id] } }).catch(() => {});
+  }
+}
+
+/**
+ * Handles existing members, then locks every channel. `existing` defaults to
+ * 'keep' on the first lock only, so re-running a lock never re-grants the role
+ * to people who joined after it went up.
+ */
+async function runLock(
+  interaction: ChatInputCommandInteraction, guild: Guild, cfg: IVerifyConfig,
+  oldRoleId?: string, existing?: ExistingMembers | null,
+) {
+  const lines: string[] = [];
+  const mode = existing ?? (getLockState(cfg) ? null : 'keep');
+  if (mode) {
+    const label = mode === 'keep' ? 'Giving current members the member role' : 'Removing the member role from members who haven\'t reacted';
+    const changed = await applyExistingMembers(guild, cfg, mode, progress(interaction, label));
+    lines.push(mode === 'keep'
+      ? `👥 Grandfathered in **${changed}** existing members (gave them <@&${cfg.member_role_id}>).`
+      : `👥 Removed <@&${cfg.member_role_id}> from **${changed}** members who haven't reacted ${VERIFY_EMOJI}. They'll need to verify.`);
+  }
+
+  const { locked, failed, skippedOnboarding } = await lockGuild(guild, cfg, oldRoleId, progress(interaction, 'Locking channels'));
+  lines.push(`🔒 Locked **${locked}** channels. Only the member role and roles above mine can see them now; channels already hidden from @everyone were left alone.`);
+  if (skippedOnboarding.length) {
+    lines.push(`ℹ️ Left public (Discord requires Onboarding channels to stay visible): ${skippedOnboarding.slice(0, 20).join(', ')}. Remove them in Server Settings → Onboarding to lock them.`);
+  }
+  if (failed.length) lines.push(`⚠️ Couldn't edit: ${failed.slice(0, 20).join(', ')}. Check my permissions there.`);
+  return lines.join('\n');
 }
 
 const VerifyCmd: Command = {
@@ -38,7 +89,7 @@ const VerifyCmd: Command = {
       .addRoleOption(o => o.setName('unverified_role').setDescription('Role to remove when verified (optional)'))
       .addStringOption(o => o.setName('title').setDescription('Embed title').setRequired(false))
       .addStringOption(o => o.setName('description').setDescription('Embed description').setRequired(false)))
-    .addSubcommand(s => s
+    .addSubcommand(s => existingMembersOption(s
       .setName('rules')
       .setDescription(`Members react ${VERIFY_EMOJI} on the rules post to get the member role`)
       .addChannelOption(o => o.setName('channel').setDescription('The rules channel')
@@ -46,10 +97,10 @@ const VerifyCmd: Command = {
       .addRoleOption(o => o.setName('member_role').setDescription('Role to assign on react').setRequired(true))
       .addStringOption(o => o.setName('message_id').setDescription('Your existing rules post (leave empty to have the bot post one)'))
       .addRoleOption(o => o.setName('unverified_role').setDescription('Role to remove when verified (optional)'))
-      .addBooleanOption(o => o.setName('lock').setDescription('Hide all other channels until members verify (default: true)')))
-    .addSubcommand(s => s
+      .addBooleanOption(o => o.setName('lock').setDescription('Hide all other channels until members verify (default: true)'))))
+    .addSubcommand(s => existingMembersOption(s
       .setName('lock')
-      .setDescription('Hide all channels from members until they verify'))
+      .setDescription('Hide all channels from members until they verify')))
     .addSubcommand(s => s
       .setName('unlock')
       .setDescription('Undo /verify lock and make channels public again'))
@@ -88,7 +139,7 @@ const VerifyCmd: Command = {
       const lines: string[] = [];
       // Delete the config first so clearing reactions below can't revoke anyone's role
       await deleteVerifyConfig(guildId);
-      if (getLockState(prev)) lines.push(`🔓 Unlocked **${await unlockGuild(guild, prev)}** channels.`);
+      if (getLockState(prev)) lines.push(`🔓 Unlocked **${await unlockGuild(guild, prev, progress(interaction, 'Unlocking channels'))}** channels.`);
 
       const channel = await guild.channels.fetch(prev.channel_id).catch(() => null);
       const msg = channel?.isTextBased() && prev.message_id
@@ -102,7 +153,7 @@ const VerifyCmd: Command = {
           : `⚠️ Couldn't clear the ${VERIFY_EMOJI} reactions. I need **Manage Messages** in <#${prev.channel_id}>.`);
       }
       lines.push(`✅ Verification is off. Members keep <@&${prev.member_role_id}>.`);
-      await interaction.editReply(lines.join('\n'));
+      await finish(interaction, lines.join('\n'));
       return;
     }
 
@@ -120,12 +171,12 @@ const VerifyCmd: Command = {
           await interaction.editReply('Channels aren\'t locked.');
           return;
         }
-        const count = await unlockGuild(guild, prev);
-        await interaction.editReply(`🔓 Unlocked **${count}** channels.`);
+        const count = await unlockGuild(guild, prev, progress(interaction, 'Unlocking channels'));
+        await finish(interaction, `🔓 Unlocked **${count}** channels.`);
         return;
       }
-      const { locked, failed } = await lockGuild(guild, prev);
-      await interaction.editReply(lockSummary(locked, failed));
+      const existing = interaction.options.getString('existing_members') as ExistingMembers | null;
+      await finish(interaction, await runLock(interaction, guild, prev, undefined, existing));
       return;
     }
 
@@ -176,12 +227,15 @@ const VerifyCmd: Command = {
       });
 
       let reply = `✅ Members who react ${VERIFY_EMOJI} on [the rules post](${msg.url}) get <@&${memberRole.id}>. Removing the reaction takes it away.`;
-      if (lock || (prev && getLockState(prev))) {
-        const cfg = (await getVerifyConfig(guildId))!;
-        const { locked, failed } = await lockGuild(guild, cfg, prev?.member_role_id);
-        reply += `\n${lockSummary(locked, failed)}`;
+      const existing = interaction.options.getString('existing_members') as ExistingMembers | null;
+      const cfg = (await getVerifyConfig(guildId))!;
+      if (lock || getLockState(cfg)) {
+        reply += `\n${await runLock(interaction, guild, cfg, prev?.member_role_id, existing)}`;
+      } else if (existing) {
+        const changed = await applyExistingMembers(guild, cfg, existing, progress(interaction, 'Updating existing members'));
+        reply += `\n👥 ${existing === 'keep' ? 'Gave' : 'Removed'} <@&${memberRole.id}> ${existing === 'keep' ? 'to' : 'from'} **${changed}** existing members.`;
       }
-      await interaction.editReply(reply);
+      await finish(interaction, reply);
       return;
     }
 
@@ -220,11 +274,9 @@ const VerifyCmd: Command = {
 
     let reply = `✅ Verify button posted in <#${channel.id}>.\nMember role: <@&${memberRole.id}>${unverifiedRole ? `\nUnverified role removed on verify: <@&${unverifiedRole.id}>` : ''}`;
     // Already locked: move the lock to the new gate channel/role
-    if (prev && getLockState(prev)) {
-      const { locked, failed } = await lockGuild(guild, (await getVerifyConfig(guildId))!, prev.member_role_id);
-      reply += `\n${lockSummary(locked, failed)}`;
-    }
-    await interaction.editReply(reply);
+    const cfg = (await getVerifyConfig(guildId))!;
+    if (getLockState(cfg)) reply += `\n${await runLock(interaction, guild, cfg, prev?.member_role_id)}`;
+    await finish(interaction, reply);
   },
 };
 

@@ -1,6 +1,6 @@
 import {
-  ButtonInteraction, ChannelType, MessageFlags, PermissionFlagsBits,
-  type Client, type Guild, type GuildBasedChannel, type GuildMember,
+  ButtonInteraction, ChannelType, MessageFlags, OverwriteType, PermissionFlagsBits,
+  type Client, type Collection, type PermissionOverwrites, type Guild, type GuildBasedChannel, type GuildMember,
   type MessageReaction, type PartialMessageReaction, type PartialUser, type User,
 } from 'discord.js';
 import { EventModule } from '../feature';
@@ -48,61 +48,102 @@ function bypassRoleIds(guild: Guild): Set<string> {
   return new Set(guild.roles.cache.filter(r => r.position > top).map(r => r.id));
 }
 
-async function grant(member: GuildMember, cfg: IVerifyConfig) {
-  await member.roles.add(cfg.member_role_id, 'Verified').catch(() => {});
-  if (cfg.unverified_role_id) await member.roles.remove(cfg.unverified_role_id).catch(() => {});
+/** Gives the member role (and drops the unverified role). Returns false if Discord refused. */
+async function grant(member: GuildMember, cfg: IVerifyConfig, reason = 'Verified') {
+  const ok = await member.roles.add(cfg.member_role_id, reason).then(() => true, () => false);
+  if (cfg.unverified_role_id) await member.roles.remove(cfg.unverified_role_id, reason).catch(() => {});
+  return ok;
 }
 
-async function revoke(member: GuildMember, cfg: IVerifyConfig) {
-  await member.roles.remove(cfg.member_role_id, 'Removed rules reaction').catch(() => {});
-  if (cfg.unverified_role_id) await member.roles.add(cfg.unverified_role_id).catch(() => {});
+async function revoke(member: GuildMember, cfg: IVerifyConfig, reason = 'Removed rules reaction') {
+  const ok = await member.roles.remove(cfg.member_role_id, reason).then(() => true, () => false);
+  if (cfg.unverified_role_id) await member.roles.add(cfg.unverified_role_id, reason).catch(() => {});
+  return ok;
 }
 
-/** Hides one channel from @everyone and shows it to the member role. Returns false if skipped. */
-async function lockChannel(channel: GuildBasedChannel, cfg: IVerifyConfig, state: LockState): Promise<boolean> {
+const VIEW = PermissionFlagsBits.ViewChannel;
+
+type Overwrite = { id: string; type: OverwriteType; allow: bigint; deny: bigint };
+
+/** A channel's overwrites as an editable map, so all changes go out in one request. */
+function overwriteMap(channel: { permissionOverwrites: { cache: Collection<string, PermissionOverwrites> } }) {
+  return new Map<string, Overwrite>(channel.permissionOverwrites.cache.map(o =>
+    [o.id, { id: o.id, type: o.type, allow: o.allow.bitfield, deny: o.deny.bitfield }]));
+}
+
+/** Sets a role's View Channel to allow (true), deny (false) or inherit (null). */
+function setView(map: Map<string, Overwrite>, roleId: string, value: boolean | null) {
+  const ow = map.get(roleId) ?? { id: roleId, type: OverwriteType.Role, allow: 0n, deny: 0n };
+  ow.allow &= ~VIEW;
+  ow.deny &= ~VIEW;
+  if (value === true) ow.allow |= VIEW;
+  else if (value === false) ow.deny |= VIEW;
+  if (ow.allow === 0n && ow.deny === 0n) map.delete(roleId);
+  else map.set(roleId, ow);
+}
+
+const hasView = (ow: Overwrite | undefined, field: 'allow' | 'deny') => !!ow && (ow[field] & VIEW) !== 0n;
+
+/** Hides one channel from @everyone and shows it to the member role and bypass roles. Returns false if skipped. */
+async function lockChannel(
+  channel: GuildBasedChannel, cfg: IVerifyConfig, state: LockState, bypass: Set<string>, oldRoleId?: string,
+): Promise<boolean> {
   if (!LOCKABLE.has(channel.type) || channel.id === cfg.channel_id) return false;
   if (!('permissionOverwrites' in channel)) return false;
 
-  const view = PermissionFlagsBits.ViewChannel;
+  const map = overwriteMap(channel);
   const everyoneId = channel.guild.roles.everyone.id;
-  const everyoneOw = channel.permissionOverwrites.cache.get(everyoneId);
-  let entry = state[channel.id];
-  if (!entry) {
-    if (everyoneOw?.deny.has(view)) {
-      // Already hidden. Only ours if it copied the gate's overwrites from a locked category.
-      if (!channel.permissionOverwrites.cache.get(cfg.member_role_id)?.allow.has(view)) return false;
-      entry = { everyone: 'neutral', bypass: [] };
-    } else {
-      entry = { everyone: everyoneOw?.allow.has(view) ? 'allow' : 'neutral', bypass: [] };
-    }
+  const prev = state[channel.id];
+  let entry: ChannelLock;
+  if (prev) {
+    entry = { everyone: prev.everyone, bypass: [...prev.bypass] };
+  } else if (hasView(map.get(everyoneId), 'deny')) {
+    // Already hidden. Only ours if it has the gate's overwrites (copied from a locked
+    // category, or left by a lock run that was interrupted before it saved)
+    if (!hasView(map.get(cfg.member_role_id), 'allow')) return false;
+    entry = { everyone: 'neutral', bypass: [...bypass].filter(id => hasView(map.get(id), 'allow')) };
+  } else {
+    entry = { everyone: hasView(map.get(everyoneId), 'allow') ? 'allow' : 'neutral', bypass: [] };
   }
 
-  // Bypass roles go first so higher-ups never lose sight of the channel
-  const bypass = bypassRoleIds(channel.guild);
   for (const roleId of bypass) {
-    if (entry.bypass.includes(roleId)) continue;
-    const ow = channel.permissionOverwrites.cache.get(roleId);
-    if (ow?.allow.has(view) || ow?.deny.has(view)) continue; // set by staff, leave it
-    await channel.permissionOverwrites.edit(roleId, { ViewChannel: true }, { reason: REASON });
+    if (entry.bypass.includes(roleId)) { setView(map, roleId, true); continue; }
+    const ow = map.get(roleId);
+    if (hasView(ow, 'allow') || hasView(ow, 'deny')) continue; // set by staff, leave it
+    setView(map, roleId, true);
     entry.bypass.push(roleId);
   }
   // Roles that have dropped below the bot since the last lock
-  for (const roleId of entry.bypass.filter(id => !bypass.has(id))) {
-    if (channel.guild.roles.cache.has(roleId)) {
-      await channel.permissionOverwrites.edit(roleId, { ViewChannel: null }, { reason: REASON });
-    }
-    entry.bypass = entry.bypass.filter(id => id !== roleId);
-  }
+  for (const roleId of entry.bypass.filter(id => !bypass.has(id))) setView(map, roleId, null);
+  entry.bypass = entry.bypass.filter(id => bypass.has(id));
 
-  await channel.permissionOverwrites.edit(cfg.member_role_id, { ViewChannel: true }, { reason: REASON });
-  await channel.permissionOverwrites.edit(everyoneId, { ViewChannel: false }, { reason: REASON });
+  if (prev && oldRoleId && oldRoleId !== cfg.member_role_id) setView(map, oldRoleId, null);
+  setView(map, cfg.member_role_id, true);
+  setView(map, everyoneId, false);
+
+  await channel.permissionOverwrites.set([...map.values()], REASON);
   state[channel.id] = entry;
   return true;
 }
 
+/** Channels in Server Onboarding, which Discord requires to stay visible to @everyone. */
+async function onboardingChannelIds(guild: Guild): Promise<Set<string>> {
+  const ids = new Set<string>();
+  const onboarding = await guild.fetchOnboarding().catch(() => null);
+  if (!onboarding) return ids;
+  for (const id of onboarding.defaultChannels.keys()) ids.add(id);
+  for (const prompt of onboarding.prompts.values()) {
+    for (const option of prompt.options.values()) for (const id of option.channels.keys()) ids.add(id);
+  }
+  return ids;
+}
+
+type Progress = (done: number, total: number) => unknown;
+
 /** Locks every public channel behind the member role. Pass oldRoleId when the member role changed. */
-export async function lockGuild(guild: Guild, cfg: IVerifyConfig, oldRoleId?: string) {
+export async function lockGuild(guild: Guild, cfg: IVerifyConfig, oldRoleId?: string, onProgress?: Progress) {
   const state = getLockState(cfg) ?? {};
+  const save = () => db.setVerifyConfig(guild.id, { locked_channels: JSON.stringify(state) });
   await guild.channels.fetch();
 
   // Denying @everyone hides channels from bots too (this one included), unless they're admins
@@ -126,41 +167,56 @@ export async function lockGuild(guild: Guild, cfg: IVerifyConfig, oldRoleId?: st
     delete state[gate.id];
   }
 
+  const bypass = bypassRoleIds(guild);
+  const onboarding = await onboardingChannelIds(guild);
+  const channels = [...guild.channels.cache.values()].filter(c => LOCKABLE.has(c.type) && c.id !== cfg.channel_id);
   let locked = 0;
   const failed: string[] = [];
-  for (const channel of guild.channels.cache.values()) {
-    try {
-      if (oldRoleId && oldRoleId !== cfg.member_role_id && state[channel.id] && 'permissionOverwrites' in channel) {
-        await channel.permissionOverwrites.edit(oldRoleId, { ViewChannel: null }, { reason: REASON });
+  const skippedOnboarding: string[] = [];
+  for (const [i, channel] of channels.entries()) {
+    if (onboarding.has(channel.id)) {
+      skippedOnboarding.push(channel.name);
+    } else {
+      try {
+        if (await lockChannel(channel, cfg, state, bypass, oldRoleId)) {
+          locked++;
+          await save(); // so an interrupted run can still be undone
+        }
+      } catch (err: any) {
+        if (err?.code === 350003) skippedOnboarding.push(channel.name);
+        else {
+          failed.push(channel.name);
+          logger.error(`[verify] couldn't lock #${channel.name} in ${guild.name}: ${err}`);
+        }
       }
-      if (await lockChannel(channel, cfg, state)) locked++;
-    } catch (err) {
-      failed.push(channel.name);
-      logger.error(`[verify] couldn't lock #${channel.name} in ${guild.name}: ${err}`);
     }
+    await onProgress?.(i + 1, channels.length);
   }
 
-  await db.setVerifyConfig(guild.id, { locked_channels: JSON.stringify(state) });
-  return { locked, failed };
+  await save();
+  return { locked, failed, skippedOnboarding };
 }
 
 /** Restores every channel the gate locked. */
-export async function unlockGuild(guild: Guild, cfg: IVerifyConfig) {
+export async function unlockGuild(guild: Guild, cfg: IVerifyConfig, onProgress?: Progress) {
   const state = getLockState(cfg) ?? {};
+  const entries = Object.entries(state);
   let unlocked = 0;
-  for (const [id, entry] of Object.entries(state)) {
+  for (const [i, [id, entry]] of entries.entries()) {
     const channel = guild.channels.cache.get(id);
-    if (!channel || !('permissionOverwrites' in channel)) continue;
-    try {
-      await channel.permissionOverwrites.edit(guild.roles.everyone.id, { ViewChannel: entry.everyone === 'allow' ? true : null }, { reason: REASON });
-      await channel.permissionOverwrites.edit(cfg.member_role_id, { ViewChannel: null }, { reason: REASON });
-      for (const roleId of entry.bypass) {
-        if (guild.roles.cache.has(roleId)) await channel.permissionOverwrites.edit(roleId, { ViewChannel: null }, { reason: REASON });
+    if (channel && 'permissionOverwrites' in channel) {
+      try {
+        const map = overwriteMap(channel);
+        setView(map, guild.roles.everyone.id, entry.everyone === 'allow' ? true : null);
+        setView(map, cfg.member_role_id, null);
+        for (const roleId of entry.bypass) setView(map, roleId, null);
+        await channel.permissionOverwrites.set([...map.values()], REASON);
+        unlocked++;
+      } catch (err) {
+        logger.error(`[verify] couldn't unlock #${channel.name} in ${guild.name}: ${err}`);
       }
-      unlocked++;
-    } catch (err) {
-      logger.error(`[verify] couldn't unlock #${channel.name} in ${guild.name}: ${err}`);
     }
+    await onProgress?.(i + 1, entries.length);
   }
   await db.setVerifyConfig(guild.id, { locked_channels: null });
   return unlocked;
@@ -188,6 +244,56 @@ async function handleRulesReaction(
   else await revoke(member, cfg);
 }
 
+/** IDs of everyone (not bots) who reacted ✅ on the rules post, or null if there's no post or reaction. */
+async function fetchReactedUserIds(guild: Guild, cfg: IVerifyConfig): Promise<Set<string> | null> {
+  if (!cfg.message_id) return null;
+  const channel = await guild.channels.fetch(cfg.channel_id).catch(() => null);
+  if (!channel?.isTextBased()) return null;
+  const message = await channel.messages.fetch(cfg.message_id).catch(() => null);
+  const reaction = message?.reactions.cache.get(VERIFY_EMOJI);
+  if (!reaction) return null;
+
+  const reacted = new Set<string>();
+  let after: string | undefined;
+  while (true) {
+    const batch = await reaction.users.fetch({ limit: 100, after });
+    for (const u of batch.values()) if (!u.bot) reacted.add(u.id);
+    if (batch.size < 100) break;
+    after = batch.lastKey();
+  }
+  return reacted;
+}
+
+export type ExistingMembers = 'keep' | 'reverify';
+
+/**
+ * What happens to people already in the server when the gate goes up.
+ * keep: everyone gets the member role, so nobody loses access.
+ * reverify: the member role is taken from anyone who hasn't reacted ✅, so they must verify.
+ * Bots and members with a role above the bot are never touched.
+ */
+export async function applyExistingMembers(guild: Guild, cfg: IVerifyConfig, mode: ExistingMembers, onProgress?: Progress) {
+  const members = await guild.members.fetch();
+  const bypass = bypassRoleIds(guild);
+  const reacted = mode === 'reverify' ? (await fetchReactedUserIds(guild, cfg)) ?? new Set<string>() : null;
+
+  const targets = [...members.values()].filter(m => {
+    if (m.user.bot || m.roles.cache.some(r => bypass.has(r.id))) return false;
+    const has = m.roles.cache.has(cfg.member_role_id);
+    return mode === 'keep' ? !has : has && !reacted!.has(m.id);
+  });
+
+  let changed = 0;
+  for (const [i, member] of targets.entries()) {
+    const ok = mode === 'keep'
+      ? await grant(member, cfg, 'Already in the server when verification was set up')
+      : await revoke(member, cfg, 'Re-verification required');
+    if (ok) changed++;
+    await onProgress?.(i + 1, targets.length);
+  }
+  return changed;
+}
+
 /**
  * The client has no partials, so reactions only fire for cached messages. Cache
  * each rules post, and give the role to anyone who reacted while the bot was offline.
@@ -197,30 +303,15 @@ export async function startVerifyGate(bot: Client) {
     const guild = bot.guilds.cache.get(cfg.guild_id);
     if (!guild || !cfg.member_role_id) continue;
     try {
-      const channel = await guild.channels.fetch(cfg.channel_id).catch(() => null);
-      if (!channel?.isTextBased()) continue;
-      const message = await channel.messages.fetch(cfg.message_id!).catch(() => null);
-      const reaction = message?.reactions.cache.get(VERIFY_EMOJI);
-      if (!reaction) continue;
-
-      const reacted = new Set<string>();
-      let after: string | undefined;
-      while (true) {
-        const batch = await reaction.users.fetch({ limit: 100, after });
-        for (const u of batch.values()) if (!u.bot) reacted.add(u.id);
-        if (batch.size < 100) break;
-        after = batch.lastKey();
-      }
+      const reacted = await fetchReactedUserIds(guild, cfg);
+      if (!reacted) continue;
 
       // Add-only: never strip the role here, it may have been given another way
       const members = await guild.members.fetch();
       let added = 0;
       for (const id of reacted) {
         const member = members.get(id);
-        if (member && !member.roles.cache.has(cfg.member_role_id)) {
-          await grant(member, cfg);
-          added++;
-        }
+        if (member && !member.roles.cache.has(cfg.member_role_id) && await grant(member, cfg)) added++;
       }
       if (added) logger.info(`[verify] ${guild.name}: verified ${added} member(s) who reacted while offline`);
     } catch (err) {
@@ -274,7 +365,7 @@ const verifyModule: EventModule = {
       const cfg = await db.getVerifyConfig(channel.guild.id);
       const state = cfg && getLockState(cfg);
       if (!cfg || !state) return;
-      if (await lockChannel(channel, cfg, state)) {
+      if (await lockChannel(channel, cfg, state, bypassRoleIds(channel.guild))) {
         await db.setVerifyConfig(channel.guild.id, { locked_channels: JSON.stringify(state) });
       }
     },
