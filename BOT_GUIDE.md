@@ -369,8 +369,10 @@ Manage Messages holders skip the noisier rate/duplicate/image checks, but **not*
 - `/verify config` — Show the current verify settings
 
 ### Join-to-Create Voice
-- `/tempvoice setup [channel] [category] [name]` — Joining the hub voice channel creates a channel named after the member (`{user}` by default) with full control for them; it's deleted once empty. Leave `channel` empty to have the bot create the hub
+- `/tempvoice setup [channel] [category] [name]` — Joining the hub voice channel creates a channel named after the member (`{user}` by default) that they can rename, limit and disconnect people from (but not edit permissions on, so staff can always join); it's deleted once empty. Leave `channel` empty to have the bot create the hub
 - `/tempvoice disable` — Stop creating channels
+- `/tempvoice lock` / `unlock` — Owner only: only staff and permitted people can join, or open it back up
+- `/tempvoice permit user:` / `reject user:` — Owner only: let someone in, or block and disconnect them (staff can't be rejected)
 - `/tempvoice claim` — Take over the voice channel you're in after its owner leaves
 
 ### Guessing Games

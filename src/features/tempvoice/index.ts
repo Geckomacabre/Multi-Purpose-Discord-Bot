@@ -8,18 +8,47 @@ import type { ITempVoiceConfig } from '../../utils/db';
 import logger from '../../utils/logger';
 
 // Join-to-create voice. Joining the hub channel creates a voice channel named
-// after the member, gives them full control of it, and moves them in. Channels
-// are deleted once no people are left in them. One channel per member: joining
-// the hub again sends them back to the one they have.
+// after the member, gives them control of it, and moves them in. Channels are
+// deleted once no people are left in them. One channel per member: joining the
+// hub again sends them back to the one they have.
+//
+// Owners can rename it, set a limit/bitrate and disconnect people, but never edit
+// its permissions directly: who can connect goes through /tempvoice lock, unlock,
+// permit and reject, which can't be used against staff.
 
 const REASON = 'Join-to-create voice';
 const P = PermissionFlagsBits;
 
-// Rename, set a user limit or bitrate, move/kick, mute/deafen, and edit the channel's permissions
+// No Manage Permissions (it would let owners lock mods out) and no server
+// mute/deafen (those follow the member across the whole server)
 const OWNER_PERMS = [
   P.ViewChannel, P.Connect, P.Speak, P.Stream, P.UseVAD, P.PrioritySpeaker,
-  P.ManageChannels, P.ManageRoles, P.MoveMembers, P.MuteMembers, P.DeafenMembers,
+  P.ManageChannels, P.MoveMembers,
 ];
+
+// Taken back from owners of channels made before the rule above
+const REVOKED_OWNER_PERMS = { ManageRoles: null, MuteMembers: null, DeafenMembers: null } as const;
+
+// Having any of these server-wide makes someone staff
+const STAFF_PERMS = [
+  P.Administrator, P.ManageGuild, P.ManageChannels, P.ModerateMembers,
+  P.KickMembers, P.BanMembers, P.MoveMembers,
+];
+
+const topPosition = (guild: Guild) => guild.members.me!.roles.highest.position;
+
+/** Admins, mods, and anyone with a role above the bot. Owners can never shut them out. */
+export function isStaff(member: GuildMember) {
+  return STAFF_PERMS.some(p => member.permissions.has(p)) || member.roles.highest.position > topPosition(member.guild);
+}
+
+/** Roles that make their members staff. */
+function staffRoleIds(guild: Guild) {
+  const top = topPosition(guild);
+  return guild.roles.cache
+    .filter(r => r.id !== guild.id && (r.position > top || STAFF_PERMS.some(p => r.permissions.has(p))))
+    .map(r => r.id);
+}
 
 const creating = new Set<string>(); // member ids with a channel being made
 
@@ -100,6 +129,52 @@ export async function claimTempVoice(member: GuildMember): Promise<string> {
   return `✅ You own <#${channel.id}> now.`;
 }
 
+/** The temp channel `member` is in and owns, or the reason they can't manage it. */
+async function ownedChannel(member: GuildMember): Promise<VoiceBasedChannel | string> {
+  const channel = member.voice.channel;
+  if (!channel) return '❌ Join your voice channel first.';
+  const temp = await db.getTempVoiceChannel(channel.id);
+  if (!temp) return '❌ This isn\'t a join-to-create channel.';
+  if (temp.owner_id !== member.id) return `❌ Only the owner, <@${temp.owner_id}>, can do that. If they've left, use \`/tempvoice claim\`.`;
+  return channel;
+}
+
+/** Only staff and permitted members can join. People already in the channel stay. */
+export async function lockTempVoice(member: GuildMember): Promise<string> {
+  const channel = await ownedChannel(member);
+  if (typeof channel === 'string') return channel;
+  await channel.permissionOverwrites.edit(member.guild.roles.everyone.id, { Connect: false }, { reason: REASON });
+  for (const roleId of staffRoleIds(member.guild)) {
+    await channel.permissionOverwrites.edit(roleId, { Connect: true }, { reason: REASON });
+  }
+  return `🔒 Locked <#${channel.id}>. Only staff and people you \`/tempvoice permit\` can join now.`;
+}
+
+export async function unlockTempVoice(member: GuildMember): Promise<string> {
+  const channel = await ownedChannel(member);
+  if (typeof channel === 'string') return channel;
+  await channel.permissionOverwrites.edit(member.guild.roles.everyone.id, { Connect: null }, { reason: REASON });
+  return `🔓 Unlocked <#${channel.id}>. Anyone who can see it can join (except people you rejected).`;
+}
+
+export async function permitTempVoice(member: GuildMember, target: GuildMember): Promise<string> {
+  const channel = await ownedChannel(member);
+  if (typeof channel === 'string') return channel;
+  await channel.permissionOverwrites.edit(target.id, { ViewChannel: true, Connect: true }, { reason: REASON });
+  return `✅ ${target} can join <#${channel.id}>.`;
+}
+
+export async function rejectTempVoice(member: GuildMember, target: GuildMember): Promise<string> {
+  const channel = await ownedChannel(member);
+  if (typeof channel === 'string') return channel;
+  if (target.id === member.id) return '❌ You can\'t reject yourself.';
+  if (target.user.bot) return '❌ Bots can\'t be rejected.';
+  if (isStaff(target)) return `❌ ${target} is staff and can always join.`;
+  await channel.permissionOverwrites.edit(target.id, { Connect: false }, { reason: REASON });
+  if (target.voice.channelId === channel.id) await target.voice.disconnect(REASON).catch(() => {});
+  return `🚫 ${target} can't join <#${channel.id}> anymore.`;
+}
+
 /** Cleans up channels that emptied while the bot was offline, and serves anyone already waiting in a hub. */
 export async function startTempVoice(bot: Client) {
   for (const row of await db.getAllTempVoiceChannels()) {
@@ -110,6 +185,8 @@ export async function startTempVoice(bot: Client) {
       await db.removeTempVoiceChannel(row.channel_id);
     } else if (channel?.isVoiceBased() && humans(channel) === 0) {
       await deleteTemp(channel);
+    } else if (channel?.isVoiceBased() && channel.permissionOverwrites.cache.has(row.owner_id)) {
+      await channel.permissionOverwrites.edit(row.owner_id, REVOKED_OWNER_PERMS, { reason: REASON }).catch(() => {});
     }
   }
 

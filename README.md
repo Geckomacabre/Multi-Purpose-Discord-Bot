@@ -247,12 +247,16 @@ The bot's role must be above the member role. **Existing members are grandfather
 
 ### 🔊 Join-to-Create Voice
 
-Joining the hub voice channel creates a voice channel named after the member and moves them into it. The owner gets full control of their channel: rename it, set a user limit, move/kick and mute people, and edit who can join. Channels are deleted as soon as everyone leaves. Each member gets one channel at a time; joining the hub again takes them back to theirs.
+Joining the hub voice channel creates a voice channel named after the member and moves them into it. The owner can rename it, set a user limit or bitrate, and disconnect people, and picks who can join with the commands below. Owners can't edit the channel's permissions directly, so they can never lock out admins or mods: staff (Administrator, Manage Server/Channels, Moderate/Kick/Ban/Move Members, or a role above the bot) can always join. Channels are deleted as soon as everyone leaves. Each member gets one channel at a time; joining the hub again takes them back to theirs.
 
 | Command | Description |
 |---|---|
 | `/tempvoice setup [channel] [category] [name]` | Set the hub (leave `channel` empty and the bot makes a "➕ Join to Create" channel). New channels go in `category`, or the hub's category. `name` defaults to `{user}`. Needs Manage Server. |
 | `/tempvoice disable` | Stop creating channels. Existing ones are deleted as they empty. |
+| `/tempvoice lock` | Only staff and people you permit can join your channel. People already in it stay. |
+| `/tempvoice unlock` | Let anyone join again. |
+| `/tempvoice permit <user>` | Let someone join, even while locked. |
+| `/tempvoice reject <user>` | Block someone and disconnect them (not staff). |
 | `/tempvoice claim` | Take over the channel you're in when its owner has left. |
 
 The bot needs **Manage Channels**, **Manage Roles** and **Move Members**, and can only give owners permissions it has itself.

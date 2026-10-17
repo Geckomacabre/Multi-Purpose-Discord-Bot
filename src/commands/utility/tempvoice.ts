@@ -4,7 +4,9 @@ import {
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
 import { getTempVoiceConfig, removeTempVoiceConfig, setTempVoiceConfig } from '../../utils/db';
-import { claimTempVoice } from '../../features/tempvoice';
+import {
+  claimTempVoice, lockTempVoice, permitTempVoice, rejectTempVoice, unlockTempVoice,
+} from '../../features/tempvoice';
 
 const TempVoiceCmd: Command = {
   data: new SlashCommandBuilder()
@@ -24,16 +26,44 @@ const TempVoiceCmd: Command = {
       .setName('disable')
       .setDescription('Stop creating voice channels (admin)'))
     .addSubcommand(s => s
+      .setName('lock')
+      .setDescription('Only staff and people you permit can join your voice channel'))
+    .addSubcommand(s => s
+      .setName('unlock')
+      .setDescription('Let anyone join your voice channel again'))
+    .addSubcommand(s => s
+      .setName('permit')
+      .setDescription('Let someone join your voice channel, even while it\'s locked')
+      .addUserOption(o => o.setName('user').setDescription('Who to let in').setRequired(true)))
+    .addSubcommand(s => s
+      .setName('reject')
+      .setDescription('Block someone from your voice channel and disconnect them')
+      .addUserOption(o => o.setName('user').setDescription('Who to block').setRequired(true)))
+    .addSubcommand(s => s
       .setName('claim')
       .setDescription('Take over the voice channel you\'re in after its owner leaves')) as any,
 
   async run(interaction: ChatInputCommandInteraction) {
     const sub = interaction.options.getSubcommand();
     const guild = interaction.guild!;
+    const member = interaction.member as GuildMember;
 
-    if (sub === 'claim') {
-      const reply = await claimTempVoice(interaction.member as GuildMember);
-      await interaction.reply({ content: reply, flags: MessageFlags.Ephemeral });
+    const ownerActions: Record<string, () => Promise<string>> = {
+      claim: () => claimTempVoice(member),
+      lock: () => lockTempVoice(member),
+      unlock: () => unlockTempVoice(member),
+      permit: async () => {
+        const target = interaction.options.getMember('user') as GuildMember | null;
+        return target ? permitTempVoice(member, target) : '❌ That user isn\'t in this server.';
+      },
+      reject: async () => {
+        const target = interaction.options.getMember('user') as GuildMember | null;
+        return target ? rejectTempVoice(member, target) : '❌ That user isn\'t in this server.';
+      },
+    };
+    if (ownerActions[sub]) {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      await interaction.editReply(await ownerActions[sub]());
       return;
     }
 
@@ -83,8 +113,9 @@ const TempVoiceCmd: Command = {
     const prev = await getTempVoiceConfig(guild.id);
     await setTempVoiceConfig(guild.id, hub.id, category?.id ?? null, name);
     await interaction.editReply(
-      `✅ Joining <#${hub.id}> now creates a voice channel named **${name.replaceAll('{user}', interaction.user.displayName)}** for that member`
-      + `${category ? ` in **${category.name}**` : ''}, gives them full control of it, and deletes it once everyone leaves.`
+      `✅ Joining <#${hub.id}> now creates a voice channel named **${name.replaceAll('{user}', member.displayName)}** for that member`
+      + `${category ? ` in **${category.name}**` : ''}, moves them in, and deletes it once everyone leaves.`
+      + `\nOwners can rename it, set a user limit and disconnect people, and pick who can join with \`/tempvoice lock\`, \`unlock\`, \`permit\` and \`reject\`. Staff can always join.`
       + `\nIf the owner leaves, anyone still in the channel can take it over with \`/tempvoice claim\`.`
       + (prev && prev.hub_channel_id !== hub.id ? `\n(Replaced the old hub <#${prev.hub_channel_id}>.)` : ''),
     );
