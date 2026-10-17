@@ -2757,6 +2757,10 @@ export async function getAllVerifyConfigs(): Promise<IVerifyConfig[]> {
   return (await db`SELECT * FROM verify_config WHERE message_id IS NOT NULL`) as IVerifyConfig[];
 }
 
+export async function deleteVerifyConfig(guild_id: string) {
+  await db`DELETE FROM verify_config WHERE guild_id = ${guild_id}`;
+}
+
 export async function setVerifyConfig(guild_id: string, fields: Partial<Omit<IVerifyConfig, 'guild_id'>>) {
   await db`INSERT OR IGNORE INTO verify_config (guild_id, channel_id, member_role_id) VALUES (${guild_id}, '', '')`;
   if (fields.channel_id !== undefined) await db`UPDATE verify_config SET channel_id = ${fields.channel_id} WHERE guild_id = ${guild_id}`;

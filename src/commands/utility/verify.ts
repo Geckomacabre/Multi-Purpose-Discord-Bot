@@ -5,7 +5,7 @@ import {
   type Guild, type Role, type APIRole,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
-import { getVerifyConfig, setVerifyConfig } from '../../utils/db';
+import { deleteVerifyConfig, getVerifyConfig, setVerifyConfig } from '../../utils/db';
 import { VERIFY_EMOJI, getLockState, lockGuild, unlockGuild } from '../../features/verify';
 
 /** Why the bot can't hand out this role, or null if it can. */
@@ -18,7 +18,7 @@ function roleProblem(guild: Guild, role: Role | APIRole): string | null {
 }
 
 function lockSummary(locked: number, failed: string[]) {
-  let text = `🔒 Locked **${locked}** channels. Only the member role can see them now; channels already hidden from @everyone were left alone.`;
+  let text = `🔒 Locked **${locked}** channels. Only the member role and roles above mine can see them now; channels already hidden from @everyone were left alone.`;
   if (failed.length) text += `\n⚠️ Couldn't edit: ${failed.slice(0, 20).join(', ')}. Check my permissions there.`;
   return text;
 }
@@ -54,6 +54,9 @@ const VerifyCmd: Command = {
       .setName('unlock')
       .setDescription('Undo /verify lock and make channels public again'))
     .addSubcommand(s => s
+      .setName('remove')
+      .setDescription(`Turn off verification: unlock channels and clear the ${VERIFY_EMOJI} reactions (members keep their role)`))
+    .addSubcommand(s => s
       .setName('config')
       .setDescription('Show current verify config')) as any,
 
@@ -74,6 +77,32 @@ const VerifyCmd: Command = {
         `**Verify Config**\nChannel: <#${prev.channel_id}>\nMember role: <@&${prev.member_role_id}>\nUnverified role: ${prev.unverified_role_id ? `<@&${prev.unverified_role_id}>` : 'None'}`
         + `\nChannel lock: ${state ? `on (${Object.keys(state).length} channels)` : 'off'}`
       );
+      return;
+    }
+
+    if (sub === 'remove') {
+      if (!prev) {
+        await interaction.editReply('Verification isn\'t set up here.');
+        return;
+      }
+      const lines: string[] = [];
+      // Delete the config first so clearing reactions below can't revoke anyone's role
+      await deleteVerifyConfig(guildId);
+      if (getLockState(prev)) lines.push(`🔓 Unlocked **${await unlockGuild(guild, prev)}** channels.`);
+
+      const channel = await guild.channels.fetch(prev.channel_id).catch(() => null);
+      const msg = channel?.isTextBased() && prev.message_id
+        ? await channel.messages.fetch(prev.message_id).catch(() => null)
+        : null;
+      const reaction = msg?.reactions.cache.get(VERIFY_EMOJI);
+      if (reaction) {
+        const cleared = await reaction.remove().then(() => true).catch(() => false);
+        lines.push(cleared
+          ? `🧹 Cleared the ${VERIFY_EMOJI} reactions from [the rules post](${msg!.url}).`
+          : `⚠️ Couldn't clear the ${VERIFY_EMOJI} reactions. I need **Manage Messages** in <#${prev.channel_id}>.`);
+      }
+      lines.push(`✅ Verification is off. Members keep <@&${prev.member_role_id}>.`);
+      await interaction.editReply(lines.join('\n'));
       return;
     }
 

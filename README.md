@@ -240,9 +240,10 @@ The gate can also **lock the server**: every public channel is hidden from `@eve
 | `/verify setup <channel> <member_role> [unverified_role] [title] [description]` | Post the verify button instead. |
 | `/verify lock` | Hide all public channels until members verify. |
 | `/verify unlock` | Restore every channel the lock changed. |
+| `/verify remove` | Turn verification off: unlocks channels and clears the ✅ reactions from the rules post. Members keep their role. |
 | `/verify config` | Show the current verify settings. |
 
-The bot's role must be above the member role. Members who already have the member role keep full access. Locking also gives the member role to every bot in the server (and to bots added later) so they don't lose access to channels.
+The bot's role must be above the member role. Members who already have the member role keep full access, and anyone with a role **above the bot's highest role** bypasses the lock entirely. If you move roles above or below the bot later, run `/verify lock` again to update it. Locking also gives the member role to every bot in the server (and to bots added later) so they don't lose access to channels.
 
 ---
 
