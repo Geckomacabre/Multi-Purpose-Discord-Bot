@@ -15,7 +15,7 @@ import { startFeedsPollers } from './feeds';
 import { startFreeGamesPoller } from './freegames';
 import xpModule from './xp';
 import welcomeModule from './welcome';
-import reactionRolesModule from './reactionroles';
+import { startReactionRoles } from './reactionroles';
 import giveawayModule, { startGiveawayChecker } from './giveaway';
 import { startBirthdayChecker } from './birthday';
 import { startStatChannelUpdater } from './statchannels';
@@ -46,7 +46,6 @@ const features = [
   customCommandsModule,
   xpModule,
   welcomeModule,
-  reactionRolesModule,
   giveawayModule,
   starboardModule,
   guildActionsModule,
@@ -61,6 +60,8 @@ const features = [
 ];
 
 export function registerFeatures(bot: Client) {
+  startReactionRoles(bot);
+
   for (const feature of features) {
     for (const [event, handler] of Object.entries(feature.handlers)) {
       bot.on(event as any, async (...args) => {
