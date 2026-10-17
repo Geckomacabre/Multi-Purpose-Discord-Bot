@@ -84,6 +84,23 @@ function setView(map: Map<string, Overwrite>, roleId: string, value: boolean | n
 
 const hasView = (ow: Overwrite | undefined, field: 'allow' | 'deny') => !!ow && (ow[field] & VIEW) !== 0n;
 
+/**
+ * Every member of the guild. Discord allows one full member request per guild
+ * about every 30s, so reuse the cache once it's complete (the GuildMembers intent
+ * keeps it current) and wait out a rate limit instead of failing.
+ */
+async function allMembers(guild: Guild): Promise<Collection<string, GuildMember>> {
+  if (guild.members.cache.size >= guild.memberCount) return guild.members.cache;
+  try {
+    return await guild.members.fetch();
+  } catch (err: any) {
+    if (err?.name !== 'GatewayRateLimitError') throw err;
+    const wait = Math.ceil((err.data?.retry_after ?? 30) * 1000) + 500;
+    await new Promise(r => setTimeout(r, wait));
+    return guild.members.fetch();
+  }
+}
+
 /** Hides one channel from @everyone and shows it to the member role and bypass roles. Returns false if skipped. */
 async function lockChannel(
   channel: GuildBasedChannel, cfg: IVerifyConfig, state: LockState, bypass: Set<string>, oldRoleId?: string,
@@ -147,7 +164,7 @@ export async function lockGuild(guild: Guild, cfg: IVerifyConfig, oldRoleId?: st
   await guild.channels.fetch();
 
   // Denying @everyone hides channels from bots too (this one included), unless they're admins
-  const members = await guild.members.fetch();
+  const members = await allMembers(guild);
   for (const member of members.values()) {
     if (member.user.bot && !member.roles.cache.has(cfg.member_role_id)) {
       await member.roles.add(cfg.member_role_id, REASON)
@@ -273,7 +290,7 @@ export type ExistingMembers = 'keep' | 'reverify';
  * Bots and members with a role above the bot are never touched.
  */
 export async function applyExistingMembers(guild: Guild, cfg: IVerifyConfig, mode: ExistingMembers, onProgress?: Progress) {
-  const members = await guild.members.fetch();
+  const members = await allMembers(guild);
   const bypass = bypassRoleIds(guild);
   const reacted = mode === 'reverify' ? (await fetchReactedUserIds(guild, cfg)) ?? new Set<string>() : null;
 
@@ -307,7 +324,7 @@ export async function startVerifyGate(bot: Client) {
       if (!reacted) continue;
 
       // Add-only: never strip the role here, it may have been given another way
-      const members = await guild.members.fetch();
+      const members = await allMembers(guild);
       let added = 0;
       for (const id of reacted) {
         const member = members.get(id);
