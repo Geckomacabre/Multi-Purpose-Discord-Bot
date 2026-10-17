@@ -220,6 +220,13 @@ const RolesConfig: Command = {
         const link = interaction.options.getString('message_link', true);
         const emojiStr = interaction.options.getString('emoji', true).trim();
         const role = interaction.options.getRole('role', true);
+        const me = guild.members.me!;
+        if (role.id === guild.id || ('managed' in role && role.managed)) {
+          await interaction.reply({ ...cv2Text(`❌ <@&${role.id}> can't be assigned. Pick a normal role.`), flags: IS_CV2 | MessageFlags.Ephemeral }); return;
+        }
+        if (role.position >= me.roles.highest.position) {
+          await interaction.reply({ ...cv2Text(`❌ I can't give <@&${role.id}>: it's above my highest role <@&${me.roles.highest.id}>. Move my role above it in Server Settings → Roles.`), flags: IS_CV2 | MessageFlags.Ephemeral }); return;
+        }
         const parsed = parseMessageLink(link);
         if (!parsed) { await interaction.reply({ ...cv2Text('❌ Invalid message link. Copy it via "Copy Message Link" in Discord.'), flags: IS_CV2 | MessageFlags.Ephemeral }); return; }
         const ch = guild.channels.cache.get(parsed.channelId) as any;
@@ -242,9 +249,15 @@ const RolesConfig: Command = {
       } else {
         const all = await db.getReactionRoles(guildId);
         if (!all.length) { await interaction.reply({ ...cv2Text('No reaction roles configured.'), flags: IS_CV2 | MessageFlags.Ephemeral }); return; }
+        const top = guild.members.me!.roles.highest.position;
+        const problem = (roleId: string) => {
+          const r = guild.roles.cache.get(roleId);
+          if (!r) return ' ⚠️ role deleted';
+          return r.position >= top ? ' ⚠️ above my role, so I can\'t give it' : '';
+        };
         const container = new ContainerBuilder().setAccentColor(Colors.Blurple)
           .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-            `**Reaction Roles**\n\n${all.map(r => `**ID ${r.id}** — ${r.emoji} → <@&${r.role_id}> on [message](https://discord.com/channels/${guildId}/${r.channel_id}/${r.message_id})`).join('\n')}`
+            `**Reaction Roles**\n\n${all.map(r => `**ID ${r.id}** — ${r.emoji} → <@&${r.role_id}> on [message](https://discord.com/channels/${guildId}/${r.channel_id}/${r.message_id})${problem(r.role_id)}`).join('\n')}`
           ));
         await interaction.reply({ flags: IS_CV2 | MessageFlags.Ephemeral, components: [container] });
       }
