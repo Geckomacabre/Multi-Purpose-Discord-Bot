@@ -12,53 +12,39 @@ Built by **Geckomacabre** and Claude · Home of [CTIServers.org](https://ctiserv
 ![SQLite](https://img.shields.io/badge/SQLite-003B57.svg?style=for-the-badge&logo=sqlite&logoColor=white)
 ![License](https://img.shields.io/badge/License-GPL--3.0-blue.svg?style=for-the-badge)
 
+[**Quick Start**](#-quick-start) · [**Features**](#-features) · [**Web Dashboard**](#-web-dashboard) · [**Database**](#️-database)
+
 </div>
 
 ---
 
-## 📑 Contents
+## ✨ Features
 
-- [✨ Highlights](#-highlights)
-- [🚀 Quick Start](#-quick-start)
-- [🛡️ Moderation & Safety](#️-moderation--safety)
-- [⚙️ Server Setup](#️-server-setup)
-- [💰 Economy & Leveling](#-economy--leveling)
-- [🎮 Games & Fun](#-games--fun)
-- [🧰 Utility](#-utility)
-- [🖼️ Image Editing](#️-image-editing)
-- [🎵 Music (separate bot)](#-music-separate-bot)
-- [🌐 Web Dashboard](#-web-dashboard)
-- [🎯 The Range Bridge](#-the-range-bridge-ctiserversorg)
-- [🗄️ Database](#️-database)
-- [🚫 Not Included](#-not-included)
+| | Area | What's inside |
+|:-:|---|---|
+| 🛡️ | [**Moderation & Safety**](#️-moderation--safety) | Mod commands and cases · raid, spam and phishing protection · automod · detailed logs · ✅ verification gate |
+| ⚙️ | [**Server Setup**](#️-server-setup) | Welcome messages · self, auto, voice and reaction roles · join-to-create voice · tickets · stat channels · streaming · starboard · sticky messages · poll archive · topics · birthdays · timezones · free games |
+| 💰 | [**Economy & Leveling**](#-economy--leveling) | MEE6-style XP and rank cards · coins and drought bonuses · 10 casino games · progressive jackpot · daily lottery · shop · reputation |
+| 🎮 | [**Games & Fun**](#-games--fun) | Counting · movie, TV, video game and song guessing · giveaways · trivia, GIFs and more |
+| 🧰 | [**Utility**](#-utility) | User and server info · reminders · tags · translate · custom commands |
+| 🖼️ | [**Image Editing**](#️-image-editing) | 57 effects powered by native C++ (libvips) |
+| 🎵 | [**Music**](#-music-separate-bot) | A separate Lavalink-powered music bot with a live control panel |
+| 🌐 | [**Web Dashboard**](#-web-dashboard) | Manage settings in your browser instead of slash commands |
 
----
-
-## ✨ Highlights
-
-- 🛡️ **Layered protection:** spam detection, raid alerts, antiphishing, automod, and detailed logs
-- 💰 **Full economy:** daily rewards, a shop, 10 casino games, a progressive jackpot, and a daily lottery
-- 📈 **MEE6-style leveling** with rank cards and level roles
-- 🎬 **Guessing games** for movies, TV shows, video games, and songs
-- 🖼️ **57 image effects** powered by native C++ (libvips)
-- 🌐 **Web dashboard** for managing settings without slash commands
-- 🧩 Most features were ported from [YAGPDB](https://yagpdb.xyz) and rewritten in TypeScript
+> [!NOTE]
+> Many server settings live under one **`/config`** command (for example `/config automod add` or `/config logs channel`), which keeps the bot under Discord's 100-command limit. `/config` requires **Manage Server**.
 
 ---
 
 ## 🚀 Quick Start
 
-### Requirements
+**You'll need**
 
-- [Bun](https://bun.sh) runtime
-- A Discord application and bot token ([Developer Portal](https://discord.com/developers/applications))
-- These **privileged intents** enabled under **Developer Portal → Bot**:
-  - Server Members Intent
-  - Presence Intent
+- [Bun](https://bun.sh)
+- A Discord application and bot token from the [Developer Portal](https://discord.com/developers/applications)
+- Both **privileged intents** turned on under **Developer Portal → Bot**: *Server Members Intent* and *Presence Intent*
 
-### 1. Configure
-
-Create a `.env` file in the project root:
+**1. Configure.** Create a `.env` file in the project root:
 
 ```env
 # ── Required ─────────────────────────────────────────────
@@ -82,7 +68,7 @@ RANGE_API_TOKEN=                # Lets ctiservers.org's Range spend coins (see T
 # Song guessing uses Deezer's public API, so it needs no key.
 ```
 
-### 2. Run
+**2. Run.**
 
 ```bash
 bun install
@@ -90,13 +76,10 @@ bun run dev                 # Development: guild commands, hot reload
 bun run start:production    # Production: global commands
 ```
 
-On the very first run, add `CREATE_DB=1` to create the database. See [Database](#️-database) for why.
+> [!IMPORTANT]
+> On the very first run, add `CREATE_DB=1` to create the database. See [Database](#️-database) for why.
 
-> [!TIP]
-> Slash commands are re-registered automatically every time the bot starts. Development mode registers them to `GUILD_ID` only, and production mode registers them globally.
-
-> [!NOTE]
-> Many server settings are grouped under one **`/config`** command (for example `/config automod add` or `/config logs channel`). This keeps the bot under Discord's 100-command limit. `/config` requires **Manage Server**.
+Slash commands re-register every time the bot starts: to `GUILD_ID` only in development, and globally in production.
 
 ---
 
@@ -104,10 +87,10 @@ On the very first run, add `CREATE_DB=1` to create the database. See [Database](
 
 ### 🔨 Moderation
 
-Each action is its own command. Members who lack the matching permission don't see that command.
+Each action is its own command, and members without the matching permission don't see it.
 
 <details>
-<summary><b>Commands</b></summary>
+<summary><b>📋 Commands</b></summary>
 
 | Command | Description |
 |---|---|
@@ -132,18 +115,23 @@ Each action is its own command. Members who lack the matching permission don't s
 
 ### 🚨 Raid Detection
 
-The bot watches for raids automatically. If **5 or more accounts under 3 days old** join within 60 seconds, it posts a **🚨 Possible Raid Detected** alert to your modlog (or member-log) channel.
+Always on. If **5 or more accounts under 3 days old** join within 60 seconds, the bot posts a **🚨 Possible Raid Detected** alert to your modlog (or member-log) channel.
 
-- The alert lists every account involved, with clickable mentions and account ages, so you can go straight to `/ban`.
+- The alert lists every account with a clickable mention and its age, so you can go straight to `/ban`.
 - Alerts are throttled to one every 5 minutes per server, so an ongoing raid doesn't flood the channel.
+
+<details>
+<summary><b>📋 Commands</b></summary>
 
 | Command | Description |
 |---|---|
 | `/raidguard recent [minutes] [max_age_days]` | List recently joined accounts, newest first. Reads live member data, so it works right after a restart. Defaults to the last 5 minutes with no age filter. |
 
+</details>
+
 ### 🧹 Spam Detection
 
-Always on, with no setup needed. An offender gets a **24-hour timeout**, and their messages from the last hour are purged from every channel. These trigger it:
+Always on, with no setup. Offenders get a **24-hour timeout**, and their messages from the last hour are purged from every channel.
 
 | Trigger | What it catches |
 |---|---|
@@ -153,23 +141,23 @@ Always on, with no setup needed. An offender gets a **24-hour timeout**, and the
 | **Cross-channel messages/links** | The same message, *or the same link*, posted in 3+ channels within 45 seconds |
 | **Command spam** | 6+ slash commands in 8 seconds |
 
-> [!IMPORTANT]
-> Members with **Manage Messages** skip the rate, duplicate, and image checks, but **not** the cross-channel message/link check. Nothing legitimate posts identical content across several channels, so this check also catches compromised staff accounts.
-
 Every trigger posts a full report (the reason, the action taken, and every purged message) to your member/message log channels and the modlog.
+
+> [!IMPORTANT]
+> Members with **Manage Messages** skip the rate, duplicate, and image checks, but **not** the cross-channel message/link check. Nothing legitimate posts identical content across several channels, so it also catches compromised staff accounts.
 
 ### 🎣 AntiPhishing
 
-Enabled by default, with no setup required. Members with **Manage Messages** can still post links freely. It has three layers:
+On by default. Members with **Manage Messages** can still post links freely. It works in three layers:
 
-1. **Known phishing domains:** the bot deletes links found in the [sinking.yachts](https://phish.sinking.yachts) blocklist, which it refreshes every 30 minutes.
-2. **Lookalike domains:** the bot flags domains within 2 characters of `discord.com`, `discordapp.com`, `steamcommunity.com`, `steampowered.com`, or `epicgames.com` (for example `discocd.gift`). This catches new scam links before they reach the blocklist.
-3. **Invite links:** the bot removes `discord.gg/*` and `discord.com/invite/*` links, the most common raid-spam payload.
+1. **Known phishing domains** from the [sinking.yachts](https://phish.sinking.yachts) blocklist, refreshed every 30 minutes.
+2. **Lookalike domains** within 2 characters of `discord.com`, `discordapp.com`, `steamcommunity.com`, `steampowered.com`, or `epicgames.com` (like `discocd.gift`), which catches new scams before they reach the blocklist.
+3. **Invite links** (`discord.gg/*` and `discord.com/invite/*`), the most common raid-spam payload.
 
-Each removal posts an alert to the modlog showing the domain or invite code, the user, and the channel.
+Each removal posts an alert to the modlog with the domain or invite code, the user, and the channel.
 
 <details>
-<summary><b>Commands</b></summary>
+<summary><b>📋 Commands</b></summary>
 
 | Command | Description |
 |---|---|
@@ -182,10 +170,13 @@ Each removal posts an alert to the modlog showing the domain or invite code, the
 
 ### 🤖 AutoMod
 
-Custom rules with these triggers: `spam`, `caps`, `links`, `words`, `mentions`, `regex`. Each rule takes one of these actions: `delete`, `warn`, `timeout`, `kick`, `ban`.
+Custom rules, each with a trigger and an action.
+
+- **Triggers:** `spam` · `caps` · `links` · `words` · `mentions` · `regex`
+- **Actions:** `delete` · `warn` · `timeout` · `kick` · `ban`
 
 <details>
-<summary><b>Commands</b></summary>
+<summary><b>📋 Commands</b></summary>
 
 | Command | Description |
 |---|---|
@@ -198,25 +189,16 @@ Custom rules with these triggers: `spam`, `caps`, `links`, `words`, `mentions`, 
 
 ### 📜 Logging
 
-The bot can log these events:
+Logs member joins and leaves, message edits and deletes, bans and unbans, nickname and role changes, and *optionally* every slash command used (who ran it, the options, and the channel).
 
-- Member joins and leaves
-- Message edits and deletes
-- Bans and unbans
-- Nickname and role changes
-- *Optionally,* every slash command used, with who ran it, the options, and the channel
-
-The logs add useful detail:
-
-- **Deletes** show *who* deleted the message and *why*, taken from the audit log. If there's no audit-log entry, the author deleted it themselves.
-- **Bulk deletes** from `/purge` or a spam purge get their own log entry. Messages older than 14 days that `/purge` or the poll archive delete one at a time aren't logged individually.
-- **Leaves** show how long the member had been in the server and the roles they held.
+- **Deletes** show *who* deleted the message and *why*, from the audit log. No audit-log entry means the author deleted it themselves.
+- **Bulk deletes** from `/purge` or a spam purge get their own entry. Messages older than 14 days that `/purge` or the poll archive delete one at a time aren't logged individually.
+- **Leaves** show how long the member was in the server and the roles they held.
 - **Kicks** show as **Member Kicked**, with who kicked them and the reason.
-
-Each category (member, message, voice, server, command) can have its own channel, set in the [Web Dashboard](#-web-dashboard). `/config logs channel` sets the fallback channel.
+- Each category (member, message, voice, server, command) can have its own channel, set in the [Web Dashboard](#-web-dashboard). `/config logs channel` sets the fallback.
 
 <details>
-<summary><b>Commands</b></summary>
+<summary><b>📋 Commands</b></summary>
 
 | Command | Description |
 |---|---|
@@ -230,36 +212,30 @@ Each category (member, message, voice, server, command) can have its own channel
 
 ### ✅ Verification Gate
 
-Members get a role either by clicking a **Verify** button or by reacting ✅ on your rules post. Verifying can also remove an "unverified" role.
+New members verify by reacting ✅ on your rules post, or by clicking a **Verify** button. Verifying gives them the member role (and can remove an "unverified" role). Removing the ✅ takes it away again.
 
-The gate can also **lock the server**: every public channel is hidden from `@everyone` and shown only to the member role, so new members see just the rules channel until they verify. In the rules channel everyone can read but not chat or add new emojis. Channels already hidden from `@everyone` (staff/private) are never opened up, and channels created later are locked automatically.
+**Server lock.** The gate can also hide every public channel from `@everyone` and show it only to the member role, so new members see just the rules channel until they verify. In the rules channel, everyone can read but can't chat or add new emojis.
+
+- **Existing members are grandfathered in.** The first lock gives everyone already in the server the member role, so nobody loses access. Pick `existing_members: Must re-verify` to take it from anyone who hasn't reacted ✅ instead. Re-running a lock never grandfathers again.
+- **Staff are never locked out.** Anyone with a role above the bot's highest role bypasses the lock, staff/private channels are left exactly as they are, and every bot gets the member role.
+- **New channels are locked automatically.** Channels in Server Onboarding stay public, because Discord requires it.
+
+<details>
+<summary><b>📋 Commands</b></summary>
 
 | Command | Description |
 |---|---|
-| `/verify rules <channel> <member_role> [message_id] [unverified_role] [lock] [existing_members]` | Members react ✅ on the rules post (yours, or one the bot posts) to get the role; removing the reaction takes it away. Locks the server unless `lock:false`. |
-| `/verify setup <channel> <member_role> [unverified_role] [title] [description]` | Post the verify button instead. |
+| `/verify rules <channel> <member_role> [message_id] [unverified_role] [lock] [existing_members]` | Members react ✅ on the rules post (yours, or one the bot posts) to get the role. Locks the server unless `lock:false`. |
+| `/verify setup <channel> <member_role> [unverified_role] [title] [description]` | Post a verify button instead. |
 | `/verify lock [existing_members]` | Hide all public channels until members verify. |
 | `/verify unlock` | Restore every channel the lock changed. |
-| `/verify remove` | Turn verification off: unlocks channels and clears the ✅ reactions from the rules post. Members keep their role. |
+| `/verify remove` | Turn verification off: unlocks channels and clears the ✅ reactions. Members keep their role. |
 | `/verify config` | Show the current verify settings. |
 
-The bot's role must be above the member role. **Existing members are grandfathered in:** the first lock gives everyone already in the server the member role, so nobody loses access. Pick `existing_members: Must re-verify` instead to take the member role from anyone who hasn't reacted ✅ (bots and roles above the bot are never touched). Re-running a lock doesn't grandfather again. Anyone with a role **above the bot's highest role** bypasses the lock entirely. If you move roles above or below the bot later, run `/verify lock` again to update it. Channels in Server Onboarding stay public, because Discord requires it. Locking also gives the member role to every bot in the server (and to bots added later) so they don't lose access to channels.
+</details>
 
-### 🔊 Join-to-Create Voice
-
-Joining the hub voice channel creates a voice channel named after the member and moves them into it. The owner can rename it, set a user limit or bitrate, and disconnect people, and picks who can join with the commands below. Owners can't edit the channel's permissions directly, so they can never lock out admins or mods: staff (Administrator, Manage Server/Channels, Moderate/Kick/Ban/Move Members, or a role above the bot) can always join. Channels are deleted as soon as everyone leaves. Each member gets one channel at a time; joining the hub again takes them back to theirs.
-
-| Command | Description |
-|---|---|
-| `/tempvoice setup [channel] [category] [name]` | Set the hub (leave `channel` empty and the bot makes a "➕ Join to Create" channel). New channels go in `category`, or the hub's category. `name` defaults to `{user}`. Needs Manage Server. |
-| `/tempvoice disable` | Stop creating channels. Existing ones are deleted as they empty. |
-| `/tempvoice lock` | Only staff and people you permit can join your channel. People already in it stay. |
-| `/tempvoice unlock` | Let anyone join again. |
-| `/tempvoice permit <user>` | Let someone join, even while locked. |
-| `/tempvoice reject <user>` | Block someone and disconnect them (not staff). |
-| `/tempvoice claim` | Take over the channel you're in when its owner has left. |
-
-The bot needs **Manage Channels**, **Manage Roles** and **Move Members**, and can only give owners permissions it has itself.
+> [!IMPORTANT]
+> The bot's role must be **above** the member role. If you move roles above or below the bot later, run `/verify lock` again to update the lock.
 
 ---
 
@@ -267,10 +243,10 @@ The bot needs **Manage Channels**, **Manage Roles** and **Move Members**, and ca
 
 ### 👋 Welcome Messages
 
-Greets new members in a channel, and can also DM them. Templates support `{user}`, `{username}`, `{server}`, `{membercount}`, and `{#membercount}`.
+Greets new members in a channel, and can DM them too. Templates support `{user}`, `{username}`, `{server}`, `{membercount}`, and `{#membercount}`.
 
 <details>
-<summary><b>Commands</b></summary>
+<summary><b>📋 Commands</b></summary>
 
 | Command | Description |
 |---|---|
@@ -285,10 +261,18 @@ Greets new members in a channel, and can also DM them. Templates support `{user}
 
 ### 🎭 Roles
 
-Supports self-assign roles, autoroles, voice-channel roles, reaction roles, and bulk role edits. Admin commands need **Manage Roles**.
+| Type | How members get it |
+|---|---|
+| **Self-assign** | `/roles self <name>` toggles it on themselves |
+| **Autorole** | Automatically on join, with an optional delay |
+| **Voice role** | While they're in a specific voice channel |
+| **Reaction role** | Reacting with an emoji on a message (removing the reaction takes it away) |
+| **Bulk** | Staff add or remove a role for many members at once |
+
+Admin commands need **Manage Roles**, and the bot can only give roles **below its own highest role**. `/rolesconfig reaction list` flags any reaction role it can't give.
 
 <details>
-<summary><b>Commands</b></summary>
+<summary><b>📋 Commands</b></summary>
 
 | Command | Description |
 |---|---|
@@ -303,45 +287,48 @@ Supports self-assign roles, autoroles, voice-channel roles, reaction roles, and 
 | `/rolesconfig voice add <channel> <role>` | Give a role while a member is in a voice channel. |
 | `/rolesconfig voice remove <id>` | Remove a voice role binding. |
 | `/rolesconfig voice list` | List voice role bindings. |
-| `/rolesconfig reaction add <message_link> <emoji> <role>` | Link a reaction on a message to a role. Members get the role by reacting and lose it by removing their reaction. |
+| `/rolesconfig reaction add <message_link> <emoji> <role>` | Link a reaction on a message to a role. |
 | `/rolesconfig reaction remove <id>` | Remove a reaction role. |
 | `/rolesconfig reaction clear <message_link>` | Remove every reaction role from a message. |
 | `/rolesconfig reaction list` | List reaction roles. |
 
 </details>
 
-### 📊 Server Stats
+### 🔊 Join-to-Create Voice
 
-Shows server activity and runs voice channels whose names update with live counts, such as **Members: 1,234**.
+Joining the hub channel (like **➕ Join to Create**) creates a voice channel named after that member and moves them into it.
 
-**Stat channel types:** `members`, `humans`, `bots`, `boosters`, `channels`, `roles`, `text`
-
-Use `text` for a locked channel that just shows your label, with no count. For example, `/config serverstats add type:text label:🌐 ctiservers.org` shows your website.
+- **Owners** can rename it, set a user limit or bitrate, and disconnect people. They choose who can join with `lock`, `unlock`, `permit` and `reject`.
+- **Staff can always join.** Owners can't edit the channel's permissions, so they can never shut out admins or mods (Administrator, Manage Server/Channels, Moderate/Kick/Ban/Move Members, or a role above the bot).
+- **One channel per member.** Joining the hub again takes them back to theirs.
+- **Empty channels are deleted** as soon as the last person leaves. If the owner leaves first, anyone still inside can `claim` it.
 
 <details>
-<summary><b>Commands</b></summary>
+<summary><b>📋 Commands</b></summary>
 
 | Command | Description |
 |---|---|
-| `/config serverstats view [hours]` | Show messages, joins, leaves, and member count for the last N hours (default 24, max 168). |
-| `/config serverstats add <type> [label]` | Create a live stat channel. |
-| `/config serverstats remove <id>` | Delete a stat channel. |
-| `/config serverstats list` | List stat channels. |
+| `/tempvoice setup [channel] [category] [name]` | *(Manage Server)* Set the hub. Leave `channel` empty and the bot makes one. New channels go in `category`, or the hub's category. `name` defaults to `{user}`. |
+| `/tempvoice disable` | *(Manage Server)* Stop creating channels. Existing ones are deleted as they empty. |
+| `/tempvoice lock` | Only staff and people you permit can join your channel. People already in it stay. |
+| `/tempvoice unlock` | Let anyone join again. |
+| `/tempvoice permit <user>` | Let someone join, even while locked. |
+| `/tempvoice reject <user>` | Block someone and disconnect them (not staff). |
+| `/tempvoice claim` | Take over the channel you're in when its owner has left. |
 
 </details>
 
+> [!NOTE]
+> The bot needs **Manage Channels**, **Manage Roles** and **Move Members**, and can only give owners permissions it has itself.
+
 ### 🎫 Tickets
 
-Members open private support channels with a button or command. Staff can manage the ticket and collect ratings.
+Members open private support channels with a button or a command. Staff manage the ticket and collect ratings.
 
-**Monthly maintenance** runs on the 1st of each month for servers with a log channel:
-
-- Tickets with no activity for 14+ days are closed automatically.
-- A test ticket is opened and closed to confirm the system still works.
-- A report is posted with tickets opened and closed, stale closures, the average rating, and the test result.
+**Monthly maintenance** runs on the 1st for servers with a log channel: tickets idle for 14+ days are closed, a test ticket is opened and closed to confirm everything works, and a report is posted (tickets opened and closed, stale closures, average rating, and the test result).
 
 <details>
-<summary><b>Commands</b></summary>
+<summary><b>📋 Commands</b></summary>
 
 | Command | Description |
 |---|---|
@@ -358,24 +345,40 @@ Members open private support channels with a button or command. Staff can manage
 
 </details>
 
+### 📊 Server Stats
+
+Shows server activity, and runs voice channels whose names update with live counts, like **Members: 1,234**.
+
+- **Stat types:** `members` · `humans` · `bots` · `boosters` · `channels` · `roles` · `text`
+- `text` is a locked channel that just shows your label. For example, `/config serverstats add type:text label:🌐 ctiservers.org` shows your website.
+
+<details>
+<summary><b>📋 Commands</b></summary>
+
+| Command | Description |
+|---|---|
+| `/config serverstats view [hours]` | Show messages, joins, leaves, and member count for the last N hours (default 24, max 168). |
+| `/config serverstats add <type> [label]` | Create a live stat channel. |
+| `/config serverstats remove <id>` | Delete a stat channel. |
+| `/config serverstats list` | List stat channels. |
+
+</details>
+
 ### 📺 Streaming
 
-**Stream announcements:** when a member goes live (detected through their Discord presence), the bot posts a message and can give them a role while they stream. This needs the **Presence Intent**.
+**Stream announcements.** When a member goes live (detected through their Discord presence), the bot posts a message and can give them a role while they stream. Needs the **Presence Intent**.
+
+**Stream VC.** A locked voice channel that members ask to join. Members with the required role send a request, an approver presses **Review** to approve or reject it privately, and approving gives that member access.
+
+<details>
+<summary><b>📋 Commands</b></summary>
 
 | Command | Description |
 |---|---|
 | `/config streaming set` | Set the channel, the "streaming" role, and the message (`{username}`, `{game}`, `{url}`). |
 | `/config streaming view` | View streaming settings. |
-
-**Stream VC (request to join):** a locked voice channel that members ask to join. Setting the channel locks it automatically. Members with the required role send a request, and an approver presses **Review** to approve or reject it privately. Approving gives that member access.
-
-<details>
-<summary><b>Commands</b></summary>
-
-| Command | Description |
-|---|---|
 | `/streamvc request [reason]` | Ask to join (needs the configured role). |
-| `/streamvc config set [vc] [request_channel] [required_role]` | Set the locked VC, the request channel, and the required role. |
+| `/streamvc config set [vc] [request_channel] [required_role]` | Set the VC (it's locked automatically), the request channel, and the required role. |
 | `/streamvc config panel [channel]` | Post a **Request to Join** button panel. |
 | `/streamvc config add-approver <user/role>` | Add an approver. |
 | `/streamvc config remove-approver <user/role>` | Remove an approver. |
@@ -384,14 +387,14 @@ Members open private support channels with a button or command. Staff can manage
 </details>
 
 > [!NOTE]
-> The bot needs **Manage Roles/Channels** on the VC. Keep the request channel visible only to approvers. Anyone with **Manage Channels** can always approve requests.
+> The bot needs **Manage Roles/Channels** on the stream VC. Keep the request channel visible only to approvers. Anyone with **Manage Channels** can always approve requests.
 
 ### ⭐ Starboard
 
 Messages that get enough of a chosen reaction are reposted to a starboard channel, and the count updates live.
 
 <details>
-<summary><b>Commands</b></summary>
+<summary><b>📋 Commands</b></summary>
 
 | Command | Description |
 |---|---|
@@ -405,11 +408,14 @@ Messages that get enough of a chosen reaction are reposted to a starboard channe
 
 ### 📌 Sticky Messages
 
-Keeps a message at the bottom of a channel by re-posting it as people chat. It's handy for rules or "read this first" notices.
+Keeps a message at the bottom of a channel by re-posting it as people chat. Handy for rules or "read this first" notices.
 
 - Re-posts happen at most once every 30 seconds per channel, so a burst of chat costs one re-post.
-- The **jackpot sticky** (`/jackpot sticky:True`) shows the live jackpot amount. It also edits itself in place every 10 minutes, so quiet channels aren't bumped as unread.
-- Using sticky commands needs **Manage Messages**. The bot needs **Send Messages** and **Manage Messages** in the channel.
+- The **jackpot sticky** (`/jackpot sticky:True`) shows the live jackpot and edits itself in place every 10 minutes, so quiet channels aren't bumped as unread.
+- Sticky commands need **Manage Messages**. The bot needs **Send Messages** and **Manage Messages** in the channel.
+
+<details>
+<summary><b>📋 Commands</b></summary>
 
 | Command | Description |
 |---|---|
@@ -417,18 +423,20 @@ Keeps a message at the bottom of a channel by re-posting it as people chat. It's
 | `/sticky remove [channel]` | Remove the sticky and clean up its last copy. |
 | `/sticky list` | List every sticky in the server. |
 
+</details>
+
 ### 🗳️ Poll Archive
 
-Keeps a poll channel clean. When a **Discord poll** (the built-in Poll button) ends in a poll channel, Jade:
+Keeps a poll channel clean. When a **Discord poll** (the built-in Poll button) ends, Jade:
 
-1. Posts a **results card** to the archive channel, with each answer's votes and percentage, the winner 🏆, who asked, and when it ran.
-2. Attaches a **`.txt` log** with who voted for what and every message posted in the poll channel while the poll was running.
-3. Deletes the poll, Discord's "poll ended" notice, and that discussion from the poll channel. Pinned messages and other polls that are still running are left alone.
+1. Posts a **results card** to the archive channel: each answer's votes and percentage, the winner 🏆, who asked, and when it ran.
+2. Attaches a **`.txt` log** of who voted for what, plus every message posted while the poll was running.
+3. Deletes the poll, Discord's "poll ended" notice, and that discussion. Pinned messages and polls still running are left alone.
 
-**Polls that already ended** are archived too. Setting up a channel searches its full history and archives every finished poll, oldest first, with the same results card, log, and cleanup. Polls that end while the bot is offline are picked up within 10 minutes of it coming back. Jade needs **Manage Messages** and **Read Message History** in the poll channel, and **Send Messages**, **Embed Links**, and **Attach Files** in the archive channel. `/config pollarchive view` flags any that are missing.
+**Older polls count too.** Setting up a channel archives every poll that already ended, oldest first, and polls that end while the bot is offline are picked up within 10 minutes of it coming back.
 
 <details>
-<summary><b>Commands</b></summary>
+<summary><b>📋 Commands</b></summary>
 
 | Command | Description |
 |---|---|
@@ -439,12 +447,15 @@ Keeps a poll channel clean. When a **Discord poll** (the built-in Poll button) e
 
 </details>
 
+> [!NOTE]
+> Jade needs **Manage Messages** and **Read Message History** in the poll channel, and **Send Messages**, **Embed Links** and **Attach Files** in the archive channel. `/config pollarchive view` flags anything missing.
+
 ### 💬 Topic Rotation
 
 Posts discussion prompts to a channel on a schedule, in order or at random.
 
 <details>
-<summary><b>Commands</b></summary>
+<summary><b>📋 Commands</b></summary>
 
 | Command | Description |
 |---|---|
@@ -462,7 +473,7 @@ Posts discussion prompts to a channel on a schedule, in order or at random.
 Members set their birthday once, and the bot announces it on the day.
 
 <details>
-<summary><b>Commands</b></summary>
+<summary><b>📋 Commands</b></summary>
 
 | Command | Description |
 |---|---|
@@ -481,6 +492,9 @@ Members set their birthday once, and the bot announces it on the day.
 
 Members register an IANA timezone so others can see their local time.
 
+<details>
+<summary><b>📋 Commands</b></summary>
+
 | Command | Description |
 |---|---|
 | `/config timezone set <timezone>` | Set your timezone (for example `America/New_York`). |
@@ -488,12 +502,14 @@ Members register an IANA timezone so others can see their local time.
 | `/config timezone list` | List everyone's timezones. |
 | `/config timezone remove` | Remove your timezone. |
 
+</details>
+
 ### 🎁 Free Game Tracker
 
-Checks **Epic Games Store**, **Steam**, and **GOG** every hour for free games. It posts each one with a claim button, the original price, and how long the offer lasts, and never posts the same game twice in a server.
+Checks **Epic Games Store**, **Steam**, and **GOG** every hour. Each free game is posted with a claim button, the original price, and how long the offer lasts, and the same game is never posted twice in a server.
 
 <details>
-<summary><b>Commands</b></summary>
+<summary><b>📋 Commands</b></summary>
 
 | Command | Description |
 |---|---|
@@ -514,12 +530,10 @@ Checks **Epic Games Store**, **Steam**, and **GOG** every hour for free games. I
 
 ### 📈 Leveling
 
-Members earn **15–25 XP per message**, with a 60-second cooldown per user. Each level-up is announced and pays **level × 50 coins**.
-
-- **XP needed per level:** `5n² + 50n + 100` (the same formula as MEE6)
+Members earn **15–25 XP per message** (60-second cooldown each), and every level-up is announced and pays **level × 50 coins**. XP needed per level is `5n² + 50n + 100`, the same formula as MEE6.
 
 <details>
-<summary><b>Commands</b></summary>
+<summary><b>📋 Commands</b></summary>
 
 | Command | Description |
 |---|---|
@@ -547,17 +561,18 @@ Each server has its own currency.
 
 | Command | Cooldown | Notes |
 |---|---|---|
-| `/daily` | 20 hours | Has a drought bonus 🔥 |
+| `/daily` | 20 hours | 🔥 Drought bonus |
 | `/weekly` | 7 days | |
 | `/monthly` | 30 days | |
 | `/yearly` | 365 days | |
-| `/work` | 1 hour | Has a drought bonus 🔥 |
-| `/beg` | 15 minutes | Pays 10–100 coins and has a drought bonus 🔥 |
-| `/balance [user]` | | Shows the current balance and total earned |
-| `/pay <user> <amount>` | | Sends coins to another member |
-| `/economy leaderboard [limit]` | | Lists the richest members |
+| `/work` | 1 hour | 🔥 Drought bonus |
+| `/beg` | 15 minutes | Pays 10–100 coins · 🔥 Drought bonus |
+| `/balance [user]` | | Current balance and total earned |
+| `/pay <user> <amount>` | | Send coins to another member |
+| `/economy leaderboard [limit]` | | The richest members |
 
-#### 🔥 Drought Bonus
+<details>
+<summary><b>🔥 Drought Bonus</b></summary>
 
 `/work`, `/daily`, and `/beg` track when **anyone in the server** last used them. The longer a command goes unused, the bigger the next payout:
 
@@ -567,31 +582,28 @@ Each server has its own currency.
 | `/daily` | 4 days | 24 hours |
 | `/beg` | 3 hours | 6 hours |
 
-- The bonus is capped at **1,000,000 coins**, and claiming resets the timer.
-- Boosted claims are labeled in the response: 🔥 small bonus, 💰 drought bonus, 🎰 jackpot.
+The bonus caps at **1,000,000 coins**, and claiming resets the timer. Boosted claims are labeled: 🔥 small bonus, 💰 drought bonus, 🎰 jackpot.
 
-#### 🎟️ Daily Lottery
+</details>
 
-Once a day, a random member wins **50,000 coins**. Anyone with at least 1 XP is entered, and 🎟️ **Loaded Dice** doubles your chance. The previous winner's message is deleted when the new one is posted. Turn it on with `/economyconfig lottery <channel>`.
+**🎟️ Daily Lottery.** Once a day, a random member wins **50,000 coins**. Anyone with at least 1 XP is entered, and 🎟️ **Loaded Dice** doubles your chance. The previous winner's message is deleted when the new one is posted. Turn it on with `/economyconfig lottery <channel>`.
 
 ### 🎰 Casino
 
 | Game | How it works |
 |---|---|
-| `/flip <bet>` | A coin flip that pays 2× (50/50 odds). Lucky Charm boosts wins to 1.5×. |
+| `/flip <bet>` | A coin flip that pays 2× (50/50). Lucky Charm boosts wins to 1.5×. |
 | `/highroll <bet>` | Roll 1–100 against the bot. The higher roll wins, and ties refund your bet. |
 | `/slots <bet>` | Pairs pay 🍒½× 🍋1× 🔔1.5× 💎2× 7️⃣3×. Triples pay 🍒4× 🍋7× 🔔12× 💎25× 7️⃣75×. About 60% of spins win. |
-| `/scratch <bet>` | Reveal 9 symbols and match 4 or more to win: 🍒1× 🍋2× 🍊3× 🍇6× ⭐12× 💎25×. |
-| `/roulette <bet> <type>` | Red/black, even/odd, or low/high pays 2×. A single number (1–36) pays 35×. There's no zero, so the odds are exactly fair. |
-| `/crash <bet>` | A multiplier swings up and down. Cash out above 1×, or lose your bet if it crashes. If you time out, you're cashed out automatically. |
+| `/scratch <bet>` | Reveal 9 symbols and match 4 or more: 🍒1× 🍋2× 🍊3× 🍇6× ⭐12× 💎25×. |
+| `/roulette <bet> <type>` | Red/black, even/odd, or low/high pays 2×. A single number (1–36) pays 35×. No zero, so the odds are exactly fair. |
+| `/crash <bet>` | A multiplier swings up and down. Cash out above 1×, or lose your bet if it crashes. Timing out cashes you out automatically. |
 | `/plinko <bet>` | An animated drop down a 10-row board into 11 buckets. The edges pay 48×, and about 1 drop in 9 pays 3× or more. Exactly fair (RTP 1.000). |
 | `/blackjack <bet>` | Hit, stand, or double down. Blackjack pays 1.5×. |
 | `/poker <bet>` | Jacks or Better video poker. A royal flush pays 250×. |
 | `/games leaderboard <game>` | Top players for any casino or guessing game. |
 
-#### 💎 Progressive Jackpot
-
-Every casino game feeds one shared pot with **5% of every loss**. Any bet can hit it, and bigger bets have better odds. When someone hits it, the whole pot pays out and it starts again from a base amount. All of the pot goes back to players. Because 5% of each loss goes into the pot, each game's own RTP is slightly under 1.000.
+**💎 Progressive Jackpot.** Every casino game feeds one shared pot with **5% of every loss**. Any bet can hit it (bigger bets have better odds); the whole pot pays out and restarts from a base amount. All of it goes back to players, which is why each game's own RTP is slightly under 1.000.
 
 | Command | Description |
 |---|---|
@@ -607,7 +619,7 @@ Every casino game feeds one shared pot with **5% of every loss**. Any bet can hi
 
 ### 🛒 Shop
 
-Use `/shop browse` to view items, and `/shop buy <item> [cooldown]` to buy one. The `cooldown` option is only for Time Skip.
+Browse with `/shop browse` and buy with `/shop buy <item> [cooldown]` (the `cooldown` option is only for Time Skip). One-shot items stay usable for 7 days after you buy them.
 
 | Item | Effect | Price |
 |---|---|---:|
@@ -624,12 +636,10 @@ Use `/shop browse` to view items, and `/shop buy <item> [cooldown]` to buy one. 
 | ⏩ **Time Skip** | *Instant:* resets your `/daily`, `/work`, or `/beg` cooldown | 35,000 |
 | 📦 **Mystery Box** | *Instant:* 60% chance of 2k–8k coins, 25% a random boost, 10% nothing, 5% a 50k jackpot | 10,000 |
 
-One-shot items stay usable for 7 days after you buy them.
-
 ### 🔧 Economy Admin
 
 <details>
-<summary><b>Commands</b> (Manage Server required)</summary>
+<summary><b>📋 Commands</b> (Manage Server)</summary>
 
 | Command | Description |
 |---|---|
@@ -661,19 +671,15 @@ One-shot items stay usable for 7 days after you buy them.
 
 ### 🔢 Counting
 
-A counting game: members count up one number at a time in a channel.
+Members count up one number at a time in a channel. Set it up with `/config counting`.
 
-- Tracks high scores.
-- Sets the count back by a random amount after a wrong number.
-- Catches edited and deleted numbers.
-- Answers questions like *"what is the count"*.
-- 💖 **Extra Life** forgives a mistake.
-
-Set it up with `/config counting`.
+- Tracks high scores, and answers questions like *"what is the count"*.
+- A wrong number sets the count back by a random amount. Edited and deleted numbers are caught.
+- 💖 **Extra Life** from the shop forgives a mistake.
 
 ### 🎬 Guessing Games
 
-There are four guessing games, each in its own channel: 🎬 **Movie**, 📺 **TV Show**, 🎮 **Video Game**, and 🎵 **Song**. Each round has **💡 Hint** and **⏭️ Vote Skip** buttons.
+Four games, each in its own channel: 🎬 **Movie**, 📺 **TV Show**, 🎮 **Video Game** and 🎵 **Song**. Every round has **💡 Hint** and **⏭️ Vote Skip** buttons.
 
 | Game | Source | Notes |
 |---|---|---|
@@ -681,15 +687,14 @@ There are four guessing games, each in its own channel: 🎬 **Movie**, 📺 **T
 | 🎮 Video Game | [RAWG](https://rawg.io/apidocs) (`RAWG_API_KEY`) | Only games with a Metacritic score of 60+, so they're recognizable |
 | 🎵 Song | Deezer (no key needed) | Plays the first **5 seconds** as audio. The full 30-second preview is posted once someone guesses it. Picked from current charts across popular genres. |
 
-**Hints** are shared by the whole channel and posted publicly, with a 60-second cooldown between them. Using a hint never lowers the XP reward.
-
-- **Movie, TV, and game:** an info card, then the masked title, an anagram, another screenshot, and the description
-- **Song:** info (year, genre, duration), then the masked title, an anagram, a later 10-second clip, the artist, and the album art
-
-Titles don't repeat in a channel for 6 hours. On the **1st of each month**, each channel gets a top-10 leaderboard post and a fresh round starts. Win/loss stats are kept.
+- **Hints** are shared by the channel and posted publicly, 60 seconds apart, and never lower the XP reward.
+  - *Movie, TV and game:* an info card, then the masked title, an anagram, another screenshot, and the description
+  - *Song:* info (year, genre, duration), then the masked title, an anagram, a later 10-second clip, the artist, and the album art
+- Titles don't repeat in a channel for 6 hours, and win/loss stats are kept.
+- On the **1st of each month**, each channel gets a top-10 leaderboard post and a fresh round.
 
 <details>
-<summary><b>Commands</b></summary>
+<summary><b>📋 Commands</b></summary>
 
 | Command | Description |
 |---|---|
@@ -707,7 +712,7 @@ Titles don't repeat in a channel for 6 hours. On the **1st of each month**, each
 Members enter with a button, and winners are picked at random when the timer ends.
 
 <details>
-<summary><b>Commands</b></summary>
+<summary><b>📋 Commands</b></summary>
 
 | Command | Description |
 |---|---|
@@ -736,6 +741,9 @@ Members enter with a button, and winners are picked at random when the timer end
 
 ## 🧰 Utility
 
+<details open>
+<summary><b>📋 Commands</b></summary>
+
 | Command | Description |
 |---|---|
 | `/ping` | Check bot and API latency. |
@@ -753,21 +761,19 @@ Members enter with a button, and winners are picked at random when the timer end
 | `/base64 <encode\|decode> <text>` | Encode or decode base64. |
 | `/status set` / `clear` / `view` | Set the bot's status *(bot owner only)*. |
 
-**Custom commands** are managed in the [Web Dashboard](#-web-dashboard). Triggers can be `command`, `startswith`, `contains`, `exact`, or `regex`. Responses support `{user}`, `{username}`, `{server}`, `{channel}`, and `{membercount}`.
+</details>
 
-**Right-click menus:** right-click a message, then choose **Apps**:
-
-- **Make it a Quote:** turns the message into a black-and-white quote card.
-- **Select Image:** picks an image to use with the next `/image` command.
+- **Custom commands** are managed in the [Web Dashboard](#-web-dashboard). Triggers can be `command`, `startswith`, `contains`, `exact`, or `regex`, and responses support `{user}`, `{username}`, `{server}`, `{channel}`, and `{membercount}`.
+- **Right-click menus** (right-click a message, then **Apps**): **Make it a Quote** turns it into a black-and-white quote card, and **Select Image** picks an image for your next `/image` command.
 
 ---
 
 ## 🖼️ Image Editing
 
-There are **57 effects** ported from [esmBot](https://github.com/esmBot/esmBot), all under one **`/image`** command. Choose one with the `effect` option, for example `/image effect:deepfry`.
+**57 effects** ported from [esmBot](https://github.com/esmBot/esmBot), all under one **`/image`** command. Pick one with the `effect` option, for example `/image effect:deepfry`.
 
-- Attach an image or give a `url`. If you give neither, the bot uses the most recent image in the channel.
-- Some effects need more input through the `text`, `number`, `font`, or `choice` options. Autocomplete shows which.
+- Attach an image or give a `url`. With neither, the bot uses the most recent image in the channel.
+- Some effects take extra input through `text`, `number`, `font`, or `choice`. Autocomplete shows which.
 
 | Category | Effects |
 |---|---|
@@ -781,7 +787,7 @@ There are **57 effects** ported from [esmBot](https://github.com/esmBot/esmBot),
 | 🏳️ Overlays | `flag` (rainbow, trans, pirate, checkered) · `watermark` (9gag, bandicam, hypercam, ifunny, …) |
 
 <details>
-<summary><b>Building the native addon</b></summary>
+<summary><b>🔧 Building the native addon</b></summary>
 
 All pixel processing runs in esmBot's compiled C++ addon (libvips).
 
@@ -804,8 +810,7 @@ bun run build:native
 
 ## 🎵 Music (separate bot)
 
-> [!NOTE]
-> Music runs as its own process in [`music-bot/`](music-bot/), natively on Windows rather than in Docker, because Docker Desktop's virtual network makes Discord voice choppy. It runs **under Jade's account** and registers its commands in the main server only. Audio plays through a local [Lavalink](https://github.com/lavalink-devs/Lavalink) server, so the bot's own work can't interrupt it, following [BeatDock](https://github.com/albertgmz/BeatDock)'s approach. See [`music-bot/README.md`](music-bot/README.md) for setup.
+Music runs as its own process in [`music-bot/`](music-bot/), under **Jade's account**, and registers its commands in the main server only. See [`music-bot/README.md`](music-bot/README.md) for setup.
 
 - **Plays almost anything:** YouTube and YouTube Music, Spotify and Apple Music links (songs, albums, playlists, played from YouTube Music without API keys), Bandcamp, Twitch, Vimeo, radio streams, and search text
 - **Live control panel** with ⏮️ ⏯️ ⏭️ ⏹️ 🔁 🔀 📜 🎤 buttons, plus search-as-you-type on `/play`
@@ -813,7 +818,7 @@ bun run build:native
 - **Effects** (bass boost, nightcore, vaporwave, 8D, vocal remover), playback speed, **lyrics**, **SponsorBlock**, **24/7** and autoplay
 
 <details>
-<summary><b>Commands</b></summary>
+<summary><b>📋 Commands</b></summary>
 
 | Command | Description |
 |---|---|
@@ -828,6 +833,9 @@ bun run build:native
 Pause, previous and stop are also buttons on the Now Playing panel.
 
 </details>
+
+> [!NOTE]
+> It runs natively on Windows rather than in Docker, because Docker Desktop's virtual network makes Discord voice choppy. Audio plays through a local [Lavalink](https://github.com/lavalink-devs/Lavalink) server, so the bot's own work can't interrupt it, following [BeatDock](https://github.com/albertgmz/BeatDock)'s approach.
 
 ---
 
@@ -849,14 +857,14 @@ A dark-themed web panel in the style of YAGPDB for managing settings without sla
 
 ## 🎯 The Range Bridge (ctiservers.org)
 
-The minigames on [ctiservers.org](https://ctiservers.org)'s **Range** sell boosters and revives for economy coins. The leaderboard Worker charges players through two token-protected routes. They're served on `WEB_PORT`, and the dashboard doesn't need to be enabled.
+The minigames on [ctiservers.org](https://ctiservers.org)'s **Range** sell boosters and revives for economy coins. The leaderboard Worker charges players through two token-protected routes, served on `WEB_PORT` (the dashboard doesn't need to be enabled).
 
 | Call | Response |
 |---|---|
 | `GET /api/range/wallet/<discord user id>` | `{ "balance": 1234 }` |
 | `POST /api/range/spend` with `{ user, amount, ref, reason }` | `{ "ok": true, "balance": 834 }`, or **402** `{ "error": "insufficient_funds", "balance": 120 }` |
 
-- The website sets the prices, and the bot only deducts coins.
+- The website sets the prices; the bot only deducts coins.
 - Each `ref` is charged only once, so a retried request never charges twice.
 - Every spend is recorded in the `range_spends` table.
 
@@ -870,7 +878,7 @@ The minigames on [ctiservers.org](https://ctiservers.org)'s **Range** sell boost
 
 ## 🗄️ Database
 
-TMCBot uses a local **SQLite** file at `data/db.sqlite` (override it with `DB_PATH`). It doesn't need an external database, and tables are set up automatically on startup.
+TMCBot uses a local **SQLite** file at `data/db.sqlite` (override it with `DB_PATH`). No external database is needed, and tables are set up automatically on startup.
 
 > [!CAUTION]
 > The bot **refuses to start if the database file is missing**, because an empty database would look exactly like every user losing their levels and coins. On a genuine first run, start it once with `CREATE_DB=1`.
@@ -879,11 +887,11 @@ TMCBot uses a local **SQLite** file at `data/db.sqlite` (override it with `DB_PA
 
 ## 🚫 Not Included
 
-These YAGPDB features were left out on purpose:
+Most features were ported from [YAGPDB](https://yagpdb.xyz) and rewritten in TypeScript. These were left out on purpose:
 
 | Feature | Reason |
 |---|---|
-| Verification (reCAPTCHA) | Needs an external reCAPTCHA callback. TMCBot has a [button verification gate](#-verification-gate) instead. |
+| Verification (reCAPTCHA) | Needs an external reCAPTCHA callback. TMCBot has its own [verification gate](#-verification-gate) (✅ reaction or button) instead. |
 | Personalizer | Discord heavily rate-limits per-server avatar and name changes |
 | Premium system | Not relevant for a self-hosted bot |
 | Safe Browsing (Google) | Covered by [AntiPhishing](#-antiphishing) |
