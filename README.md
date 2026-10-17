@@ -245,6 +245,18 @@ The gate can also **lock the server**: every public channel is hidden from `@eve
 
 The bot's role must be above the member role. **Existing members are grandfathered in:** the first lock gives everyone already in the server the member role, so nobody loses access. Pick `existing_members: Must re-verify` instead to take the member role from anyone who hasn't reacted ✅ (bots and roles above the bot are never touched). Re-running a lock doesn't grandfather again. Anyone with a role **above the bot's highest role** bypasses the lock entirely. If you move roles above or below the bot later, run `/verify lock` again to update it. Channels in Server Onboarding stay public, because Discord requires it. Locking also gives the member role to every bot in the server (and to bots added later) so they don't lose access to channels.
 
+### 🔊 Join-to-Create Voice
+
+Joining the hub voice channel creates a voice channel named after the member and moves them into it. The owner gets full control of their channel: rename it, set a user limit, move/kick and mute people, and edit who can join. Channels are deleted as soon as everyone leaves. Each member gets one channel at a time; joining the hub again takes them back to theirs.
+
+| Command | Description |
+|---|---|
+| `/tempvoice setup [channel] [category] [name]` | Set the hub (leave `channel` empty and the bot makes a "➕ Join to Create" channel). New channels go in `category`, or the hub's category. `name` defaults to `{user}`. Needs Manage Server. |
+| `/tempvoice disable` | Stop creating channels. Existing ones are deleted as they empty. |
+| `/tempvoice claim` | Take over the channel you're in when its owner has left. |
+
+The bot needs **Manage Channels**, **Manage Roles** and **Move Members**, and can only give owners permissions it has itself.
+
 ---
 
 ## ⚙️ Server Setup

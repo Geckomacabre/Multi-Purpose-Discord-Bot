@@ -31,6 +31,7 @@ import { startLottery } from './lottery';
 import raidguardModule from './raidguard';
 import stickyModule, { startStickyRefresh } from './sticky';
 import pollArchiveModule, { startPollArchiveSweeper } from './pollarchive';
+import tempVoiceModule, { startTempVoice } from './tempvoice';
 
 const features = [
   countingModule,
@@ -57,6 +58,7 @@ const features = [
   raidguardModule,
   stickyModule,
   pollArchiveModule,
+  tempVoiceModule,
 ];
 
 export function registerFeatures(bot: Client) {
@@ -87,5 +89,6 @@ export function registerFeatures(bot: Client) {
     startStickyRefresh(bot);
     startPollArchiveSweeper(bot);
     startVerifyGate(bot).catch(err => console.error(`Verify gate startup failed: ${err}`));
+    startTempVoice(bot).catch(err => console.error(`Temp voice startup failed: ${err}`));
   });
 }

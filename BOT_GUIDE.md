@@ -368,6 +368,11 @@ Manage Messages holders skip the noisier rate/duplicate/image checks, but **not*
 - `/verify remove` — Turn verification off: unlocks channels and clears the ✅ reactions from the rules post (members keep their role)
 - `/verify config` — Show the current verify settings
 
+### Join-to-Create Voice
+- `/tempvoice setup [channel] [category] [name]` — Joining the hub voice channel creates a channel named after the member (`{user}` by default) with full control for them; it's deleted once empty. Leave `channel` empty to have the bot create the hub
+- `/tempvoice disable` — Stop creating channels
+- `/tempvoice claim` — Take over the voice channel you're in after its owner leaves
+
 ### Guessing Games
 - `/mediaguess setup type: channel:` — Set up a movie, TV show, video game, or song game in a channel (starts the first round immediately). Video game needs `RAWG_API_KEY` set; songs need no key at all.
 - `/mediaguess stop` — Stop the game in the current channel and remove its config

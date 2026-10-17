@@ -442,6 +442,20 @@ export type ITopic = {
   order_index: number;
 };
 
+export type ITempVoiceConfig = {
+  guild_id: string;
+  hub_channel_id: string;
+  category_id: string | null;
+  name_format: string;
+};
+
+export type ITempVoiceChannel = {
+  channel_id: string;
+  guild_id: string;
+  owner_id: string;
+  created_at: number;
+};
+
 export type IPollArchiveConfig = {
   source_channel_id: string;
   guild_id: string;
@@ -1057,6 +1071,22 @@ export async function initDb() {
     archive_channel_id TEXT NOT NULL
   )`;
 
+  // Join-to-create voice: joining hub_channel_id creates a voice channel owned by
+  // that member; temp_voice_channels tracks them so empty ones get deleted.
+  await db`CREATE TABLE IF NOT EXISTS temp_voice_config (
+    guild_id       TEXT PRIMARY KEY,
+    hub_channel_id TEXT NOT NULL,
+    category_id    TEXT,
+    name_format    TEXT NOT NULL DEFAULT '{user}'
+  )`;
+
+  await db`CREATE TABLE IF NOT EXISTS temp_voice_channels (
+    channel_id TEXT PRIMARY KEY,
+    guild_id   TEXT NOT NULL,
+    owner_id   TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  )`;
+
   await db`CREATE TABLE IF NOT EXISTS poll_archive_done (
     message_id  TEXT PRIMARY KEY,
     guild_id    TEXT NOT NULL,
@@ -1335,6 +1365,7 @@ export async function removeGuild(guild_id: string) {
     'tags', 'music_config', 'news_config', 'verify_config',
     'streamvc_config', 'streamvc_approvers', 'antiphishing_config', 'mediaguess_rounds', 'mediaguess_config',
     'economy_drought', 'poll_archive_config', 'poll_archive_done',
+    'temp_voice_config', 'temp_voice_channels',
   ]) {
     await db`DELETE FROM ${db(table)} WHERE guild_id = ${guild_id}`.catch(() => {});
   }
@@ -3051,6 +3082,53 @@ export async function isPollArchived(message_id: string): Promise<boolean> {
 
 export async function markPollArchived(guild_id: string, message_id: string) {
   await db`INSERT OR IGNORE INTO poll_archive_done (message_id, guild_id, archived_at) VALUES (${message_id}, ${guild_id}, ${Date.now()})`;
+}
+
+// ─── Temp voice ───────────────────────────────────────────────────────────────
+
+export async function getTempVoiceConfig(guild_id: string): Promise<ITempVoiceConfig | null> {
+  const [row] = await db`SELECT * FROM temp_voice_config WHERE guild_id = ${guild_id}`;
+  return (row as ITempVoiceConfig) ?? null;
+}
+
+export async function setTempVoiceConfig(guild_id: string, hub_channel_id: string, category_id: string | null, name_format: string) {
+  await ensureConfig(guild_id);
+  await db`INSERT INTO temp_voice_config (guild_id, hub_channel_id, category_id, name_format)
+    VALUES (${guild_id}, ${hub_channel_id}, ${category_id}, ${name_format})
+    ON CONFLICT(guild_id) DO UPDATE SET hub_channel_id = excluded.hub_channel_id,
+      category_id = excluded.category_id, name_format = excluded.name_format`;
+}
+
+export async function removeTempVoiceConfig(guild_id: string): Promise<boolean> {
+  const result = await db`DELETE FROM temp_voice_config WHERE guild_id = ${guild_id} RETURNING guild_id`;
+  return result.length > 0;
+}
+
+export async function getTempVoiceChannel(channel_id: string): Promise<ITempVoiceChannel | null> {
+  const [row] = await db`SELECT * FROM temp_voice_channels WHERE channel_id = ${channel_id}`;
+  return (row as ITempVoiceChannel) ?? null;
+}
+
+export async function getTempVoiceChannelByOwner(guild_id: string, owner_id: string): Promise<ITempVoiceChannel | null> {
+  const [row] = await db`SELECT * FROM temp_voice_channels WHERE guild_id = ${guild_id} AND owner_id = ${owner_id}`;
+  return (row as ITempVoiceChannel) ?? null;
+}
+
+export async function getAllTempVoiceChannels(): Promise<ITempVoiceChannel[]> {
+  return (await db`SELECT * FROM temp_voice_channels`) as ITempVoiceChannel[];
+}
+
+export async function addTempVoiceChannel(guild_id: string, channel_id: string, owner_id: string) {
+  await db`INSERT OR REPLACE INTO temp_voice_channels (channel_id, guild_id, owner_id, created_at)
+    VALUES (${channel_id}, ${guild_id}, ${owner_id}, ${Date.now()})`;
+}
+
+export async function setTempVoiceOwner(channel_id: string, owner_id: string) {
+  await db`UPDATE temp_voice_channels SET owner_id = ${owner_id} WHERE channel_id = ${channel_id}`;
+}
+
+export async function removeTempVoiceChannel(channel_id: string) {
+  await db`DELETE FROM temp_voice_channels WHERE channel_id = ${channel_id}`;
 }
 
 // ─── Tags ─────────────────────────────────────────────────────────────────────
