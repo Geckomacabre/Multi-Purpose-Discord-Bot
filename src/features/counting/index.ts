@@ -111,6 +111,8 @@ function parseCount(raw: string): number | null {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+const RUIN_TIMEOUT_MS = 60_000;
+
 const countingModule: EventModule = {
   name: 'counting',
   handlers: {
@@ -185,7 +187,12 @@ const countingModule: EventModule = {
           last_msg: { message_id: message.id, author_id: message.author.id, number: num, failed: true },
         });
 
-        await message.reply({ content: `⚠️ <@${message.author.id}> RUINED IT AT **${count.toLocaleString()}**!! Now next number is **${(punishmentNumber + 1).toLocaleString()}.**` });
+        // Skipped for anyone the bot can't time out (the owner, admins, roles above it)
+        const timedOut = message.member?.moderatable
+          ? await message.member.timeout(RUIN_TIMEOUT_MS, `Ruined the count at ${count}`).then(() => true, () => false)
+          : false;
+
+        await message.reply({ content: `⚠️ <@${message.author.id}> RUINED IT AT **${count.toLocaleString()}**!! Now next number is **${(punishmentNumber + 1).toLocaleString()}.**${timedOut ? ' ⏱️ Timed out for 60 seconds.' : ''}` });
         await message.react('❌').catch(console.error);
         return;
       }

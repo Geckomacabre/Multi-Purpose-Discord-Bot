@@ -674,7 +674,7 @@ Browse with `/shop browse` and buy with `/shop buy <item> [cooldown]` (the `cool
 Members count up one number at a time in a channel. Set it up with `/config counting`.
 
 - Tracks high scores, and answers questions like *"what is the count"*.
-- A wrong number sets the count back by a random amount. Edited and deleted numbers are caught.
+- A wrong number sets the count back by a random amount and times the person out for 60 seconds. Edited and deleted numbers are caught.
 - 💖 **Extra Life** from the shop forgives a mistake.
 
 ### 🎬 Guessing Games
