@@ -4,6 +4,11 @@ export const Channels = {} as const;
 // — guild-actions only applies them here since the IDs are meaningless elsewhere.
 export const HOME_GUILD_ID = '337294816641679370';
 
+// Users banned from every server the bot is in — see src/features/globalban.
+export const GLOBAL_BANS: string[] = [
+  '1562456316272705547',
+];
+
 export const Roles = {
   EXCLUSIVE: '1496264991266050290',
   ACCESS: '1496263685151391865',
