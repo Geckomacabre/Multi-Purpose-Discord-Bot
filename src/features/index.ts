@@ -32,6 +32,7 @@ import raidguardModule from './raidguard';
 import stickyModule, { startStickyRefresh } from './sticky';
 import pollArchiveModule, { startPollArchiveSweeper } from './pollarchive';
 import tempVoiceModule, { startTempVoice } from './tempvoice';
+import globalBanModule, { startGlobalBans } from './globalban';
 
 const features = [
   countingModule,
@@ -59,6 +60,7 @@ const features = [
   stickyModule,
   pollArchiveModule,
   tempVoiceModule,
+  globalBanModule,
 ];
 
 export function registerFeatures(bot: Client) {
@@ -90,5 +92,6 @@ export function registerFeatures(bot: Client) {
     startPollArchiveSweeper(bot);
     startVerifyGate(bot).catch(err => console.error(`Verify gate startup failed: ${err}`));
     startTempVoice(bot).catch(err => console.error(`Temp voice startup failed: ${err}`));
+    startGlobalBans(bot).catch(err => console.error(`Global ban startup failed: ${err}`));
   });
 }
