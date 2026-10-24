@@ -9,6 +9,7 @@ import * as db from '../../utils/db';
 import { Command } from '../../interfaces/command.js';
 import { cv2Text } from '../../utils/components.js';
 import { findTimezoneMatch, generateTimezoneMessage, offsetToString } from '../../features/timezone/index.js';
+import { postPanel, refreshPanels } from '../../features/panels/index.js';
 import { fetchAllFreeGames } from '../../features/freegames/index.js';
 import { archiveEndedPolls, isScanning, missingPollArchivePerms } from '../../features/pollarchive/index.js';
 
@@ -189,7 +190,10 @@ const ConfigCommand: Command = {
         .addStringOption(o => o.setName('timezone').setDescription('Your timezone').setRequired(true).setAutocomplete(true)))
       .addSubcommand(s => s.setName('remove').setDescription('Unset your timezone'))
       .addSubcommand(s => s.setName('view').setDescription('View all timezones in this server')
-        .addUserOption(o => o.setName('highlight').setDescription('User to highlight in the list'))))
+        .addUserOption(o => o.setName('highlight').setDescription('User to highlight in the list')))
+      .addSubcommand(s => s.setName('panel').setDescription('Post a live time panel members can add themselves to')
+        .addChannelOption(o => o.setName('channel').setDescription('Where to post it (default: here)')
+          .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))))
 
     // ── Free Games ────────────────────────────────────────────────────────────
     .addSubcommandGroup(g => g.setName('freegames').setDescription('Track and announce free game promotions')
@@ -562,11 +566,13 @@ const ConfigCommand: Command = {
         await db.setUserTimezone(guildId, interaction.user.id, match.name);
         await interaction.reply({ content: `✅ Your timezone has been set to **${match.displayName}**\n-# (Offset: \`${offsetToString(match.offset)}\`${match.hasDST ? ', observes DST' : ''})` });
         await updateTimezoneMessage();
+        await refreshPanels(interaction.client, 'time', guildId);
       } else if (sub === 'remove') {
         const removed = await db.removeUserTimezone(guildId, interaction.user.id);
         if (removed) {
           await interaction.reply({ content: `🗑️ Your timezone setting has been removed.`, flags: MessageFlags.Ephemeral });
           await updateTimezoneMessage();
+          await refreshPanels(interaction.client, 'time', guildId);
         } else {
           await interaction.reply({ content: `ℹ️ You didn't have a timezone set.`, flags: MessageFlags.Ephemeral });
         }
@@ -578,6 +584,15 @@ const ConfigCommand: Command = {
           return interaction.reply({ content: `ℹ️ No members have set a timezone yet. Use \`/config timezone set\` to get started.`, flags: MessageFlags.Ephemeral });
         }
         await interaction.reply({ ...result, allowedMentions: {} });
+      } else if (sub === 'panel') {
+        const channel = (interaction.options.getChannel('channel') ?? interaction.channel) as any;
+        const message = channel?.isTextBased() ? await postPanel(channel, 'time').catch(() => null) : null;
+        await interaction.reply({
+          content: message
+            ? `✅ Posted the time panel in <#${channel.id}>. It updates every minute and whenever someone adds or removes theirs.`
+            : '❌ I couldn\'t post there. Check that I can send messages in that channel.',
+          flags: MessageFlags.Ephemeral,
+        });
       }
       return;
     }

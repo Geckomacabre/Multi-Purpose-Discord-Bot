@@ -372,6 +372,15 @@ export type ITimezone = {
   timezone: string;
 };
 
+export type PanelKind = 'birthday' | 'time';
+
+export type IInfoPanel = {
+  message_id: string;
+  guild_id: string;
+  channel_id: string;
+  kind: PanelKind;
+};
+
 export type ITimezoneMessage = {
   guild_id: string;
   channel_id: string;
@@ -954,6 +963,14 @@ export async function initDb() {
     message_id TEXT NOT NULL
   )`;
 
+  // Birthday and time panels: bot messages with Add/Refresh/Remove buttons that it keeps up to date
+  await db`CREATE TABLE IF NOT EXISTS info_panels (
+    message_id TEXT PRIMARY KEY,
+    guild_id   TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    kind       TEXT NOT NULL
+  )`;
+
   await db`CREATE TABLE IF NOT EXISTS tags (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     guild_id   TEXT NOT NULL,
@@ -1359,7 +1376,7 @@ export async function removeGuild(guild_id: string) {
     'rss_feeds', 'serverstats', 'streaming_config', 'rsvp_events',
     'economy_config', 'xp', 'xp_config', 'level_roles',
     'free_game_config', 'free_game_posted', 'birthdays', 'birthday_config',
-    'timezone_user', 'timezone_message',
+    'timezone_user', 'timezone_message', 'info_panels',
     'welcome_config', 'stat_channels', 'giveaways', 'reaction_roles',
     'topic_channels', 'topics', 'starboard_config', 'starboard_posts',
     'tags', 'music_config', 'news_config', 'verify_config',
@@ -2750,6 +2767,28 @@ export async function getGuildTimezoneMessage(guild_id: string): Promise<{ chann
 export async function getTimezoneMessages(): Promise<{ channel_id: string; message_id: string; guild_id: string }[]> {
   const result = await db`SELECT channel_id, message_id, guild_id FROM timezone_message`;
   return Array.isArray(result) ? result : [];
+}
+
+// ─── Info panels ──────────────────────────────────────────────────────────────
+
+export async function addInfoPanel(guild_id: string, channel_id: string, message_id: string, kind: PanelKind) {
+  await ensureConfig(guild_id);
+  await db`INSERT OR REPLACE INTO info_panels (message_id, guild_id, channel_id, kind)
+    VALUES (${message_id}, ${guild_id}, ${channel_id}, ${kind})`;
+}
+
+export async function getInfoPanels(kind: PanelKind, guild_id?: string): Promise<IInfoPanel[]> {
+  return (guild_id
+    ? await db`SELECT * FROM info_panels WHERE kind = ${kind} AND guild_id = ${guild_id}`
+    : await db`SELECT * FROM info_panels WHERE kind = ${kind}`) as IInfoPanel[];
+}
+
+export async function removeInfoPanel(message_id: string) {
+  await db`DELETE FROM info_panels WHERE message_id = ${message_id}`;
+}
+
+export async function removeInfoPanelsInChannel(channel_id: string) {
+  await db`DELETE FROM info_panels WHERE channel_id = ${channel_id}`;
 }
 
 // ─── Welcome config ───────────────────────────────────────────────────────────

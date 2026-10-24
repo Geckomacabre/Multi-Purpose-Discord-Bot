@@ -473,6 +473,8 @@ Posts discussion prompts to a channel on a schedule, in order or at random.
 Members set their birthday once, and the bot announces it on the day.
 
 <details>
+**🎂 Birthday panel.** `/birthdayconfig panel` posts a card listing today's birthdays and everyone coming up, with **Add mine**, **🔄 Refresh** and **Remove me** buttons. Add mine opens a pop-up for the month and day, and the panel updates itself whenever anyone adds, changes or removes theirs.
+
 <summary><b>📋 Commands</b></summary>
 
 | Command | Description |
@@ -486,6 +488,7 @@ Members set their birthday once, and the bot announces it on the day.
 | `/birthdayconfig delete <user>` | Remove a member's birthday. |
 | `/birthdayconfig view` | View birthday settings. |
 
+| `/birthdayconfig panel [channel]` | Post a birthday panel (default: this channel). |
 </details>
 
 ### 🕐 Timezones
@@ -493,6 +496,8 @@ Members set their birthday once, and the bot announces it on the day.
 Members register an IANA timezone so others can see their local time.
 
 <details>
+**🕒 Time panel.** `/config timezone panel` posts a card with everyone's current local time, grouped by UTC offset. It updates every minute, and members join it with **Add mine** (type a timezone or a city) or leave with **Remove me**.
+
 <summary><b>📋 Commands</b></summary>
 
 | Command | Description |
@@ -502,6 +507,7 @@ Members register an IANA timezone so others can see their local time.
 | `/config timezone list` | List everyone's timezones. |
 | `/config timezone remove` | Remove your timezone. |
 
+| `/config timezone panel [channel]` | Post a live time panel (default: this channel). |
 </details>
 
 ### 🎁 Free Game Tracker

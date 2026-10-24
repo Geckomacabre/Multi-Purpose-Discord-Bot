@@ -1,11 +1,12 @@
 import {
-  ApplicationIntegrationType, ChatInputCommandInteraction, Colors,
+  ApplicationIntegrationType, ChannelType, ChatInputCommandInteraction, Colors,
   ContainerBuilder, InteractionContextType, MessageFlags,
   PermissionFlagsBits, SlashCommandBuilder, TextDisplayBuilder,
 } from 'discord.js';
 import { Command } from '../../interfaces/command';
 import * as db from '../../utils/db';
 import { cv2Text } from '../../utils/components.js';
+import { postPanel, refreshPanels } from '../../features/panels';
 
 const IS_CV2 = MessageFlags.IsComponentsV2;
 
@@ -30,7 +31,10 @@ const BirthdayConfig: Command = {
     .addSubcommand(s => s.setName('toggle').setDescription('Enable or disable birthday announcements'))
     .addSubcommand(s => s.setName('view').setDescription('View current birthday settings'))
     .addSubcommand(s => s.setName('delete').setDescription("Delete a user's birthday")
-      .addUserOption(o => o.setName('user').setDescription('User').setRequired(true))),
+      .addUserOption(o => o.setName('user').setDescription('User').setRequired(true)))
+    .addSubcommand(s => s.setName('panel').setDescription('Post a birthday panel members can add themselves to')
+      .addChannelOption(o => o.setName('channel').setDescription('Where to post it (default: here)')
+        .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))),
 
   async run(interaction: ChatInputCommandInteraction) {
     const sub = interaction.options.getSubcommand();
@@ -50,6 +54,17 @@ const BirthdayConfig: Command = {
       const user = interaction.options.getUser('user', true);
       await db.removeBirthday(interaction.guildId!, user.id);
       await interaction.reply({ ...cv2Text(`✅ Removed birthday for **${user.username}**.`), flags: IS_CV2 | MessageFlags.Ephemeral });
+      await refreshPanels(interaction.client, 'birthday', interaction.guildId!);
+
+    } else if (sub === 'panel') {
+      const channel = (interaction.options.getChannel('channel') ?? interaction.channel) as any;
+      const message = channel?.isTextBased() ? await postPanel(channel, 'birthday').catch(() => null) : null;
+      await interaction.reply({
+        ...cv2Text(message
+          ? `✅ Posted the birthday panel in <#${channel.id}>. It updates itself whenever someone adds or removes theirs.`
+          : '❌ I couldn\'t post there. Check that I can send messages in that channel.'),
+        flags: IS_CV2 | MessageFlags.Ephemeral,
+      });
 
     } else {
       const container = new ContainerBuilder()
