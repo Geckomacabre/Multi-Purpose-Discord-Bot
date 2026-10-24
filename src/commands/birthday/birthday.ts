@@ -6,6 +6,7 @@ import {
 import { Command } from '../../interfaces/command';
 import * as db from '../../utils/db';
 import { cv2Text } from '../../utils/components.js';
+import { refreshPanels } from '../../features/panels';
 
 const IS_CV2 = MessageFlags.IsComponentsV2;
 
@@ -52,12 +53,14 @@ const Birthday: Command = {
       }
       await db.setBirthday(interaction.guildId!, interaction.user.id, month, day);
       await interaction.reply({ ...cv2Text(`✅ Your birthday has been set to **${MONTHS[month - 1]} ${ordinal(day)}**.`), flags: IS_CV2 | MessageFlags.Ephemeral });
+      await refreshPanels(interaction.client, 'birthday', interaction.guildId!);
       return;
     }
 
     if (sub === 'remove') {
       await db.removeBirthday(interaction.guildId!, interaction.user.id);
       await interaction.reply({ ...cv2Text('✅ Your birthday has been removed.'), flags: IS_CV2 | MessageFlags.Ephemeral });
+      await refreshPanels(interaction.client, 'birthday', interaction.guildId!);
       return;
     }
 

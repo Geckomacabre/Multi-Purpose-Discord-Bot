@@ -318,6 +318,8 @@ Manage Messages holders skip the noisier rate/duplicate/image checks, but **not*
 - `/birthdayconfig toggle` — Enable or disable birthday announcements
 - `/birthdayconfig view` — View current birthday config
 - `/birthdayconfig delete user:` — Remove a user's birthday from the server
+- `/birthdayconfig panel [channel]` — Post a birthday panel: today's and upcoming birthdays, with Add mine / Refresh / Remove me buttons; it updates itself
+- `/config timezone panel [channel]` — Post a live time panel: everyone's local time grouped by UTC offset, updated every minute, with Add mine / Refresh / Remove me buttons
 
 ### Levels & XP
 - `/levelconfig toggle` — Enable or disable the XP system
