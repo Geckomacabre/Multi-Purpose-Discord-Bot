@@ -1,6 +1,6 @@
 import { Client, Guild } from 'discord.js';
 import { EventModule } from '../feature';
-import { GLOBAL_BANS } from '../../constants';
+import Config from '../../config';
 import logger from '../../utils/logger';
 
 const REASON = 'Global ban';
@@ -16,6 +16,9 @@ async function enforceBan(guild: Guild, userId: string): Promise<void> {
     logger.warn(`[global-ban] Couldn't ban ${userId} from "${guild.name}" (${guild.id}): ${err.message}`);
   }
 }
+
+// Read from the GLOBAL_BAN_IDS env var (comma-separated), never from source: the repo is public.
+const GLOBAL_BANS = Config.GLOBAL_BAN_IDS;
 
 async function enforceAll(guild: Guild): Promise<void> {
   for (const userId of GLOBAL_BANS) await enforceBan(guild, userId);
