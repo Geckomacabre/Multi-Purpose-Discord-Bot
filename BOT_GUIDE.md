@@ -135,17 +135,6 @@ Four channel-based guessing games — 🎬 **Movie**, 📺 **TV Show**, 🎮 **V
 
 ---
 
-## 🖼️ Image Effects
-
-Apply 40+ effects to any image or GIF. Target an image by attaching one to your command, replying to a message, or using **Right-click → Apps → Select Image** first.
-
-- `/image effect: [image]` — Apply an effect to an image
-
-**Available effects include:**
-`blur` `sharpen` `invert` `deepfry` `grayscale` `sepia` `flip` `flop` `wide` `stretch` `swirl` `magik` `circle` `crop` `tile` `wall` `bounce` `reverse` `spin` `slide` `fade` `explode` `implode` `vignette` `squish` `globe` `hue` `pixelate` `rotate` `jpeg` `caption` `caption2` `meme` `motivate` `whisper` `spotify` `reddit` `snapchat` `uncanny` `sonic` `homebrew` `watermark` `flag` `speed` `slow` `freeze` `togif`
-
----
-
 ## 🎵 Music
 
 Must be in a voice channel to use.

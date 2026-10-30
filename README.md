@@ -27,7 +27,6 @@ Built by **Geckomacabre** and Claude · Home of [CTIServers.org](https://ctiserv
 | 💰 | [**Economy & Leveling**](#-economy--leveling) | MEE6-style XP and rank cards · coins and drought bonuses · 10 casino games · progressive jackpot · daily lottery · shop · reputation |
 | 🎮 | [**Games & Fun**](#-games--fun) | Counting · movie, TV, video game and song guessing · giveaways · trivia, GIFs and more |
 | 🧰 | [**Utility**](#-utility) | User and server info · reminders · tags · translate · custom commands |
-| 🖼️ | [**Image Editing**](#️-image-editing) | 57 effects powered by native C++ (libvips) |
 | 🎵 | [**Music**](#-music-separate-bot) | A separate Lavalink-powered music bot with a live control panel |
 | 🌐 | [**Web Dashboard**](#-web-dashboard) | Manage settings in your browser instead of slash commands |
 
@@ -789,47 +788,7 @@ Members enter with a button, and winners are picked at random when the timer end
 </details>
 
 - **Custom commands** are managed in the [Web Dashboard](#-web-dashboard). Triggers can be `command`, `startswith`, `contains`, `exact`, or `regex`, and responses support `{user}`, `{username}`, `{server}`, `{channel}`, and `{membercount}`.
-- **Right-click menus** (right-click a message, then **Apps**): **Make it a Quote** turns it into a black-and-white quote card, and **Select Image** picks an image for your next `/image` command.
-
----
-
-## 🖼️ Image Editing
-
-**57 effects** ported from [esmBot](https://github.com/esmBot/esmBot), all under one **`/image`** command. Pick one with the `effect` option, for example `/image effect:deepfry`.
-
-- Attach an image or give a `url`. With neither, the bot uses the most recent image in the channel.
-- Some effects take extra input through `text`, `number`, `font`, or `choice`. Autocomplete shows which.
-
-| Category | Effects |
-|---|---|
-| 🎨 Color & Filter | `blur` `sharpen` `grayscale` `sepia` `invert` `hue` `deepfry` `jpeg` `vignette` `pixelate` |
-| 📐 Transform | `flip` `flop` `rotate` `crop` `circle` `wide` `squish` `stretch` `tile` `wall` |
-| 🪞 Mirror | `haah` `hooh` `waaw` `woow` |
-| 🌀 Distortion | `swirl` `explode` `implode` `magik` `globe` `togif` |
-| 🎞️ Animation | `spin` `bounce` `slide` `fade` `reverse` `speed` `slow` `freeze` `unfreeze` |
-| 💬 Text | `caption` `caption2` `meme` `motivate` `snapchat` `whisper` `uncanny` `uncaption` |
-| 😂 Memes | `sonic` `homebrew` `spotify` `reddit` `gamexplain` `scott` |
-| 🏳️ Overlays | `flag` (rainbow, trans, pirate, checkered) · `watermark` (9gag, bandicam, hypercam, ifunny, …) |
-
-<details>
-<summary><b>🔧 Building the native addon</b></summary>
-
-All pixel processing runs in esmBot's compiled C++ addon (libvips).
-
-```bash
-# Ubuntu/Debian
-apt install libvips-dev libfontconfig1-dev cmake build-essential
-bun run build:native
-```
-
-`bun install` tries to build it automatically. If the build fails (for example on a Windows dev machine), the bot still starts, but image commands ask you to build the addon.
-
-**Optional build flags**
-
-- `WITH_MAGICK=ON` turns on the `magik` effect. It needs `libmagick++-dev`.
-- `WITH_ZXING=ON` (on by default on Linux) turns on native QR code support. It needs `libzxing-dev`.
-
-</details>
+- **Make it a Quote** (right-click a message, then **Apps**): turns the message into a black-and-white quote card.
 
 ---
 
