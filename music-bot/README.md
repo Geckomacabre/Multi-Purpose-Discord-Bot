@@ -116,8 +116,8 @@ Fill in `.env` with the **main Jade bot's** values:
 | Variable | Value |
 |---|---|
 | `TOKEN` | *Leave blank.* `start.ps1` reads the main bot's token from `C:\TMCBot-PROD\secrets.env` each time it starts, so there's only one copy. Fill it in only to run as a different bot. |
-| `CLIENT_ID` | The main bot's application ID: `1517192967000031253` |
-| `GUILD_ID` | The server to register the music commands in: `337294816641679370` |
+| `CLIENT_ID` | The main bot's application ID (Developer Portal → General Information) |
+| `GUILD_ID` | The server to register the music commands in (right-click the server → Copy Server ID) |
 | `LAVALINK_PASSWORD` | *Leave it out.* `setup-lavalink.ps1` generates a random one on first run. |
 | `YOUTUBE_REFRESH_TOKEN` | *Leave it out.* Saved automatically after the YouTube sign-in below. |
 

@@ -8,6 +8,7 @@ import * as db from '../../utils/db';
 import { Command } from '../../interfaces/command';
 import { cv2Text } from '../../utils/components.js';
 import { archiveTicket, buildModPanel, canCloseTicket, isTicketAdmin } from '../../utils/tickets.js';
+import { TicketRedirectChannels } from '../../constants';
 
 const IS_CV2 = MessageFlags.IsComponentsV2;
 
@@ -136,11 +137,12 @@ const Ticket: Command = {
       const postChannel = interaction.options.getChannel('channel', true) as TextChannel;
       const guildId = interaction.guildId!;
 
-      const REDIRECT_CHANNELS = [
-        { id: '1171282431018545242', label: 'Admin Support' },
-        { id: '1520475113764421804', label: 'Bug Reports' },
-        { id: '1474066766849245270', label: 'AI Support' },
-      ];
+      // Set in the private env file (TICKET_REDIRECT_CHANNELS), not here: the repo is public. A row holds 5 buttons.
+      const REDIRECT_CHANNELS = TicketRedirectChannels.slice(0, 5);
+      if (!REDIRECT_CHANNELS.length) {
+        await interaction.reply({ content: '❌ No support channels are set up for the redirect panel (`TICKET_REDIRECT_CHANNELS` in the env file of the bot).', flags: MessageFlags.Ephemeral });
+        return;
+      }
 
       const embed = new EmbedBuilder()
         .setColor(Colors.Blurple)
