@@ -374,7 +374,7 @@ export type ITimezone = {
 
 export type IScamImageHash = {
   id: number;
-  hash: string;          // 64-bit perceptual hash, 16 hex chars
+  hash: string;          // 256-bit perceptual hash, 64 hex chars (see utils/phash)
   source: 'auto' | 'manual';
   guild_id: string | null; // where it was first seen
   added_by: string | null; // mod who added it (manual entries)
@@ -985,6 +985,8 @@ export async function initDb() {
     hits        INTEGER NOT NULL DEFAULT 0,
     last_hit_at INTEGER
   )`;
+  // Hashes from the first version (64-bit libpHash) can't be compared with today's 256-bit ones
+  await db`DELETE FROM scam_image_hashes WHERE length(hash) <> 64`;
 
   // Birthday and time panels: bot messages with Add/Refresh/Remove buttons that it keeps up to date
   await db`CREATE TABLE IF NOT EXISTS info_panels (

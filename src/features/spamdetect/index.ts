@@ -206,12 +206,13 @@ async function checkScamImages(msg: Message, member: GuildMember, track: UserTra
     if (!match || WARNING_RE.test(msg.content)) return; // someone warning others about it
     if (Date.now() - track.lastPunishedAt < REPUNISH_GUARD_MS) return;
     track.lastPunishedAt = Date.now();
-    await db.recordScamImageHit(match.entry.id);
+    if (match.list === 'ours') await db.recordScamImageHit(match.entry.id);
     const history = [...track.msgHistory];
     track.msgHistory = [];
     track.imageChannels.clear();
     track.imagePosts = [];
-    await punish(member, `Known scam image: matches #${match.entry.id} on the scam image list (${match.distance}/64 bits apart)`, db, history);
+    const where = match.list === 'ours' ? `#${match.entry.id} on our scam image list` : 'an image on the shared scam image list (SomewhatDamaged/Scam-Images)';
+    await punish(member, `Known scam image: matches ${where}, ${match.distance}/256 bits apart`, db, history);
   } catch (err) {
     logger.error(`[spamdetect] scam image check failed: ${err}`);
   }

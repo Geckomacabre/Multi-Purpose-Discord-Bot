@@ -1,71 +1,92 @@
-import { dlopen, FFIType, ptr } from 'bun:ffi';
+import type { Subprocess } from 'bun';
 import { unlink } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import logger from './logger';
 
-// pHash (https://phash.org), the open source perceptual hash library, built from
-// github.com/aetilius/pHash in the Dockerfile and called through Bun's FFI. Its
-// DCT image hash is a 64-bit fingerprint of what an image looks like: resizing,
+// Perceptual hash (pHash): a fingerprint of what an image looks like. Resizing,
 // re-compressing or small edits barely change it, so copies of one picture land
-// within a few bits of each other, while different pictures differ in ~half of them.
+// a few bits apart while different pictures differ in about half the bits.
 //
-//   int ph_dct_imagehash(const char *file, ulong64 &hash);   // -1 on failure
-//   int ph_hamming_distance(ulong64 hasha, ulong64 hashb);
-//   (https://phash.org/docs/howto.html)
+// Hashes are 256-bit (64 hex chars) from Python's ImageHash library,
+// imagehash.phash(img, hash_size=16), the exact recipe behind the shared scam
+// image list at github.com/SomewhatDamaged/Scam-Images, so ours compare with
+// theirs. Measured: a resized, re-compressed copy is ~2 bits off, unrelated
+// images ~118. The hashing runs in imagehash_worker.py, one long-lived process.
 
-const open = () => dlopen('libpHash.so', {
-  ph_dct_imagehash: { args: [FFIType.cstring, FFIType.ptr], returns: FFIType.i32 },
-  ph_hamming_distance: { args: [FFIType.u64, FFIType.u64], returns: FFIType.i32 },
-});
+const WORKER = join(import.meta.dir, 'imagehash_worker.py');
+const TIMEOUT_MS = 15_000;
 
-let lib: ReturnType<typeof open> | null | undefined;
-function pHashLib() {
-  if (lib === undefined) {
-    try {
-      lib = open();
-    } catch (err) {
-      lib = null; // e.g. a dev machine without the library
-      logger.warn(`[phash] libpHash isn't installed, so scam image matching is off: ${err}`);
+let worker: Subprocess<'pipe', 'pipe', 'inherit'> | null = null;
+let waiting: ((line: string) => void)[] = [];
+let unavailable = false;
+
+function startWorker() {
+  const proc = Bun.spawn(['python3', '-u', WORKER], { stdin: 'pipe', stdout: 'pipe', stderr: 'inherit' });
+  worker = proc;
+  waiting = [];
+  const replies = waiting;
+  (async () => {
+    const decoder = new TextDecoder();
+    let buffered = '';
+    for await (const chunk of proc.stdout) {
+      buffered += decoder.decode(chunk, { stream: true });
+      for (let i; (i = buffered.indexOf('\n')) >= 0;) {
+        replies.shift()?.(buffered.slice(0, i).trim());
+        buffered = buffered.slice(i + 1);
+      }
     }
-  }
-  return lib;
+    // Exited or killed: fail whatever was still waiting, and start fresh next time
+    if (worker === proc) worker = null;
+    for (const reply of replies.splice(0)) reply('ERR');
+  })().catch(() => {});
+  return proc;
 }
 
-// pHash reads images from disk with CImg, which picks the decoder by file extension
-function extensionOf(file: Buffer): string | null {
-  if (file[0] === 0x89 && file.subarray(1, 4).toString() === 'PNG') return 'png';
-  if (file[0] === 0xff && file[1] === 0xd8) return 'jpg';
-  if (file.subarray(0, 4).toString() === 'II*\0' || file.subarray(0, 4).toString() === 'MM\0*') return 'tif';
-  return null;
+/** Asks the worker to hash one file. One line in, one line out, in order. */
+function ask(path: string): Promise<string> {
+  const proc = worker ?? startWorker();
+  const answer = new Promise<string>(resolve => waiting.push(resolve));
+  proc.stdin.write(`${path}\n`);
+  proc.stdin.flush();
+  let timer: Timer;
+  const timeout = new Promise<string>(resolve => {
+    timer = setTimeout(() => {
+      proc.kill(); // stuck on a bad file; the reader above fails its queue
+      resolve('ERR');
+    }, TIMEOUT_MS);
+  });
+  return Promise.race([answer, timeout]).finally(() => clearTimeout(timer));
 }
 
 let seq = 0;
 
-/** pHash's 64-bit DCT hash of a PNG, JPEG or TIFF, as 16 hex characters; null if pHash can't read it or isn't installed. */
+/** The image's 256-bit pHash as 64 hex characters, or null if it can't be read (or hashing isn't available). */
 export async function pHash(file: Buffer): Promise<string | null> {
-  const lib = pHashLib();
-  const ext = extensionOf(file);
-  if (!lib || !ext) return null;
-
-  const path = join(tmpdir(), `phash-${process.pid}-${++seq}.${ext}`);
+  if (unavailable) return null;
+  const path = join(tmpdir(), `phash-${process.pid}-${++seq}`);
   await Bun.write(path, file);
   try {
-    const out = new BigUint64Array(1);
-    const rc = lib.symbols.ph_dct_imagehash(ptr(Buffer.from(`${path}\0`)), ptr(out));
-    return rc < 0 ? null : out[0]!.toString(16).padStart(16, '0');
+    const line = await ask(path);
+    if (line === 'MISSING') {
+      unavailable = true;
+      logger.warn('[phash] the Python ImageHash library isn\'t installed, so scam image matching is off');
+      return null;
+    }
+    return /^[0-9a-f]{64}$/.test(line) ? line : null;
+  } catch (err) {
+    // No python3 at all (e.g. a dev machine)
+    unavailable = true;
+    logger.warn(`[phash] couldn't start the hashing worker, so scam image matching is off: ${err}`);
+    return null;
   } finally {
     await unlink(path).catch(() => {});
   }
 }
 
-/** How many of the 64 bits differ between two hashes (0 = identical), via pHash's ph_hamming_distance. */
+/** How many bits differ between two hashes of the same length (0 = identical). */
 export function hammingDistance(a: string, b: string): number {
-  const x = BigInt(`0x${a}`);
-  const y = BigInt(`0x${b}`);
-  const lib = pHashLib();
-  if (lib) return lib.symbols.ph_hamming_distance(x, y);
-  let diff = x ^ y;
+  let diff = BigInt(`0x${a}`) ^ BigInt(`0x${b}`);
   let n = 0;
   for (; diff; n++) diff &= diff - 1n;
   return n;

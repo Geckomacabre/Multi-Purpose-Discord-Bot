@@ -10,7 +10,7 @@ import { Command } from '../../interfaces/command.js';
 import { cv2Text } from '../../utils/components.js';
 import { findTimezoneMatch, generateTimezoneMessage, offsetToString } from '../../features/timezone/index.js';
 import { postPanel, refreshPanels } from '../../features/panels/index.js';
-import { addScamImages, hashMessageImages, listScamImages, removeScamImage } from '../../features/spamdetect/scamImages.js';
+import { addScamImages, hashMessageImages, listScamImages, removeScamImage, upstreamStatus } from '../../features/spamdetect/scamImages.js';
 import { fetchAllFreeGames } from '../../features/freegames/index.js';
 import { archiveEndedPolls, isScanning, missingPollArchivePerms } from '../../features/pollarchive/index.js';
 
@@ -371,22 +371,23 @@ const ConfigCommand: Command = {
         if (!message) return interaction.editReply('❌ I couldn\'t find that message. Copy it with right-click → **Copy Message Link**.');
         const hashes = await hashMessageImages(message);
         if (!hashes.length) return interaction.editReply('❌ That message has no images I could read (PNG, JPEG, GIF or WebP attachments).');
-        const added = await addScamImages(hashes, 'manual', interaction.guildId, interaction.user.id);
-        const already = hashes.length - added.length;
+        const { added, alreadyKnown: already } = await addScamImages(hashes, 'manual', interaction.guildId, interaction.user.id);
         return interaction.editReply(
           (added.length ? `✅ Added ${added.map(a => `**#${a.id}**`).join(', ')} to the scam image list. Anyone posting ${added.length === 1 ? 'it' : 'them'} again gets caught on sight, in every server.` : '')
-          + (already ? `${added.length ? '\n' : '✅ '}${already} image${already === 1 ? ' was' : 's were'} already on the list.` : ''));
+          + (already ? `${added.length ? '\n' : '✅ '}${already} image${already === 1 ? ' is' : 's are'} already a known scam image.` : ''));
       }
       if (sub === 'remove') {
         const id = interaction.options.getInteger('id', true);
         return interaction.editReply(await removeScamImage(id) ? `✅ Removed **#${id}** from the scam image list.` : `❌ There's no **#${id}** on the list.`);
       }
       const list = await listScamImages();
-      if (!list.length) return interaction.editReply('The scam image list is empty. Images get added when spam detection catches someone posting the same image across channels, or with `/config scamimages add`.');
+      const shared = upstreamStatus();
+      const sharedLine = `**Shared list** ([SomewhatDamaged/Scam-Images](<https://github.com/SomewhatDamaged/Scam-Images>)): ${shared.count} images${shared.syncedAt ? `, synced <t:${Math.floor(shared.syncedAt / 1000)}:R>` : ', not synced yet'}`;
+      if (!list.length) return interaction.editReply(`${sharedLine}\n**Our list** is empty. Images get added when spam detection catches someone posting the same image across channels, or with \`/config scamimages add\`.`);
       const lines = list.slice(0, 25).map(e =>
         `**#${e.id}** · ${e.source === 'manual' ? `added by <@${e.added_by}>` : 'learned automatically'} <t:${Math.floor(e.added_at / 1000)}:R> · caught **${e.hits}**${e.last_hit_at ? `, last <t:${Math.floor(e.last_hit_at / 1000)}:R>` : ''}`);
       return interaction.editReply({
-        content: `**Scam images** (${list.length}, shared by every server)\n${lines.join('\n')}${list.length > 25 ? `\n…and ${list.length - 25} older` : ''}\n-# Remove a wrong one with \`/config scamimages remove\`.`,
+        content: `${sharedLine}\n**Our list** (${list.length}, used in every server)\n${lines.join('\n')}${list.length > 25 ? `\n…and ${list.length - 25} older` : ''}\n-# Remove a wrong one with \`/config scamimages remove\`.`,
         allowedMentions: { parse: [] },
       });
     }
