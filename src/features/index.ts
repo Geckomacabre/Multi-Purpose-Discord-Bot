@@ -25,7 +25,6 @@ import guildActionsModule from './guild-actions';
 import timezoneModule from './timezone';
 import verifyModule, { startVerifyGate } from './verify';
 import spamDetectModule from './spamdetect';
-import { startScamImageSync } from './spamdetect/scamImages';
 import mediaguessModule, { startMediaGames } from './mediaguess';
 import streamVcModule from './streamvc';
 import { startLottery } from './lottery';
@@ -96,7 +95,6 @@ export function registerFeatures(bot: Client) {
     startVerifyGate(bot).catch(err => console.error(`Verify gate startup failed: ${err}`));
     startTempVoice(bot).catch(err => console.error(`Temp voice startup failed: ${err}`));
     startPanels(bot);
-    startScamImageSync().catch(err => console.error(`Scam image sync failed: ${err}`));
     startGlobalBans(bot).catch(err => console.error(`Global ban startup failed: ${err}`));
   });
 }

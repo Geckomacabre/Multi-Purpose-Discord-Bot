@@ -170,7 +170,7 @@ Each removal posts an alert to the modlog with the domain or invite code, the us
 
 **🖼️ Scam images.** Scam accounts reuse the same few screenshots, so the bot fingerprints every image with a perceptual hash (pHash) and checks it against two lists:
 
-- **The shared list** from [SomewhatDamaged/Scam-Images](https://github.com/SomewhatDamaged/Scam-Images), synced every hour. It's updated every few days with new scams, and the bot hashes images the same way it does (Python's ImageHash, `phash` with `hash_size=16`), so they compare directly.
+- **The shared list** from [SomewhatDamaged/Scam-Images](https://github.com/SomewhatDamaged/Scam-Images), updated every few days with new scams and checked live through its API, the way their [SentryBot](https://github.com/SomewhatDamaged/SentryBot) does: each image's hash and size go to `/v1/scamscore`, and a score of 4+ out of 10 is a scam. Wide side-by-side screenshots are also split and each half checked. Only the hash and size are sent, never the image. The hash is a TypeScript port of ImageHash's `phash` (`hash_size=16`) that produces the same hashes bit for bit.
 - **Our own list**, used in every server the bot is in. An image joins it when spam detection catches someone posting it in 2+ channels, or when a mod adds it.
 
 Posts that say "scam", "hacked", "beware" and so on are skipped, so people warning others aren't punished.

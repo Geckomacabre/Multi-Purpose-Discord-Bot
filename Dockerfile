@@ -16,9 +16,4 @@ RUN bun install --frozen-lockfile
 
 COPY . .
 
-# ImageHash, the perceptual hash behind scam image matching (src/utils/phash.ts).
-# Same library and settings as the shared list at github.com/SomewhatDamaged/Scam-Images,
-# so our hashes compare with theirs.
-RUN pip3 install -q --root-user-action=ignore --break-system-packages imagehash==4.3.2
-
 CMD ["bun", "run", "start:production"]

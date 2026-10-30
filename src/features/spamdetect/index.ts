@@ -2,7 +2,8 @@ import { ChatInputCommandInteraction, EmbedBuilder, GuildMember, Message, TextCh
 import { EventModule } from '../feature';
 import { getLogConfig } from '../../utils/db.js';
 import logger from '../../utils/logger';
-import { WARNING_RE, addScamImages, findScamImage, hashMessageImages, repeatedAcrossChannels } from './scamImages';
+import { WARNING_RE, addScamImages, findScamImage, fingerprintMessage, repeatedAcrossChannels } from './scamImages';
+import type { ImageFingerprint } from '../../utils/phash';
 
 const WINDOW_MS = 30_000;       // 30-second sliding window for cross-channel image spam
 const IMAGE_MIN_CHANNELS = 3;   // images in 3+ channels triggers action (4 let scam image raids hitting 3 channels through)
@@ -37,7 +38,7 @@ type UserTrack = {
   recentContents: TrackedContent[];
   recentCommands: number[];
   msgHistory: TrackedMsg[];
-  imagePosts: { channelId: string; timestamp: number; hashes: Promise<string[]> }[]; // pHashes being worked out
+  imagePosts: { channelId: string; timestamp: number; fingerprints: Promise<ImageFingerprint[]> }[]; // pHashes being worked out
   lastPunishedAt: number;
 };
 
@@ -199,8 +200,8 @@ async function punish(
 
 const REPUNISH_GUARD_MS = 60_000; // one burst of spam gets one punishment
 
-/** Punishes a post of an image that's on the scam image list (matched by pHash). */
-async function checkScamImages(msg: Message, member: GuildMember, track: UserTrack, pending: Promise<string[]>, db: any) {
+/** Punishes a post of a known scam image (our list or the shared one, matched by pHash). */
+async function checkScamImages(msg: Message, member: GuildMember, track: UserTrack, pending: Promise<ImageFingerprint[]>, db: any) {
   try {
     const match = await findScamImage(await pending);
     if (!match || WARNING_RE.test(msg.content)) return; // someone warning others about it
@@ -211,8 +212,10 @@ async function checkScamImages(msg: Message, member: GuildMember, track: UserTra
     track.msgHistory = [];
     track.imageChannels.clear();
     track.imagePosts = [];
-    const where = match.list === 'ours' ? `#${match.entry.id} on our scam image list` : 'an image on the shared scam image list (SomewhatDamaged/Scam-Images)';
-    await punish(member, `Known scam image: matches ${where}, ${match.distance}/256 bits apart`, db, history);
+    const where = match.list === 'ours'
+      ? `#${match.entry.id} on our scam image list, ${match.distance}/256 bits apart`
+      : `the shared scam image list (SomewhatDamaged/Scam-Images), score ${match.score}/10${match.part === 'whole' ? '' : ` on the ${match.part} half`}`;
+    await punish(member, `Known scam image: matches ${where}`, db, history);
   } catch (err) {
     logger.error(`[spamdetect] scam image check failed: ${err}`);
   }
@@ -221,7 +224,10 @@ async function checkScamImages(msg: Message, member: GuildMember, track: UserTra
 /** After the cross-channel image rule fires: remember images that showed up in 2+ of those channels. */
 async function learnScamImages(posts: UserTrack['imagePosts'], guildId: string) {
   try {
-    const resolved = await Promise.all(posts.map(async p => ({ channelId: p.channelId, hashes: await p.hashes })));
+    const resolved = await Promise.all(posts.map(async p => ({
+      channelId: p.channelId,
+      hashes: (await p.fingerprints).filter(f => f.part === 'whole').map(f => f.hash),
+    })));
     const repeated = repeatedAcrossChannels(resolved);
     if (repeated.length) await addScamImages(repeated, 'auto', guildId);
   } catch (err) {
@@ -319,10 +325,10 @@ const spamDetectModule: EventModule = {
         // Fingerprinting downloads the image, so it runs alongside the checks
         // below instead of holding them up.
         if (msg.attachments.some(a => a.contentType?.startsWith('image/'))) {
-          const hashes = hashMessageImages(msg).catch(() => [] as string[]);
-          track.imagePosts.push({ channelId, timestamp: now, hashes });
+          const fingerprints = fingerprintMessage(msg).catch(() => [] as ImageFingerprint[]);
+          track.imagePosts.push({ channelId, timestamp: now, fingerprints });
           track.imagePosts = track.imagePosts.filter(p => now - p.timestamp <= WINDOW_MS);
-          void checkScamImages(msg, member, track, hashes, db);
+          void checkScamImages(msg, member, track, fingerprints, db);
         }
 
         // ── Image spam detection ───────────────────────────────────────────────
