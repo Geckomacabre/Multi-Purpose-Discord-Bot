@@ -138,6 +138,7 @@ Always on, with no setup. Offenders get a **24-hour timeout**, and their message
 | **Repeated messages** | The same message 4+ times in 10 seconds |
 | **Flood rate** | 8+ messages in 6 seconds, whatever the content. Quick, distinct chatting won't trip it. |
 | **Cross-channel images** | Images or videos posted in 3+ channels within 30 seconds |
+| **Known scam images** | Any image on the scam image list, even in one channel. Matched with [pHash](https://phash.org), so resized or re-compressed copies still count. |
 | **Cross-channel messages/links** | The same message, *or the same link*, posted in 3+ channels within 45 seconds |
 | **Command spam** | 6+ slash commands in 8 seconds |
 
@@ -165,6 +166,19 @@ Each removal posts an alert to the modlog with the domain or invite code, the us
 | `/config antiphishing invites <enabled>` | Toggle invite-link removal. |
 | `/config antiphishing lookalike <enabled>` | Toggle lookalike-domain detection. |
 | `/config antiphishing view` | View antiphishing settings. |
+
+</details>
+
+**🖼️ Scam image list.** Scam accounts reuse the same few screenshots, so the bot fingerprints every image with [pHash](https://phash.org) and checks it against a list of known scam images, shared by every server. An image joins the list when spam detection catches someone posting it in 2+ channels, or when a mod adds it. Posts that say "scam", "hacked", "beware" and so on are skipped, so people warning others aren't punished.
+
+<details>
+<summary><b>📋 Commands</b></summary>
+
+| Command | Description |
+|---|---|
+| `/config scamimages add <message_link>` | Add the images in a message to the list. |
+| `/config scamimages remove <id>` | Take a wrongly listed image off. |
+| `/config scamimages list` | List known scam images, how often each was caught, and who added them. |
 
 </details>
 

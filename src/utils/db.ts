@@ -372,6 +372,17 @@ export type ITimezone = {
   timezone: string;
 };
 
+export type IScamImageHash = {
+  id: number;
+  hash: string;          // 64-bit perceptual hash, 16 hex chars
+  source: 'auto' | 'manual';
+  guild_id: string | null; // where it was first seen
+  added_by: string | null; // mod who added it (manual entries)
+  added_at: number;
+  hits: number;
+  last_hit_at: number | null;
+};
+
 export type PanelKind = 'birthday' | 'time';
 
 export type IInfoPanel = {
@@ -961,6 +972,18 @@ export async function initDb() {
     guild_id   TEXT PRIMARY KEY,
     channel_id TEXT NOT NULL,
     message_id TEXT NOT NULL
+  )`;
+
+  // Fingerprints of known scam images, shared by every server (the same screenshots hit everywhere)
+  await db`CREATE TABLE IF NOT EXISTS scam_image_hashes (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    hash        TEXT NOT NULL UNIQUE,
+    source      TEXT NOT NULL,
+    guild_id    TEXT,
+    added_by    TEXT,
+    added_at    INTEGER NOT NULL,
+    hits        INTEGER NOT NULL DEFAULT 0,
+    last_hit_at INTEGER
   )`;
 
   // Birthday and time panels: bot messages with Add/Refresh/Remove buttons that it keeps up to date
@@ -2767,6 +2790,30 @@ export async function getGuildTimezoneMessage(guild_id: string): Promise<{ chann
 export async function getTimezoneMessages(): Promise<{ channel_id: string; message_id: string; guild_id: string }[]> {
   const result = await db`SELECT channel_id, message_id, guild_id FROM timezone_message`;
   return Array.isArray(result) ? result : [];
+}
+
+// ─── Scam image hashes ────────────────────────────────────────────────────────
+
+export async function getScamImageHashes(): Promise<IScamImageHash[]> {
+  return (await db`SELECT * FROM scam_image_hashes ORDER BY id DESC`) as IScamImageHash[];
+}
+
+/** Returns the new row, or null if that exact hash is already listed. */
+export async function addScamImageHash(
+  hash: string, source: 'auto' | 'manual', guild_id: string | null, added_by: string | null,
+): Promise<IScamImageHash | null> {
+  const [row] = await db`INSERT OR IGNORE INTO scam_image_hashes (hash, source, guild_id, added_by, added_at)
+    VALUES (${hash}, ${source}, ${guild_id}, ${added_by}, ${Date.now()}) RETURNING *`;
+  return (row as IScamImageHash) ?? null;
+}
+
+export async function removeScamImageHash(id: number): Promise<boolean> {
+  const result = await db`DELETE FROM scam_image_hashes WHERE id = ${id} RETURNING id`;
+  return result.length > 0;
+}
+
+export async function recordScamImageHit(id: number) {
+  await db`UPDATE scam_image_hashes SET hits = hits + 1, last_hit_at = ${Date.now()} WHERE id = ${id}`;
 }
 
 // ─── Info panels ──────────────────────────────────────────────────────────────

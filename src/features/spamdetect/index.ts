@@ -1,6 +1,8 @@
 import { ChatInputCommandInteraction, EmbedBuilder, GuildMember, Message, TextChannel, PermissionFlagsBits } from 'discord.js';
 import { EventModule } from '../feature';
 import { getLogConfig } from '../../utils/db.js';
+import logger from '../../utils/logger';
+import { WARNING_RE, addScamImages, findScamImage, hashMessageImages, repeatedAcrossChannels } from './scamImages';
 
 const WINDOW_MS = 30_000;       // 30-second sliding window for cross-channel image spam
 const IMAGE_MIN_CHANNELS = 3;   // images in 3+ channels triggers action (4 let scam image raids hitting 3 channels through)
@@ -35,6 +37,8 @@ type UserTrack = {
   recentContents: TrackedContent[];
   recentCommands: number[];
   msgHistory: TrackedMsg[];
+  imagePosts: { channelId: string; timestamp: number; hashes: Promise<string[]> }[]; // pHashes being worked out
+  lastPunishedAt: number;
 };
 
 // guildId -> userId -> track
@@ -43,7 +47,7 @@ const tracker = new Map<string, Map<string, UserTrack>>();
 function getTrack(guildId: string, userId: string): UserTrack {
   if (!tracker.has(guildId)) tracker.set(guildId, new Map());
   const guild = tracker.get(guildId)!;
-  if (!guild.has(userId)) guild.set(userId, { imageChannels: new Map(), messageChannels: new Map(), recentMessages: [], recentContents: [], recentCommands: [], msgHistory: [] });
+  if (!guild.has(userId)) guild.set(userId, { imageChannels: new Map(), messageChannels: new Map(), recentMessages: [], recentContents: [], recentCommands: [], msgHistory: [], imagePosts: [], lastPunishedAt: 0 });
   return guild.get(userId)!;
 }
 
@@ -193,6 +197,37 @@ async function punish(
   }
 }
 
+const REPUNISH_GUARD_MS = 60_000; // one burst of spam gets one punishment
+
+/** Punishes a post of an image that's on the scam image list (matched by pHash). */
+async function checkScamImages(msg: Message, member: GuildMember, track: UserTrack, pending: Promise<string[]>, db: any) {
+  try {
+    const match = await findScamImage(await pending);
+    if (!match || WARNING_RE.test(msg.content)) return; // someone warning others about it
+    if (Date.now() - track.lastPunishedAt < REPUNISH_GUARD_MS) return;
+    track.lastPunishedAt = Date.now();
+    await db.recordScamImageHit(match.entry.id);
+    const history = [...track.msgHistory];
+    track.msgHistory = [];
+    track.imageChannels.clear();
+    track.imagePosts = [];
+    await punish(member, `Known scam image: matches #${match.entry.id} on the scam image list (${match.distance}/64 bits apart)`, db, history);
+  } catch (err) {
+    logger.error(`[spamdetect] scam image check failed: ${err}`);
+  }
+}
+
+/** After the cross-channel image rule fires: remember images that showed up in 2+ of those channels. */
+async function learnScamImages(posts: UserTrack['imagePosts'], guildId: string) {
+  try {
+    const resolved = await Promise.all(posts.map(async p => ({ channelId: p.channelId, hashes: await p.hashes })));
+    const repeated = repeatedAcrossChannels(resolved);
+    if (repeated.length) await addScamImages(repeated, 'auto', guildId);
+  } catch (err) {
+    logger.error(`[spamdetect] couldn't learn scam images: ${err}`);
+  }
+}
+
 // Called from onInteraction.ts for every chat command — not a ClientEvents event,
 // so it's a plain exported function rather than an EventModule handler. A raid
 // script hammering slash commands trips the same timeout+purge+log pipeline as
@@ -279,6 +314,16 @@ const spamDetectModule: EventModule = {
           return;
         }
 
+        // ── Known scam images (pHash) ──────────────────────────────────────────
+        // Fingerprinting downloads the image, so it runs alongside the checks
+        // below instead of holding them up.
+        if (msg.attachments.some(a => a.contentType?.startsWith('image/'))) {
+          const hashes = hashMessageImages(msg).catch(() => [] as string[]);
+          track.imagePosts.push({ channelId, timestamp: now, hashes });
+          track.imagePosts = track.imagePosts.filter(p => now - p.timestamp <= WINDOW_MS);
+          void checkScamImages(msg, member, track, hashes, db);
+        }
+
         // ── Image spam detection ───────────────────────────────────────────────
         const hasImage = msg.attachments.some(a =>
           a.contentType?.startsWith('image/') || a.contentType?.startsWith('video/')
@@ -292,9 +337,14 @@ const spamDetectModule: EventModule = {
           if (track.imageChannels.size >= IMAGE_MIN_CHANNELS) {
             const channelList = [...track.imageChannels.keys()].map(id => `<#${id}>`).join(', ');
             const history = [...track.msgHistory];
+            const posts = track.imagePosts;
             track.imageChannels.clear();
             track.msgHistory = [];
+            track.imagePosts = [];
+            if (now - track.lastPunishedAt < REPUNISH_GUARD_MS) return;
+            track.lastPunishedAt = now;
             await punish(member, `Image spam: posted images in ${channelList} within ${WINDOW_MS / 1000} seconds`, db, history);
+            await learnScamImages(posts, msg.guildId);
             return;
           }
         }

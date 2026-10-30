@@ -10,6 +10,7 @@ import { Command } from '../../interfaces/command.js';
 import { cv2Text } from '../../utils/components.js';
 import { findTimezoneMatch, generateTimezoneMessage, offsetToString } from '../../features/timezone/index.js';
 import { postPanel, refreshPanels } from '../../features/panels/index.js';
+import { addScamImages, hashMessageImages, listScamImages, removeScamImage } from '../../features/spamdetect/scamImages.js';
 import { fetchAllFreeGames } from '../../features/freegames/index.js';
 import { archiveEndedPolls, isScanning, missingPollArchivePerms } from '../../features/pollarchive/index.js';
 
@@ -133,6 +134,14 @@ const ConfigCommand: Command = {
       .addSubcommand(s => s.setName('lookalike').setDescription('Toggle detection of typosquat domains impersonating Discord/Steam/Epic')
         .addBooleanOption(o => o.setName('enabled').setDescription('Enabled').setRequired(true)))
       .addSubcommand(s => s.setName('view').setDescription('View current antiphishing settings')))
+
+    // ── Scam images ───────────────────────────────────────────────────────────
+    .addSubcommandGroup(g => g.setName('scamimages').setDescription('Known scam images, matched by perceptual hash (shared by every server)')
+      .addSubcommand(s => s.setName('add').setDescription('Add the images in a message to the scam image list')
+        .addStringOption(o => o.setName('message_link').setDescription('Link to the message (right-click it → Copy Message Link)').setRequired(true)))
+      .addSubcommand(s => s.setName('remove').setDescription('Take an image off the scam image list')
+        .addIntegerOption(o => o.setName('id').setDescription('ID from /config scamimages list').setRequired(true)))
+      .addSubcommand(s => s.setName('list').setDescription('List the known scam images')))
 
     // ── Streaming ─────────────────────────────────────────────────────────────
     .addSubcommandGroup(g => g.setName('streaming').setDescription('Configure streaming announcements')
@@ -352,6 +361,36 @@ const ConfigCommand: Command = {
     }
 
     // ── Antiphishing ──────────────────────────────────────────────────────────
+    if (group === 'scamimages') {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      if (sub === 'add') {
+        const link = interaction.options.getString('message_link', true).trim();
+        const ids = link.match(/(\d+)\/(\d+)\/?$/);
+        const channel = ids ? await interaction.guild!.channels.fetch(ids[1]!).catch(() => null) : null;
+        const message = channel?.isTextBased() ? await channel.messages.fetch(ids![2]!).catch(() => null) : null;
+        if (!message) return interaction.editReply('❌ I couldn\'t find that message. Copy it with right-click → **Copy Message Link**.');
+        const hashes = await hashMessageImages(message);
+        if (!hashes.length) return interaction.editReply('❌ That message has no images I could read (PNG, JPEG, GIF or WebP attachments).');
+        const added = await addScamImages(hashes, 'manual', interaction.guildId, interaction.user.id);
+        const already = hashes.length - added.length;
+        return interaction.editReply(
+          (added.length ? `✅ Added ${added.map(a => `**#${a.id}**`).join(', ')} to the scam image list. Anyone posting ${added.length === 1 ? 'it' : 'them'} again gets caught on sight, in every server.` : '')
+          + (already ? `${added.length ? '\n' : '✅ '}${already} image${already === 1 ? ' was' : 's were'} already on the list.` : ''));
+      }
+      if (sub === 'remove') {
+        const id = interaction.options.getInteger('id', true);
+        return interaction.editReply(await removeScamImage(id) ? `✅ Removed **#${id}** from the scam image list.` : `❌ There's no **#${id}** on the list.`);
+      }
+      const list = await listScamImages();
+      if (!list.length) return interaction.editReply('The scam image list is empty. Images get added when spam detection catches someone posting the same image across channels, or with `/config scamimages add`.');
+      const lines = list.slice(0, 25).map(e =>
+        `**#${e.id}** · ${e.source === 'manual' ? `added by <@${e.added_by}>` : 'learned automatically'} <t:${Math.floor(e.added_at / 1000)}:R> · caught **${e.hits}**${e.last_hit_at ? `, last <t:${Math.floor(e.last_hit_at / 1000)}:R>` : ''}`);
+      return interaction.editReply({
+        content: `**Scam images** (${list.length}, shared by every server)\n${lines.join('\n')}${list.length > 25 ? `\n…and ${list.length - 25} older` : ''}\n-# Remove a wrong one with \`/config scamimages remove\`.`,
+        allowedMentions: { parse: [] },
+      });
+    }
+
     if (group === 'antiphishing') {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       if (sub === 'toggle') {
