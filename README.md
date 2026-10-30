@@ -212,7 +212,9 @@ Logs member joins and leaves, message edits and deletes, bans and unbans, nickna
 - **Deletes** show *who* deleted the message and *why*, from the audit log. No audit-log entry means the author deleted it themselves.
 - **Bulk deletes** from `/purge` or a spam purge get their own entry. Messages older than 14 days that `/purge` or the poll archive delete one at a time aren't logged individually.
 - **Leaves** show how long the member was in the server and the roles they held.
-- **Kicks** show as **Member Kicked**, with who kicked them and the reason.
+- **Kicks** show as **Member Kicked**, with who kicked them and the reason. Bans, unbans, role and nickname changes also show who did them.
+- **Deleted images** appear inside the delete log, even though Discord removes them when the message is deleted (the bot keeps a short-lived copy of images members post).
+- Every log is a clean card: an emoji title with the member's avatar, the key facts in one block, and IDs and the exact time in the footer. Mentions in logs never ping anyone.
 - Each category (member, message, voice, server, command) can have its own channel, set in the [Web Dashboard](#-web-dashboard). `/config logs channel` sets the fallback.
 
 <details>
@@ -225,6 +227,7 @@ Logs member joins and leaves, message edits and deletes, bans and unbans, nickna
 | `/config logs events` | Choose which events to log: joins, leaves, edits, deletes, bans, nicknames, roles, commands. |
 | `/config logs ignore` | Toggle ignoring a channel in message logs. |
 | `/config logs view` | View log settings. |
+| `/config logs preview` | See what the log cards look like (only you see them). |
 
 </details>
 

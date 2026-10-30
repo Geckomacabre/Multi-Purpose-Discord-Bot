@@ -1,6 +1,6 @@
-import { ChatInputCommandInteraction, Colors, ContainerBuilder, TextChannel, TextDisplayBuilder } from 'discord.js';
+import { ChatInputCommandInteraction, Colors, TextChannel } from 'discord.js';
 import * as db from './db';
-import { IS_CV2 } from './components.js';
+import { logCard, who } from './logCard';
 
 export function parseDuration(s: string): number | null {
   const m = /^(\d+)(s|m|h|d|w)$/i.exec(s.trim());
@@ -17,27 +17,40 @@ export const TYPE_COLORS: Record<string, number> = {
   timeout: Colors.Yellow, removetimeout: Colors.Green, warn: Colors.Yellow, report: Colors.Blue,
 };
 
+const CASE_ICONS: Record<string, string> = {
+  ban: '🔨', unban: '🕊️', kick: '👢', timeout: '⏱️', removetimeout: '⏱️', warn: '⚠️', report: '📣',
+};
+const CASE_TITLES: Record<string, string> = { removetimeout: 'Timeout Removed' };
+
 export async function sendModCase(
   interaction: ChatInputCommandInteraction,
   modCase: { case_num: number; type: string; user_tag: string; user_id: string; expires_at?: number | null },
   user: { tag: string; id: string },
   extras: string[] = [],
 ) {
-  const color = TYPE_COLORS[modCase.type] ?? Colors.Grey;
-  const lines = [
-    `**Case #${modCase.case_num} — ${capitalize(modCase.type)}**`,
-    `**User:** ${user.tag} (${user.id})`,
-    `**Moderator:** ${interaction.user.tag}`,
-    ...extras,
-    ...(modCase.expires_at ? [`**Expires:** <t:${Math.floor(modCase.expires_at / 1000)}:R>`] : []),
-  ];
-  const container = new ContainerBuilder().setAccentColor(color)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
-  await interaction.editReply({ flags: IS_CV2, components: [container] });
+  const target = await interaction.client.users.fetch(user.id).catch(() => null);
+  const card = logCard({
+    color: TYPE_COLORS[modCase.type] ?? Colors.Grey,
+    title: `${CASE_ICONS[modCase.type] ?? '📋'} ${CASE_TITLES[modCase.type] ?? capitalize(modCase.type)} · Case #${modCase.case_num}`,
+    subtitle: target?.username ?? user.tag,
+    thumbnail: target?.displayAvatarURL({ size: 128 }),
+    fields: [
+      { name: 'Member', value: who(target ?? { id: user.id, username: user.tag }), inline: true },
+      { name: 'Moderator', value: who(interaction.user), inline: true },
+      // extras arrive as "**Label:** value" lines
+      ...extras.map(line => {
+        const m = line.match(/^\*\*(.+?):\*\*\s*([\s\S]*)$/);
+        return m ? { name: m[1]!, value: m[2]!, inline: true } : { name: 'Note', value: line, inline: true };
+      }),
+      modCase.expires_at ? { name: 'Expires', value: `<t:${Math.floor(modCase.expires_at / 1000)}:R>`, inline: true } : null,
+    ],
+    footer: `🛡️ ${interaction.user.username} · User ID ${user.id}`,
+  });
+  await interaction.editReply(card);
 
   const cfg = await db.getModConfig(interaction.guildId!);
   if (cfg.modlog_channel_id) {
     const ch = await interaction.guild!.channels.fetch(cfg.modlog_channel_id).catch(() => null) as TextChannel | null;
-    await ch?.send({ flags: IS_CV2, components: [container] }).catch(() => {});
+    await ch?.send(card).catch(() => {});
   }
 }

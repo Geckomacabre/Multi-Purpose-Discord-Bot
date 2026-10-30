@@ -1,4 +1,5 @@
-import { Colors, EmbedBuilder, Guild, GuildMember, TextChannel } from 'discord.js';
+import { Guild, GuildMember, TextChannel } from 'discord.js';
+import { LogColor, logCard } from '../../utils/logCard';
 import { EventModule } from '../feature';
 
 const RAID_WINDOW_MS = 60_000;               // look at joins in the last 60 seconds
@@ -49,19 +50,19 @@ const raidguardModule: EventModule = {
       if (!ch) return;
 
       const lines = joiners.slice(0, 15).map(m =>
-        `<@${m.id}> — account age <t:${Math.floor(m.user.createdTimestamp / 1000)}:R>`
+        `> <@${m.id}> (${m.user.username}) · created <t:${Math.floor(m.user.createdTimestamp / 1000)}:R>`
       );
-      const embed = new EmbedBuilder()
-        .setColor(Colors.DarkRed)
-        .setTitle('🚨 Possible Raid Detected')
-        .setDescription(
-          `**${joiners.length}** accounts under 3 days old joined within the last minute.\n\n` +
-          lines.join('\n') +
-          (joiners.length > 15 ? `\n…and ${joiners.length - 15} more` : '') +
-          `\n\nUse \`/ban\` on anyone here, or run \`/raidguard recent\` any time to pull this list again.`
-        )
-        .setTimestamp();
-      await ch.send({ content: '🚨 Possible raid in progress — review recent joins.', embeds: [embed] }).catch(() => {});
+      await ch.send(logCard({
+        color: LogColor.danger,
+        title: '🚨 Possible Raid',
+        description: `**${joiners.length}** accounts under 3 days old joined in the last minute.`,
+        thumbnail: guild.iconURL({ size: 128 }),
+        fields: [
+          { name: `New Accounts (${joiners.length})`, value: lines.join('\n') + (joiners.length > 15 ? `\n> …and ${joiners.length - 15} more` : '') },
+          { name: 'What to do', value: 'Use `/ban` on anyone here, or run `/raidguard recent` any time to pull this list again.' },
+        ],
+        footer: '🛡️ Raid detection',
+      })).catch(() => {});
     },
   },
 };

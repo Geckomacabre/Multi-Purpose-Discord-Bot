@@ -1,7 +1,12 @@
-import { AuditLogEvent, ChatInputCommandInteraction, Colors, EmbedBuilder, Guild, GuildChannel, PartialUser, TextChannel, User } from 'discord.js';
+import {
+  AttachmentBuilder, AuditLogEvent, ChatInputCommandInteraction, Guild, GuildChannel, GuildVerificationLevel,
+  PartialUser, TextChannel, User,
+} from 'discord.js';
 import { EventModule } from '../feature';
 import type * as Db from '../../utils/db';
 import { isBotDeleting } from '../../utils/deleteMessages';
+import { LogColor, ago, channelTypeName, logCard, quote, truncate, who, type LogCardOptions } from '../../utils/logCard';
+import { peekImages } from '../../utils/recentImages';
 
 type LogCategory = 'member' | 'message' | 'voice' | 'server' | 'command';
 
@@ -24,6 +29,8 @@ async function getLogChannel(bot: any, channelId: string | null): Promise<TextCh
     return null;
   }
 }
+
+const post = (ch: TextChannel, card: LogCardOptions) => ch.send(logCard(card)).catch(() => {});
 
 // Correlates an event with a recent matching audit-log entry to attribute WHO
 // did it and WHY. Audit-log entries only exist for moderator/bot actions
@@ -66,6 +73,32 @@ function describeCommand(interaction: ChatInputCommandInteraction): string {
   return cmd.slice(0, 400);
 }
 
+const NEW_ACCOUNT_MS = 3 * 24 * 60 * 60_000; // same age the raid detection watches for
+const VERIFICATION: Record<GuildVerificationLevel, string> = {
+  [GuildVerificationLevel.None]: 'None', [GuildVerificationLevel.Low]: 'Low', [GuildVerificationLevel.Medium]: 'Medium',
+  [GuildVerificationLevel.High]: 'High', [GuildVerificationLevel.VeryHigh]: 'Highest',
+};
+const IMAGE_EXT = /\.(png|jpe?g|gif|webp)$/i;
+
+/**
+ * The deleted message's images, to show inside the log card. Discord removes
+ * attachments on delete, so these come from the copies the scam image check
+ * kept, or (for a few seconds after a delete) Discord's media proxy cache.
+ */
+async function deletedImages(messageId: string, attachments: { name: string; proxyURL: string; size: number }[]) {
+  const files: AttachmentBuilder[] = [];
+  const kept = peekImages(messageId);
+  for (const a of attachments.filter(a => IMAGE_EXT.test(a.name)).slice(0, 4)) {
+    let data = kept.find(k => k.name === a.name)?.data;
+    if (!data && a.size <= 8 * 1024 * 1024) {
+      data = await fetch(a.proxyURL, { signal: AbortSignal.timeout(4_000) })
+        .then(r => (r.ok ? r.arrayBuffer() : null)).then(b => (b ? Buffer.from(b) : undefined)).catch(() => undefined);
+    }
+    if (data) files.push(new AttachmentBuilder(data, { name: `${files.length}-${a.name}`.replace(/[^\w.-]/g, '_') }));
+  }
+  return files;
+}
+
 // Called from onInteraction.ts for every successfully-dispatched slash command —
 // not tied to a ClientEvents event, so it's a plain exported function rather than
 // an EventModule handler.
@@ -75,12 +108,17 @@ export async function logCommandUsage(interaction: ChatInputCommandInteraction, 
   if (!cfg?.log_commands) return;
   const ch = await getLogChannel(interaction.client, resolveChannelId(cfg, 'command'));
   if (!ch) return;
-  const embed = new EmbedBuilder()
-    .setColor(Colors.Grey)
-    .setDescription(`<@${interaction.user.id}> used \`${describeCommand(interaction)}\` in <#${interaction.channelId}>`)
-    .setFooter({ text: `${interaction.user.tag} • ${interaction.user.id}` })
-    .setTimestamp();
-  await ch.send({ embeds: [embed] }).catch(() => {});
+  await post(ch, {
+    color: LogColor.neutral,
+    title: '⌨️ Command Used',
+    subtitle: interaction.user.username,
+    fields: [
+      { name: 'User', value: who(interaction.user), inline: true },
+      { name: 'Channel', value: `<#${interaction.channelId}>`, inline: true },
+      { name: 'Command', value: `\`${describeCommand(interaction).replace(/`/g, "'")}\`` },
+    ],
+    footer: `User ID ${interaction.user.id}`,
+  });
 }
 
 const logsModule: EventModule = {
@@ -91,15 +129,20 @@ const logsModule: EventModule = {
       if (!cfg?.log_joins) return;
       const ch = await getLogChannel(bot, resolveChannelId(cfg, 'member'));
       if (!ch) return;
-      const embed = new EmbedBuilder()
-        .setColor(Colors.Green)
-        .setTitle('Member Joined')
-        .setThumbnail(member.user.displayAvatarURL())
-        .setDescription(`<@${member.id}> **${member.user.tag}**`)
-        .addFields({ name: 'Account Created', value: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>` })
-        .setFooter({ text: `ID: ${member.id}` })
-        .setTimestamp();
-      await ch.send({ embeds: [embed] }).catch(() => {});
+      const isNew = Date.now() - member.user.createdTimestamp < NEW_ACCOUNT_MS;
+      await post(ch, {
+        color: LogColor.good,
+        title: '📥 Member Joined',
+        subtitle: member.user.username,
+        thumbnail: member.user.displayAvatarURL({ size: 128 }),
+        fields: [
+          { name: 'Member', value: who(member.user), inline: true },
+          { name: 'Account Created', value: `${ago(member.user.createdTimestamp)}${isNew ? ' 🆕 **new account**' : ''}`, inline: true },
+          { name: 'Member Count', value: member.guild.memberCount.toLocaleString(), inline: true },
+          member.user.bot && { name: 'Type', value: '🤖 Bot', inline: true },
+        ],
+        footer: `User ID ${member.id}`,
+      });
     },
 
     guildMemberRemove: async ({ data: [member], bot, db }) => {
@@ -114,33 +157,23 @@ const logsModule: EventModule = {
 
       const roles = member.roles.cache.filter(r => r.id !== member.guild.id);
       const rolesValue = roles.size
-        ? [...roles.values()].slice(0, 20).map(r => `<@&${r.id}>`).join(', ') + (roles.size > 20 ? ` *(+${roles.size - 20} more)*` : '')
-        : '*None*';
+        ? [...roles.values()].slice(0, 20).map(r => `<@&${r.id}>`).join(' ') + (roles.size > 20 ? ` *+${roles.size - 20} more*` : '')
+        : '';
 
-      const embed = new EmbedBuilder()
-        .setColor(Colors.Red)
-        .setTitle(kick ? 'Member Kicked' : 'Member Left')
-        .setThumbnail(member.user.displayAvatarURL())
-        .setDescription(`<@${member.id}> **${member.user.tag}**`)
-        .addFields(
-          {
-            name: 'Joined',
-            value: member.joinedTimestamp ? `<t:${Math.floor(member.joinedTimestamp / 1000)}:R>` : '*Unknown*',
-            inline: true,
-          },
-          { name: 'Roles', value: rolesValue },
-        )
-        .setFooter({ text: `ID: ${member.id}` })
-        .setTimestamp();
-
-      if (kick) {
-        embed.addFields(
-          { name: 'Kicked By', value: kick.executor ? `<@${kick.executor.id}> (${kick.executor.tag})` : '*Unknown*', inline: true },
-          { name: 'Reason', value: kick.reason ?? 'No reason provided', inline: true },
-        );
-      }
-
-      await ch.send({ embeds: [embed] }).catch(() => {});
+      await post(ch, {
+        color: kick ? LogColor.orange : LogColor.bad,
+        title: kick ? '👢 Member Kicked' : '📤 Member Left',
+        subtitle: member.user.username,
+        thumbnail: member.user.displayAvatarURL({ size: 128 }),
+        fields: [
+          { name: 'Member', value: who(member.user), inline: true },
+          { name: 'Joined', value: member.joinedTimestamp ? ago(member.joinedTimestamp) : '*Unknown*', inline: true },
+          { name: 'Account Created', value: ago(member.user.createdTimestamp), inline: true },
+          kick && { name: 'Reason', value: kick.reason ?? 'No reason given', inline: true },
+          rolesValue && { name: `Roles (${roles.size})`, value: rolesValue },
+        ],
+        footer: kick ? `👢 Kicked by ${kick.executor?.username ?? 'unknown'} · User ID ${member.id}` : `User ID ${member.id}`,
+      });
     },
 
     guildMemberUpdate: async ({ data: [oldMember, newMember], bot, db }) => {
@@ -150,32 +183,39 @@ const logsModule: EventModule = {
       if (!ch) return;
 
       if (cfg.log_nickname_changes && oldMember.nickname !== newMember.nickname) {
-        const embed = new EmbedBuilder()
-          .setColor(Colors.Yellow)
-          .setTitle('Nickname Changed')
-          .setDescription(`<@${newMember.id}> **${newMember.user.tag}**`)
-          .addFields(
+        const by = await findAuditEntry(newMember.guild, AuditLogEvent.MemberUpdate, newMember.id);
+        const byOther = by?.executor && by.executor.id !== newMember.id ? by.executor : null;
+        await post(ch, {
+          color: LogColor.warn,
+          title: '✏️ Nickname Changed',
+          subtitle: newMember.user.username,
+          thumbnail: newMember.user.displayAvatarURL({ size: 128 }),
+          fields: [
+            { name: 'Member', value: who(newMember.user), inline: true },
             { name: 'Before', value: oldMember.nickname ?? '*none*', inline: true },
-            { name: 'After', value: newMember.nickname ?? '*none*', inline: true }
-          )
-          .setFooter({ text: `ID: ${newMember.id}` })
-          .setTimestamp();
-        await ch.send({ embeds: [embed] }).catch(() => {});
+            { name: 'After', value: newMember.nickname ?? '*none*', inline: true },
+          ],
+          footer: byOther ? `✏️ Changed by ${byOther.username} · User ID ${newMember.id}` : `User ID ${newMember.id}`,
+        });
       }
 
       if (cfg.log_role_changes) {
         const added = newMember.roles.cache.filter(r => !oldMember.roles.cache.has(r.id));
         const removed = oldMember.roles.cache.filter(r => !newMember.roles.cache.has(r.id));
         if (added.size || removed.size) {
-          const embed = new EmbedBuilder()
-            .setColor(Colors.Blue)
-            .setTitle('Roles Updated')
-            .setDescription(`<@${newMember.id}> **${newMember.user.tag}**`)
-            .setFooter({ text: `ID: ${newMember.id}` })
-            .setTimestamp();
-          if (added.size) embed.addFields({ name: 'Added', value: added.map(r => `<@&${r.id}>`).join(', ') });
-          if (removed.size) embed.addFields({ name: 'Removed', value: removed.map(r => `<@&${r.id}>`).join(', ') });
-          await ch.send({ embeds: [embed] }).catch(() => {});
+          const by = await findAuditEntry(newMember.guild, AuditLogEvent.MemberRoleUpdate, newMember.id);
+          await post(ch, {
+            color: LogColor.info,
+            title: '🎭 Roles Updated',
+            subtitle: newMember.user.username,
+            thumbnail: newMember.user.displayAvatarURL({ size: 128 }),
+            fields: [
+              { name: 'Member', value: who(newMember.user), inline: true },
+              added.size > 0 && { name: 'Added', value: added.map(r => `<@&${r.id}>`).join(' '), inline: true },
+              removed.size > 0 && { name: 'Removed', value: removed.map(r => `<@&${r.id}>`).join(' '), inline: true },
+            ],
+            footer: by?.executor ? `🎭 Changed by ${by.executor.username} · User ID ${newMember.id}` : `User ID ${newMember.id}`,
+          });
         }
       }
     },
@@ -193,29 +233,29 @@ const logsModule: EventModule = {
         if (!ch) continue;
 
         if (usernameChanged) {
-          const embed = new EmbedBuilder()
-            .setColor(Colors.Yellow)
-            .setTitle('Username Changed')
-            .setThumbnail(newUser.displayAvatarURL())
-            .setDescription(`<@${newUser.id}>`)
-            .addFields(
+          await post(ch, {
+            color: LogColor.warn,
+            title: '🪪 Username Changed',
+            subtitle: newUser.username,
+            thumbnail: newUser.displayAvatarURL({ size: 128 }),
+            fields: [
+              { name: 'Member', value: who(newUser), inline: true },
               { name: 'Before', value: oldUser.username ?? '*unknown*', inline: true },
-              { name: 'After', value: newUser.username, inline: true }
-            )
-            .setFooter({ text: `ID: ${newUser.id}` })
-            .setTimestamp();
-          await ch.send({ embeds: [embed] }).catch(() => {});
+              { name: 'After', value: newUser.username, inline: true },
+            ],
+            footer: `User ID ${newUser.id}`,
+          });
         }
 
         if (avatarChanged) {
-          const embed = new EmbedBuilder()
-            .setColor(Colors.Yellow)
-            .setTitle('Avatar Changed')
-            .setDescription(`<@${newUser.id}> **${newUser.username}**`)
-            .setThumbnail(newUser.displayAvatarURL({ size: 256 }))
-            .setFooter({ text: `ID: ${newUser.id}` })
-            .setTimestamp();
-          await ch.send({ embeds: [embed] }).catch(() => {});
+          await post(ch, {
+            color: LogColor.warn,
+            title: '🖼️ Avatar Changed',
+            subtitle: newUser.username,
+            fields: [{ name: 'Member', value: who(newUser), inline: true }],
+            images: [{ url: newUser.displayAvatarURL({ size: 512 }), description: 'New avatar' }],
+            footer: `User ID ${newUser.id}`,
+          });
         }
       }
     },
@@ -229,17 +269,21 @@ const logsModule: EventModule = {
       if (ignored.includes(newMessage.channelId)) return;
       const ch = await getLogChannel(bot, resolveChannelId(cfg, 'message'));
       if (!ch) return;
-      const embed = new EmbedBuilder()
-        .setColor(Colors.Yellow)
-        .setTitle('Message Edited')
-        .setDescription(`<@${newMessage.author?.id}> in <#${newMessage.channelId}>\n[Jump to message](${newMessage.url})`)
-        .addFields(
-          { name: 'Before', value: (oldMessage.content || '*empty*').slice(0, 1024) },
-          { name: 'After', value: (newMessage.content || '*empty*').slice(0, 1024) }
-        )
-        .setFooter({ text: `User: ${newMessage.author?.id}` })
-        .setTimestamp();
-      await ch.send({ embeds: [embed] }).catch(() => {});
+      await post(ch, {
+        color: LogColor.warn,
+        title: '✏️ Message Edited',
+        subtitle: newMessage.author?.username,
+        thumbnail: newMessage.author?.displayAvatarURL({ size: 128 }),
+        fields: [
+          { name: 'Channel', value: `<#${newMessage.channelId}>`, inline: true },
+          { name: 'Author', value: who(newMessage.author), inline: true },
+          newMessage.createdTimestamp > 0 && { name: 'Sent', value: ago(newMessage.createdTimestamp), inline: true },
+          { name: 'Before', value: oldMessage.partial ? '> *Not cached, so the old text is unknown*' : quote(oldMessage.content ?? '') },
+          { name: 'After', value: quote(newMessage.content ?? '') },
+        ],
+        footer: `Message ID ${newMessage.id} · User ID ${newMessage.author?.id}`,
+        links: [{ label: 'Jump to message', url: newMessage.url }],
+      });
     },
 
     messageDelete: async ({ data: [message], bot, db }) => {
@@ -255,34 +299,35 @@ const logsModule: EventModule = {
       const guild = message.guild ?? (message.guildId ? bot.guilds.cache.get(message.guildId) : null);
       const deleter = guild && message.author ? await findAuditEntry(guild, AuditLogEvent.MessageDelete, message.author.id) : null;
 
-      const contentValue = message.partial
-        ? '*Content unavailable (message wasn\'t cached)*'
-        : (message.content || '*(no text content)*').slice(0, 1024);
+      const attachments = [...message.attachments.values()];
+      const files = await deletedImages(message.id, attachments);
+      const shown = new Set(files.map(f => f.name!.replace(/^\d+-/, '')));
+      const notShown = attachments.filter(a => !shown.has(a.name.replace(/[^\w.-]/g, '_')));
 
-      const embed = new EmbedBuilder()
-        .setColor(Colors.Red)
-        .setTitle('Message Deleted')
-        .setDescription(`<@${message.author?.id}> in <#${message.channelId}>`)
-        .addFields(
-          { name: 'Content', value: contentValue },
-          {
-            name: 'Deleted By',
-            value: deleter?.executor ? `<@${deleter.executor.id}> (${deleter.executor.tag})` : '*Self-deleted, or deleter unknown*',
-            inline: true,
+      await post(ch, {
+        color: LogColor.bad,
+        title: '🗑️ Message Deleted',
+        subtitle: message.author?.username,
+        thumbnail: message.author?.displayAvatarURL({ size: 128 }),
+        fields: [
+          { name: 'Channel', value: `<#${message.channelId}>`, inline: true },
+          { name: 'Author', value: who(message.author), inline: true },
+          !message.partial && message.createdTimestamp > 0 && { name: 'Sent', value: ago(message.createdTimestamp), inline: true },
+          deleter?.reason && { name: 'Reason', value: deleter.reason, inline: true },
+          message.partial
+            ? { name: 'Content', value: '> *Not cached, so the content is unknown*' }
+            : message.content && { name: 'Content', value: quote(message.content) },
+          attachments.length > 0 && {
+            name: `${attachments.length} Attachment${attachments.length === 1 ? '' : 's'}`,
+            value: notShown.length
+              ? notShown.map(a => `> 📎 ${truncate(a.name, 80)}${IMAGE_EXT.test(a.name) ? ' *(image already gone)*' : ''}`).join('\n')
+              : '',
           },
-        )
-        .setFooter({ text: `Author: ${message.author?.id} · Message: ${message.id}` })
-        .setTimestamp();
-
-      if (deleter?.reason) embed.addFields({ name: 'Reason', value: deleter.reason, inline: true });
-      if (!message.partial && message.createdTimestamp) {
-        embed.addFields({ name: 'Sent', value: `<t:${Math.floor(message.createdTimestamp / 1000)}:R>`, inline: true });
-      }
-      if (message.attachments.size) {
-        embed.addFields({ name: 'Attachments', value: [...message.attachments.values()].map(a => a.name).join(', ').slice(0, 1024) });
-      }
-
-      await ch.send({ embeds: [embed] }).catch(() => {});
+        ],
+        images: files.map(f => ({ url: `attachment://${f.name}`, description: f.name!.replace(/^\d+-/, '') })),
+        files,
+        footer: `${deleter?.executor ? `🗑️ Deleted by ${deleter.executor.username}` : '🗑️ Deleted by the author'} · Message ID ${message.id}`,
+      });
     },
 
     messageDeleteBulk: async ({ data: [messages, channel], bot, db }) => {
@@ -294,21 +339,21 @@ const logsModule: EventModule = {
       if (!ch) return;
 
       const deleter = await findAuditEntry(channel.guild, AuditLogEvent.MessageBulkDelete, channel.id);
+      const authors = new Map<string, number>();
+      for (const m of messages.values()) if (m.author) authors.set(m.author.id, (authors.get(m.author.id) ?? 0) + 1);
+      const top = [...authors.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
 
-      const embed = new EmbedBuilder()
-        .setColor(Colors.Red)
-        .setTitle('Messages Bulk Deleted')
-        .setDescription(`**${messages.size}** messages deleted in <#${channel.id}>`)
-        .addFields({
-          name: 'Deleted By',
-          value: deleter?.executor ? `<@${deleter.executor.id}> (${deleter.executor.tag})` : '*Unknown (bot or automated action)*',
-          inline: true,
-        })
-        .setTimestamp();
-
-      if (deleter?.reason) embed.addFields({ name: 'Reason', value: deleter.reason, inline: true });
-
-      await ch.send({ embeds: [embed] }).catch(() => {});
+      await post(ch, {
+        color: LogColor.bad,
+        title: '🧹 Messages Bulk Deleted',
+        description: `**${messages.size}** messages removed from <#${channel.id}>`,
+        fields: [
+          { name: 'Channel', value: `<#${channel.id}>`, inline: true },
+          deleter?.reason && { name: 'Reason', value: deleter.reason, inline: true },
+          top.length > 0 && { name: 'From', value: top.map(([id, n]) => `> <@${id}> · ${n}`).join('\n') },
+        ],
+        footer: deleter?.executor ? `🧹 Deleted by ${deleter.executor.username}` : '🧹 Deleted by a bot or automated action',
+      });
     },
 
     guildBanAdd: async ({ data: [ban], bot, db }) => {
@@ -316,14 +361,19 @@ const logsModule: EventModule = {
       if (!cfg?.log_bans) return;
       const ch = await getLogChannel(bot, resolveChannelId(cfg, 'member'));
       if (!ch) return;
-      const embed = new EmbedBuilder()
-        .setColor(Colors.DarkRed)
-        .setTitle('Member Banned')
-        .setDescription(`<@${ban.user.id}> **${ban.user.tag}**`)
-        .addFields({ name: 'Reason', value: ban.reason ?? 'No reason provided' })
-        .setFooter({ text: `ID: ${ban.user.id}` })
-        .setTimestamp();
-      await ch.send({ embeds: [embed] }).catch(() => {});
+      const by = await findAuditEntry(ban.guild, AuditLogEvent.MemberBanAdd, ban.user.id);
+      await post(ch, {
+        color: LogColor.danger,
+        title: '🔨 Member Banned',
+        subtitle: ban.user.username,
+        thumbnail: ban.user.displayAvatarURL({ size: 128 }),
+        fields: [
+          { name: 'Member', value: who(ban.user), inline: true },
+          { name: 'Account Created', value: ago(ban.user.createdTimestamp), inline: true },
+          { name: 'Reason', value: by?.reason ?? ban.reason ?? 'No reason given', inline: true },
+        ],
+        footer: by?.executor ? `🔨 Banned by ${by.executor.username} · User ID ${ban.user.id}` : `User ID ${ban.user.id}`,
+      });
     },
 
     guildBanRemove: async ({ data: [ban], bot, db }) => {
@@ -331,13 +381,18 @@ const logsModule: EventModule = {
       if (!cfg?.log_bans) return;
       const ch = await getLogChannel(bot, resolveChannelId(cfg, 'member'));
       if (!ch) return;
-      const embed = new EmbedBuilder()
-        .setColor(Colors.Green)
-        .setTitle('Member Unbanned')
-        .setDescription(`<@${ban.user.id}> **${ban.user.tag}**`)
-        .setFooter({ text: `ID: ${ban.user.id}` })
-        .setTimestamp();
-      await ch.send({ embeds: [embed] }).catch(() => {});
+      const by = await findAuditEntry(ban.guild, AuditLogEvent.MemberBanRemove, ban.user.id);
+      await post(ch, {
+        color: LogColor.good,
+        title: '🕊️ Member Unbanned',
+        subtitle: ban.user.username,
+        thumbnail: ban.user.displayAvatarURL({ size: 128 }),
+        fields: [
+          { name: 'Member', value: who(ban.user), inline: true },
+          by?.reason && { name: 'Reason', value: by.reason, inline: true },
+        ],
+        footer: by?.executor ? `🕊️ Unbanned by ${by.executor.username} · User ID ${ban.user.id}` : `User ID ${ban.user.id}`,
+      });
     },
 
     voiceStateUpdate: async ({ data: [oldState, newState], bot, db }) => {
@@ -348,39 +403,24 @@ const logsModule: EventModule = {
       const ch = await getLogChannel(bot, resolveChannelId(cfg, 'voice'));
       if (!ch) return;
 
-      const userId = newState.id;
-      let embed: EmbedBuilder | null = null;
+      const member = newState.member ?? oldState.member;
+      const base = {
+        subtitle: member?.user.username,
+        thumbnail: member?.user.displayAvatarURL({ size: 128 }),
+        footer: `User ID ${newState.id}`,
+      };
+      const memberField = { name: 'Member', value: member ? who(member.user) : `<@${newState.id}>`, inline: true };
 
       if (!oldState.channelId && newState.channelId) {
-        embed = new EmbedBuilder()
-          .setColor(Colors.Green)
-          .setTitle('Joined Voice Channel')
-          .setDescription(`<@${userId}> joined <#${newState.channelId}>`)
-          .setFooter({ text: `ID: ${userId}` })
-          .setTimestamp();
+        await post(ch, { ...base, color: LogColor.good, title: '🔊 Joined Voice',
+          fields: [memberField, { name: 'Channel', value: `<#${newState.channelId}>`, inline: true }] });
       } else if (oldState.channelId && !newState.channelId) {
-        embed = new EmbedBuilder()
-          .setColor(Colors.Red)
-          .setTitle('Left Voice Channel')
-          .setDescription(`<@${userId}> left <#${oldState.channelId}>`)
-          .setFooter({ text: `ID: ${userId}` })
-          .setTimestamp();
+        await post(ch, { ...base, color: LogColor.bad, title: '🔇 Left Voice',
+          fields: [memberField, { name: 'Channel', value: `<#${oldState.channelId}>`, inline: true }] });
       } else if (oldState.channelId && newState.channelId && oldState.channelId !== newState.channelId) {
-        const fromId = oldState.channelId;
-        const toId = newState.channelId;
-        embed = new EmbedBuilder()
-          .setColor(Colors.Yellow)
-          .setTitle('Moved Voice Channel')
-          .setDescription(`<@${userId}>`)
-          .addFields(
-            { name: 'From', value: `<#${fromId}>`, inline: true },
-            { name: 'To', value: `<#${toId}>`, inline: true }
-          )
-          .setFooter({ text: `ID: ${userId}` })
-          .setTimestamp();
+        await post(ch, { ...base, color: LogColor.warn, title: '🔀 Switched Voice',
+          fields: [memberField, { name: 'From', value: `<#${oldState.channelId}>`, inline: true }, { name: 'To', value: `<#${newState.channelId}>`, inline: true }] });
       }
-
-      if (embed) await ch.send({ embeds: [embed] }).catch(() => {});
     },
 
     emojiCreate: async ({ data: [emoji], bot, db }) => {
@@ -388,14 +428,14 @@ const logsModule: EventModule = {
       if (!cfg?.log_emoji_changes) return;
       const ch = await getLogChannel(bot, resolveChannelId(cfg, 'server'));
       if (!ch) return;
-      const embed = new EmbedBuilder()
-        .setColor(Colors.Green)
-        .setTitle('Emoji Added')
-        .setDescription(`**:${emoji.name}:** ${emoji.toString()}`)
-        .setThumbnail(emoji.imageURL())
-        .setFooter({ text: `ID: ${emoji.id}` })
-        .setTimestamp();
-      await ch.send({ embeds: [embed] }).catch(() => {});
+      const by = await findAuditEntry(emoji.guild, AuditLogEvent.EmojiCreate, emoji.id);
+      await post(ch, {
+        color: LogColor.good,
+        title: '😀 Emoji Added',
+        thumbnail: emoji.imageURL(),
+        fields: [{ name: 'Emoji', value: `${emoji.toString()} \`:${emoji.name}:\``, inline: true }],
+        footer: by?.executor ? `😀 Added by ${by.executor.username} · Emoji ID ${emoji.id}` : `Emoji ID ${emoji.id}`,
+      });
     },
 
     emojiDelete: async ({ data: [emoji], bot, db }) => {
@@ -403,14 +443,14 @@ const logsModule: EventModule = {
       if (!cfg?.log_emoji_changes) return;
       const ch = await getLogChannel(bot, resolveChannelId(cfg, 'server'));
       if (!ch) return;
-      const embed = new EmbedBuilder()
-        .setColor(Colors.Red)
-        .setTitle('Emoji Removed')
-        .setDescription(`**:${emoji.name}:**`)
-        .setThumbnail(emoji.imageURL())
-        .setFooter({ text: `ID: ${emoji.id}` })
-        .setTimestamp();
-      await ch.send({ embeds: [embed] }).catch(() => {});
+      const by = await findAuditEntry(emoji.guild, AuditLogEvent.EmojiDelete, emoji.id);
+      await post(ch, {
+        color: LogColor.bad,
+        title: '😶 Emoji Removed',
+        thumbnail: emoji.imageURL(),
+        fields: [{ name: 'Emoji', value: `\`:${emoji.name}:\``, inline: true }],
+        footer: by?.executor ? `😶 Removed by ${by.executor.username} · Emoji ID ${emoji.id}` : `Emoji ID ${emoji.id}`,
+      });
     },
 
     emojiUpdate: async ({ data: [oldEmoji, newEmoji], bot, db }) => {
@@ -419,17 +459,17 @@ const logsModule: EventModule = {
       if (!cfg?.log_emoji_changes) return;
       const ch = await getLogChannel(bot, resolveChannelId(cfg, 'server'));
       if (!ch) return;
-      const embed = new EmbedBuilder()
-        .setColor(Colors.Yellow)
-        .setTitle('Emoji Renamed')
-        .setDescription(newEmoji.toString())
-        .addFields(
-          { name: 'Before', value: `:${oldEmoji.name}:`, inline: true },
-          { name: 'After', value: `:${newEmoji.name}:`, inline: true }
-        )
-        .setFooter({ text: `ID: ${newEmoji.id}` })
-        .setTimestamp();
-      await ch.send({ embeds: [embed] }).catch(() => {});
+      await post(ch, {
+        color: LogColor.warn,
+        title: '✏️ Emoji Renamed',
+        thumbnail: newEmoji.imageURL(),
+        fields: [
+          { name: 'Emoji', value: newEmoji.toString(), inline: true },
+          { name: 'Before', value: `\`:${oldEmoji.name}:\``, inline: true },
+          { name: 'After', value: `\`:${newEmoji.name}:\``, inline: true },
+        ],
+        footer: `Emoji ID ${newEmoji.id}`,
+      });
     },
 
     guildUpdate: async ({ data: [oldGuild, newGuild], bot, db }) => {
@@ -438,27 +478,28 @@ const logsModule: EventModule = {
       const ch = await getLogChannel(bot, resolveChannelId(cfg, 'server'));
       if (!ch) return;
 
-      const fields: { name: string; value: string; inline?: boolean }[] = [];
-      if (oldGuild.name !== newGuild.name)
-        fields.push({ name: 'Name', value: `${oldGuild.name} → ${newGuild.name}` });
-      if (oldGuild.icon !== newGuild.icon)
-        fields.push({ name: 'Icon', value: newGuild.icon ? '[New icon set]' : 'Icon removed' });
-      if (oldGuild.description !== newGuild.description)
-        fields.push({ name: 'Description', value: `${oldGuild.description ?? '*none*'} → ${newGuild.description ?? '*none*'}` });
-      if (oldGuild.verificationLevel !== newGuild.verificationLevel)
-        fields.push({ name: 'Verification Level', value: `${oldGuild.verificationLevel} → ${newGuild.verificationLevel}` });
-      if (oldGuild.banner !== newGuild.banner)
-        fields.push({ name: 'Banner', value: newGuild.banner ? 'Updated' : 'Removed' });
+      const changes = [
+        oldGuild.name !== newGuild.name && { name: 'Name', value: `${oldGuild.name} → **${newGuild.name}**`, inline: true },
+        oldGuild.icon !== newGuild.icon && { name: 'Icon', value: newGuild.icon ? 'New icon' : 'Removed', inline: true },
+        oldGuild.banner !== newGuild.banner && { name: 'Banner', value: newGuild.banner ? 'New banner' : 'Removed', inline: true },
+        oldGuild.verificationLevel !== newGuild.verificationLevel && {
+          name: 'Verification', value: `${VERIFICATION[oldGuild.verificationLevel]} → **${VERIFICATION[newGuild.verificationLevel]}**`, inline: true,
+        },
+        oldGuild.description !== newGuild.description && {
+          name: 'Description', value: `${quote(oldGuild.description ?? '*none*', 400)}\n→\n${quote(newGuild.description ?? '*none*', 400)}`,
+        },
+      ].filter(Boolean);
+      if (!changes.length) return;
 
-      if (!fields.length) return;
-      const embed = new EmbedBuilder()
-        .setColor(Colors.Blue)
-        .setTitle('Server Updated')
-        .addFields(fields)
-        .setFooter({ text: `Guild: ${newGuild.id}` })
-        .setTimestamp();
-      if (newGuild.icon) embed.setThumbnail(newGuild.iconURL());
-      await ch.send({ embeds: [embed] }).catch(() => {});
+      const by = await findAuditEntry(newGuild, AuditLogEvent.GuildUpdate, newGuild.id);
+      await post(ch, {
+        color: LogColor.info,
+        title: '⚙️ Server Updated',
+        thumbnail: newGuild.iconURL({ size: 128 }),
+        fields: changes,
+        images: oldGuild.banner !== newGuild.banner && newGuild.banner ? [{ url: newGuild.bannerURL({ size: 1024 })!, description: 'New banner' }] : [],
+        footer: by?.executor ? `⚙️ Changed by ${by.executor.username}` : `Server ID ${newGuild.id}`,
+      });
     },
 
     channelCreate: async ({ data: [channel], bot, db }) => {
@@ -467,14 +508,17 @@ const logsModule: EventModule = {
       if (!cfg?.log_channel_changes) return;
       const ch = await getLogChannel(bot, resolveChannelId(cfg, 'server'));
       if (!ch) return;
-      const embed = new EmbedBuilder()
-        .setColor(Colors.Green)
-        .setTitle('Channel Created')
-        .setDescription(`<#${channel.id}> **${channel.name}**`)
-        .addFields({ name: 'Type', value: channel.type.toString() })
-        .setFooter({ text: `ID: ${channel.id}` })
-        .setTimestamp();
-      await ch.send({ embeds: [embed] }).catch(() => {});
+      const by = await findAuditEntry(channel.guild, AuditLogEvent.ChannelCreate, channel.id);
+      await post(ch, {
+        color: LogColor.good,
+        title: '➕ Channel Created',
+        fields: [
+          { name: 'Channel', value: `<#${channel.id}> · ${channel.name}`, inline: true },
+          { name: 'Type', value: channelTypeName(channel.type), inline: true },
+          channel.parent && { name: 'Category', value: channel.parent.name, inline: true },
+        ],
+        footer: by?.executor ? `➕ Created by ${by.executor.username} · Channel ID ${channel.id}` : `Channel ID ${channel.id}`,
+      });
     },
 
     channelDelete: async ({ data: [channel], bot, db }) => {
@@ -483,16 +527,78 @@ const logsModule: EventModule = {
       if (!cfg?.log_channel_changes) return;
       const ch = await getLogChannel(bot, resolveChannelId(cfg, 'server'));
       if (!ch) return;
-      const embed = new EmbedBuilder()
-        .setColor(Colors.Red)
-        .setTitle('Channel Deleted')
-        .setDescription(`**#${channel.name}**`)
-        .addFields({ name: 'Type', value: channel.type.toString() })
-        .setFooter({ text: `ID: ${channel.id}` })
-        .setTimestamp();
-      await ch.send({ embeds: [embed] }).catch(() => {});
+      const by = await findAuditEntry(channel.guild, AuditLogEvent.ChannelDelete, channel.id);
+      await post(ch, {
+        color: LogColor.bad,
+        title: '➖ Channel Deleted',
+        fields: [
+          { name: 'Channel', value: `#${channel.name}`, inline: true },
+          { name: 'Type', value: channelTypeName(channel.type), inline: true },
+          channel.parent && { name: 'Category', value: channel.parent.name, inline: true },
+        ],
+        footer: by?.executor ? `➖ Deleted by ${by.executor.username} · Channel ID ${channel.id}` : `Channel ID ${channel.id}`,
+      });
     },
   },
 };
 
 export default logsModule;
+
+/** Sample cards for /config logs preview, built from the person asking. */
+export function sampleLogCards(user: User, guildId: string, channelId: string): LogCardOptions[] {
+  const avatar = user.displayAvatarURL({ size: 128 });
+  const now = Date.now();
+  const link = `https://discord.com/channels/${guildId}/${channelId}`;
+  return [
+    {
+      color: LogColor.good, title: '📥 Member Joined', subtitle: user.username, thumbnail: avatar,
+      fields: [
+        { name: 'Member', value: who(user), inline: true },
+        { name: 'Account Created', value: `${ago(now - 2 * 86_400_000)} 🆕 **new account**`, inline: true },
+        { name: 'Member Count', value: '1,234', inline: true },
+      ],
+      footer: `User ID ${user.id}`,
+    },
+    {
+      color: LogColor.bad, title: '🗑️ Message Deleted', subtitle: user.username, thumbnail: avatar,
+      fields: [
+        { name: 'Channel', value: `<#${channelId}>`, inline: true },
+        { name: 'Author', value: who(user), inline: true },
+        { name: 'Sent', value: ago(now - 4 * 60_000), inline: true },
+        { name: 'Content', value: quote('check out this picture') },
+      ],
+      images: [{ url: user.displayAvatarURL({ size: 512 }), description: 'image.png' }],
+      footer: `🗑️ Deleted by a moderator · Message ID 123456789012345678`,
+    },
+    {
+      color: LogColor.warn, title: '✏️ Message Edited', subtitle: user.username, thumbnail: avatar,
+      fields: [
+        { name: 'Channel', value: `<#${channelId}>`, inline: true },
+        { name: 'Author', value: who(user), inline: true },
+        { name: 'Before', value: quote('see you at 7') },
+        { name: 'After', value: quote('see you at 8 actually') },
+      ],
+      footer: `Message ID 123456789012345678 · User ID ${user.id}`,
+      links: [{ label: 'Jump to message', url: link }],
+    },
+    {
+      color: LogColor.danger, title: '🔨 Member Banned', subtitle: user.username, thumbnail: avatar,
+      fields: [
+        { name: 'Member', value: who(user), inline: true },
+        { name: 'Account Created', value: ago(now - 400 * 86_400_000), inline: true },
+        { name: 'Reason', value: 'Posting scam links', inline: true },
+      ],
+      footer: `🔨 Banned by a moderator · User ID ${user.id}`,
+    },
+    {
+      color: LogColor.orange, title: '🚨 Spam Detected', subtitle: user.username, thumbnail: avatar,
+      fields: [
+        { name: 'Member', value: who(user), inline: true },
+        { name: 'Action', value: '⏱️ 24-hour timeout', inline: true },
+        { name: 'Messages Removed', value: '3', inline: true },
+        { name: 'Why', value: quote('Known scam image: matches the shared scam image list (SomewhatDamaged/Scam-Images), score 10/10') },
+      ],
+      footer: `🛡️ Spam detection · User ID ${user.id}`,
+    },
+  ];
+}

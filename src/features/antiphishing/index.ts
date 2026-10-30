@@ -1,4 +1,5 @@
-import { Colors, EmbedBuilder, TextChannel } from 'discord.js';
+import { TextChannel } from 'discord.js';
+import { LogColor, logCard, quote, who } from '../../utils/logCard';
 import { EventModule } from '../feature';
 
 // Cache of known phishing domains fetched from sinking.yachts
@@ -80,13 +81,19 @@ async function alertModlog(message: any, db: any, title: string, detail: string,
     if (!channelId) return;
     const ch = await message.client.channels.fetch(channelId).catch(() => null) as TextChannel | null;
     if (!ch) return;
-    const embed = new EmbedBuilder()
-      .setColor(color)
-      .setTitle(title)
-      .setDescription(`<@${message.author.id}> in <#${message.channelId}>\n${detail}`)
-      .setFooter({ text: `${message.author.tag} • ${message.author.id}` })
-      .setTimestamp();
-    await ch.send({ embeds: [embed] }).catch(() => {});
+    await ch.send(logCard({
+      color,
+      title,
+      subtitle: message.author.username,
+      thumbnail: message.author.displayAvatarURL({ size: 128 }),
+      fields: [
+        { name: 'Member', value: who(message.author), inline: true },
+        { name: 'Channel', value: `<#${message.channelId}>`, inline: true },
+        { name: 'Found', value: detail, inline: true },
+        message.content && { name: 'Message', value: quote(message.content, 500) },
+      ],
+      footer: `🎣 Anti-phishing · removed automatically · User ID ${message.author.id}`,
+    })).catch(() => {});
   } catch {}
 }
 
@@ -113,7 +120,7 @@ const antiphishingModule: EventModule = {
           await message.channel.send(
             `🚨 <@${message.author.id}> **Phishing link detected and removed.** The domain \`${hit}\` is a known phishing site.`
           ).then((m: any) => setTimeout(() => m.delete().catch(() => {}), 10_000)).catch(() => {});
-          await alertModlog(message, db, '🎣 Phishing Link Removed', `Domain: \`${hit}\``, Colors.DarkRed);
+          await alertModlog(message, db, '🎣 Phishing Link Removed', `known phishing site \`${hit}\``, LogColor.danger);
           return;
         }
       }
@@ -127,7 +134,7 @@ const antiphishingModule: EventModule = {
           await message.channel.send(
             `🚨 <@${message.author.id}> **Suspicious link removed.** \`${d}\` looks like it's impersonating \`${brand}\`.`
           ).then((m: any) => setTimeout(() => m.delete().catch(() => {}), 10_000)).catch(() => {});
-          await alertModlog(message, db, '⚠️ Lookalike Domain Removed', `Domain: \`${d}\` (impersonating \`${brand}\`)`, Colors.Orange);
+          await alertModlog(message, db, '⚠️ Lookalike Link Removed', `\`${d}\` posing as \`${brand}\``, LogColor.orange);
           return;
         }
       }
@@ -140,7 +147,7 @@ const antiphishingModule: EventModule = {
           await message.channel.send(
             `🚨 <@${message.author.id}> **Invite link removed.** Posting Discord invites isn't allowed here.`
           ).then((m: any) => setTimeout(() => m.delete().catch(() => {}), 10_000)).catch(() => {});
-          await alertModlog(message, db, '🔗 Invite Link Removed', `Code(s): \`${codes.join('`, `')}\``, Colors.Yellow);
+          await alertModlog(message, db, '🔗 Invite Link Removed', `invite \`${codes.join('`, `')}\``, LogColor.warn);
         }
       }
     },

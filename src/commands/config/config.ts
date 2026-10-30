@@ -8,6 +8,8 @@ import {
 import * as db from '../../utils/db';
 import { Command } from '../../interfaces/command.js';
 import { cv2Text } from '../../utils/components.js';
+import { logCard } from '../../utils/logCard.js';
+import { sampleLogCards } from '../../features/logs/index.js';
 import { findTimezoneMatch, generateTimezoneMessage, offsetToString } from '../../features/timezone/index.js';
 import { postPanel, refreshPanels } from '../../features/panels/index.js';
 import { addScamImages, findScamImage, fingerprintMessage, listScamImages, removeScamImage } from '../../features/spamdetect/scamImages.js';
@@ -123,7 +125,8 @@ const ConfigCommand: Command = {
         .addBooleanOption(o => o.setName('nicknames').setDescription('Log nickname changes'))
         .addBooleanOption(o => o.setName('roles').setDescription('Log role changes'))
         .addBooleanOption(o => o.setName('commands').setDescription('Log every slash command members use — helps track down raid bots')))
-      .addSubcommand(s => s.setName('view').setDescription('View current log settings')))
+      .addSubcommand(s => s.setName('view').setDescription('View current log settings'))
+      .addSubcommand(s => s.setName('preview').setDescription('See what the log messages look like (only you see them)')))
 
     // ── Antiphishing ──────────────────────────────────────────────────────────
     .addSubcommandGroup(g => g.setName('antiphishing').setDescription('Configure phishing and raid link protection')
@@ -312,6 +315,12 @@ const ConfigCommand: Command = {
 
     // ── Logs ──────────────────────────────────────────────────────────────────
     if (group === 'logs') {
+      if (sub === 'preview') {
+        const [first, ...rest] = sampleLogCards(interaction.user, interaction.guildId!, interaction.channelId);
+        await interaction.reply(logCard({ ...first!, ephemeral: true }));
+        for (const card of rest) await interaction.followUp(logCard({ ...card, ephemeral: true }));
+        return;
+      }
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       if (sub === 'channel') {
         const channel = interaction.options.getChannel('channel');

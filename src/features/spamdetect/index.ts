@@ -1,7 +1,9 @@
-import { ChatInputCommandInteraction, EmbedBuilder, GuildMember, Message, TextChannel, PermissionFlagsBits } from 'discord.js';
+import { AttachmentBuilder, ChatInputCommandInteraction, GuildMember, Message, TextChannel, PermissionFlagsBits } from 'discord.js';
 import { EventModule } from '../feature';
 import { getLogConfig } from '../../utils/db.js';
 import logger from '../../utils/logger';
+import { LogColor, logCard, quote, who, type LogCardOptions } from '../../utils/logCard';
+import { peekImages } from '../../utils/recentImages';
 import { WARNING_RE, addScamImages, findScamImage, fingerprintMessage, repeatedAcrossChannels } from './scamImages';
 import type { ImageFingerprint } from '../../utils/phash';
 
@@ -113,88 +115,74 @@ async function punish(
 ) {
   const guildId = member.guild.id;
 
-  // timeout
+  let timedOut = false;
   try {
-    if (member.moderatable) await member.timeout(TIMEOUT_MS, reason);
+    if (member.moderatable) {
+      await member.timeout(TIMEOUT_MS, reason);
+      timedOut = true;
+    }
   } catch {}
 
-  // purge last hour of messages
   const deleted = await purgeHistory(member, msgHistory);
 
-  // A representative message to show in the summary embeds — most recent one
-  // that actually has text (falls back to the newest overall if all were
-  // attachment-only).
-  const sample = [...deleted].sort((a, b) => b.timestamp - a.timestamp).find(m => m.content.trim().length > 0) ?? deleted[deleted.length - 1];
-  const sampleField = sample
-    ? [{ name: 'Sample Message', value: sanitizeForLog(sample.content) }]
-    : [];
-
-  const [logCfg, modCfg] = await Promise.all([
-    getLogConfig(guildId),
-    db.getModConfig(guildId),
-  ]);
-
-  // ── Member log ───────────────────────────────────────────────────────────────
-  const memberLogId = logCfg?.member_log_channel_id ?? modCfg?.modlog_channel_id;
-  if (memberLogId) {
-    try {
-      const ch = await member.guild.channels.fetch(memberLogId) as TextChannel;
-      const embed = new EmbedBuilder()
-        .setColor(0xFF4444)
-        .setTitle('🚨 Spam Detected — Auto Timeout')
-        .setThumbnail(member.user.displayAvatarURL())
-        .addFields(
-          { name: 'User', value: `<@${member.id}> (${member.user.tag})`, inline: true },
-          { name: 'Action', value: '24-hour timeout', inline: true },
-          { name: 'Reason', value: reason },
-          { name: 'Messages Purged', value: `${deleted.length} messages deleted (last hour)`, inline: true },
-          ...sampleField,
-        )
-        .setTimestamp();
-      await ch.send({ embeds: [embed] });
-    } catch {}
+  // The images they posted (kept by the scam image check), shown inside the report
+  const files: AttachmentBuilder[] = [];
+  for (const m of deleted) {
+    for (const img of peekImages(m.id)) {
+      if (files.length < 4) files.push(new AttachmentBuilder(img.data, { name: `${files.length}-${img.name}`.replace(/[^\w.-]/g, '_') }));
+    }
   }
+  const sample = [...deleted].sort((a, b) => b.timestamp - a.timestamp).find(m => m.content.trim().length > 0);
 
-  // ── Message log — list deleted messages ──────────────────────────────────────
+  const [logCfg, modCfg] = await Promise.all([getLogConfig(guildId), db.getModConfig(guildId)]);
+  const send = async (channelId: string, card: LogCardOptions) => {
+    const ch = await member.guild.channels.fetch(channelId).catch(() => null) as TextChannel | null;
+    await ch?.send(logCard(card)).catch(() => {});
+  };
+  const report = (title: string): LogCardOptions => ({
+    color: LogColor.orange,
+    title,
+    subtitle: member.user.username,
+    thumbnail: member.user.displayAvatarURL({ size: 128 }),
+    fields: [
+      { name: 'Member', value: who(member.user), inline: true },
+      { name: 'Action', value: timedOut ? '⏱️ 24-hour timeout' : '⚠️ Not timed out (their role is above mine)', inline: true },
+      { name: 'Messages Removed', value: `${deleted.length}`, inline: true },
+      { name: 'Why', value: quote(reason, 600) },
+      sample && { name: 'Sample', value: quote(sample.content, 300) },
+    ],
+    images: files.map(f => ({ url: `attachment://${f.name}` })),
+    files,
+    footer: `🛡️ Spam detection · User ID ${member.id}`,
+  });
+
+  // Member log
+  const memberLogId = logCfg?.member_log_channel_id ?? modCfg?.modlog_channel_id;
+  if (memberLogId) await send(memberLogId, report('🚨 Spam Detected'));
+
+  // Message log: everything that was removed
   const msgLogId = logCfg?.message_log_channel_id;
   if (msgLogId && deleted.length > 0) {
-    try {
-      const ch = await member.guild.channels.fetch(msgLogId) as TextChannel;
-
-      // Build a summary; Discord embed values max 1024 chars each
-      const lines = deleted
-        .sort((a, b) => a.timestamp - b.timestamp)
-        .map(m => `<t:${Math.floor(m.timestamp / 1000)}:T> <#${m.channelId}> — ${sanitizeForLog(m.content)}`)
-        .join('\n');
-
-      const truncated = lines.length > 4000 ? lines.slice(0, 4000) + '\n…(truncated)' : lines;
-
-      const embed = new EmbedBuilder()
-        .setColor(0xFF8800)
-        .setTitle(`🗑️ ${deleted.length} Messages Deleted — Spam Purge`)
-        .setDescription(`**User:** <@${member.id}> (${member.user.tag})\n**Reason:** ${reason}\n\n${truncated}`)
-        .setTimestamp();
-      await ch.send({ embeds: [embed] });
-    } catch {}
+    const lines = deleted
+      .sort((a, b) => a.timestamp - b.timestamp)
+      .map(m => `> <t:${Math.floor(m.timestamp / 1000)}:T> <#${m.channelId}> · ${sanitizeForLog(m.content)}`);
+    await send(msgLogId, {
+      color: LogColor.bad,
+      title: `🧹 ${deleted.length} Message${deleted.length === 1 ? '' : 's'} Removed`,
+      subtitle: `Spam purge · ${member.user.username}`,
+      thumbnail: member.user.displayAvatarURL({ size: 128 }),
+      fields: [
+        { name: 'Member', value: who(member.user), inline: true },
+        { name: 'Why', value: quote(reason, 400) },
+        { name: 'Messages', value: lines.join('\n') },
+      ],
+      footer: `🛡️ Spam detection · User ID ${member.id}`,
+    });
   }
 
-  // ── Modlog (existing) ─────────────────────────────────────────────────────────
+  // Modlog, so a moderator looks at it
   if (modCfg?.modlog_channel_id && modCfg.modlog_channel_id !== memberLogId) {
-    try {
-      const modCh = await member.guild.channels.fetch(modCfg.modlog_channel_id) as TextChannel;
-      const embed = new EmbedBuilder()
-        .setColor(0xFF4444)
-        .setTitle('🚨 Spam Detected — User Timed Out')
-        .setThumbnail(member.user.displayAvatarURL())
-        .addFields(
-          { name: 'User', value: `<@${member.id}> (${member.user.tag})`, inline: true },
-          { name: 'Action', value: '24-hour timeout', inline: true },
-          { name: 'Reason', value: reason },
-          ...sampleField,
-        )
-        .setTimestamp();
-      await modCh.send({ content: `🚨 Spam detected — please review <@${member.id}>.`, embeds: [embed] });
-    } catch {}
+    await send(modCfg.modlog_channel_id, { ...report('🚨 Spam Detected · Please Review'), color: LogColor.danger });
   }
 }
 

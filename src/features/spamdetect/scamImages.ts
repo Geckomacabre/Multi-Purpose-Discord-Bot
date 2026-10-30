@@ -2,6 +2,7 @@ import type { Message } from 'discord.js';
 import * as db from '../../utils/db';
 import type { IScamImageHash } from '../../utils/db';
 import { fingerprintImage, hammingDistance, type ImageFingerprint } from '../../utils/phash';
+import { rememberImage } from '../../utils/recentImages';
 import logger from '../../utils/logger';
 
 // Known scam images, matched by perceptual hash (see utils/phash). Scam accounts
@@ -43,7 +44,9 @@ export async function fingerprintMessage(message: Message): Promise<ImageFingerp
     try {
       const res = await fetch(image.url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
       if (!res.ok) continue;
-      out.push(...(await fingerprintImage(Buffer.from(await res.arrayBuffer()))) ?? []);
+      const data = Buffer.from(await res.arrayBuffer());
+      rememberImage(message.id, image.name, data); // so a delete log can still show it
+      out.push(...(await fingerprintImage(data)) ?? []);
     } catch (err) {
       logger.debug(`[scamimages] couldn't fingerprint ${image.name}: ${err}`);
     }

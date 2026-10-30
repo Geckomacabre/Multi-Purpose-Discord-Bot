@@ -1,11 +1,12 @@
 import {
-  ApplicationIntegrationType, ChatInputCommandInteraction, Colors, ContainerBuilder,
-  InteractionContextType, MessageFlags, SlashCommandBuilder, TextChannel, TextDisplayBuilder,
+  ApplicationIntegrationType, ChatInputCommandInteraction,
+  InteractionContextType, MessageFlags, SlashCommandBuilder, TextChannel,
 } from 'discord.js';
 import * as db from '../../utils/db';
 import Config from '../../config';
 import { Command } from '../../interfaces/command';
-import { cv2Text, IS_CV2 } from '../../utils/components.js';
+import { cv2Text } from '../../utils/components.js';
+import { LogColor, logCard, quote, who } from '../../utils/logCard';
 
 const Report: Command = {
   data: new SlashCommandBuilder()
@@ -27,11 +28,19 @@ const Report: Command = {
     const ch = await interaction.guild!.channels.fetch(channelId).catch(() => null) as TextChannel | null;
     if (!ch) { await interaction.editReply(cv2Text('❌ Report channel not found. Contact an admin.')); return; }
     const modCase = await db.createModCase(guildId, 'report', user.id, user.tag, interaction.user.id, interaction.user.tag, reason);
-    const container = new ContainerBuilder().setAccentColor(Colors.Blue)
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `**Case #${modCase.case_num} — Report**\n**Reported User:** ${user.tag} (${user.id})\n**Reporter:** ${interaction.user.tag}\n**Channel:** <#${interaction.channelId}>\n**Reason:** ${reason}`
-      ));
-    await ch.send({ flags: IS_CV2, components: [container] }).catch(() => {});
+    await ch.send(logCard({
+      color: LogColor.info,
+      title: `📣 Member Reported · Case #${modCase.case_num}`,
+      subtitle: user.username,
+      thumbnail: user.displayAvatarURL({ size: 128 }),
+      fields: [
+        { name: 'Reported', value: who(user), inline: true },
+        { name: 'By', value: who(interaction.user), inline: true },
+        { name: 'Channel', value: `<#${interaction.channelId}>`, inline: true },
+        { name: 'Reason', value: quote(reason, 1000) },
+      ],
+      footer: `📣 /report · User ID ${user.id}`,
+    })).catch(() => {});
     await interaction.editReply(cv2Text('✅ Your report has been submitted to the moderation team.'));
   },
 };
