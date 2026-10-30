@@ -3,7 +3,7 @@ import { EventModule } from '../feature';
 import { getLogConfig } from '../../utils/db.js';
 
 const WINDOW_MS = 30_000;       // 30-second sliding window for cross-channel image spam
-const THRESHOLD = 3;            // more than 3 channels triggers action
+const IMAGE_MIN_CHANNELS = 3;   // images in 3+ channels triggers action (4 let scam image raids hitting 3 channels through)
 // The same-message/same-link cross-channel check gets its own window and
 // threshold — it's the exact fingerprint of a hijacked or malicious account
 // running a scam (a fake giveaway link posted in a bunch of channels), so
@@ -289,7 +289,7 @@ const spamDetectModule: EventModule = {
           if (!track.imageChannels.has(channelId)) {
             track.imageChannels.set(channelId, now);
           }
-          if (track.imageChannels.size > THRESHOLD) {
+          if (track.imageChannels.size >= IMAGE_MIN_CHANNELS) {
             const channelList = [...track.imageChannels.keys()].map(id => `<#${id}>`).join(', ');
             const history = [...track.msgHistory];
             track.imageChannels.clear();

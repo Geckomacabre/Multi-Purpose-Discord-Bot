@@ -308,7 +308,7 @@ Per-category channels (member/message/voice/server/command) can be set individua
 Always active, no configuration needed. Auto-punishes (24-hour timeout + purge of the offender's last hour of messages, across every channel including voice-channel text chat) for:
 - **Repeated messages** — the same message 4+ times within 10 seconds
 - **Flood rate** — 8+ messages in 6 seconds regardless of content (a fast typer sending a few distinct messages won't trigger this)
-- **Cross-channel image spam** — images/videos posted in 4+ channels within 30 seconds
+- **Cross-channel image spam** — images/videos posted in 3+ channels within 30 seconds
 - **Cross-channel message/link spam** — the identical message, or the identical link even if the wording around it changes per channel, posted in 3+ channels within 45 seconds — the fingerprint of a hijacked account or scam bot
 
 Manage Messages holders skip the noisier rate/duplicate/image checks, but **not** the cross-channel message/link check — nothing legitimate posts the same thing across several channels, so no role is exempt from that one. This closes a real gap where a compromised staff account could spam scam links across the whole server undetected.
