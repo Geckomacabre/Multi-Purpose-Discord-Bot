@@ -11,8 +11,8 @@ import {
   type TicketKind,
 } from '../../utils/tickets.js';
 import {
-  APPLICATION_ROLE_NAMES, APPLY_CANCEL_ID, APPLY_MODAL_PREFIX, APPLY_PAGE_PREFIX, APPLY_RESTART_ID, FIRST_PAGE,
-  buildAnswerEmbeds, buildApplicationPages, buildPageModal, buildPagePrompt, parseApplicationRoles,
+  APPLICATION_ROLE_NAMES, APPLY_CANCEL_ID, APPLY_MODAL_PREFIX, APPLY_PAGE_PREFIX, APPLY_RESTART_ID, APPLY_ROLE_PREFIX, FIRST_PAGE,
+  buildAnswerEmbeds, buildApplicationPages, buildPageModal, buildPagePrompt, buildRolePicker, describeRoles, parseRoleButton,
   type ApplicationPage, type ApplicationRole,
 } from '../../utils/applicationForm.js';
 import type { IApplicationDraft, ITicketConfig } from '../../utils/db';
@@ -64,7 +64,7 @@ async function afterApplicationCreated(
   answers: Record<string, string>,
 ): Promise<{ notified: number; notifyRoleId: string | null }> {
   const guild = modal.guild!;
-  const roleText = roles.length ? roles.map(r => APPLICATION_ROLE_NAMES[r]).join(' / ') : 'Not sure, place me';
+  const roleText = describeRoles(roles);
 
   // 1. The full application. Embeds share a 6,000-character budget per message, so one per message.
   for (const embed of buildAnswerEmbeds(pages, answers)) {
@@ -95,7 +95,7 @@ async function afterApplicationCreated(
       .setAuthor({ name: modal.user.tag, iconURL: modal.user.displayAvatarURL() })
       .setTitle(`📋 New staff application in ${guild.name}`)
       .setDescription(`<@${modal.user.id}> (${modal.user.tag}, ID ${modal.user.id}) applied for **${roleText}**.\n\nFull answers: <#${channel.id}> — https://discord.com/channels/${guild.id}/${channel.id}`)
-      .addFields(FIRST_PAGE.questions.slice(1).map(q => ({ name: q.text.slice(0, 256), value: (answers[q.id]?.trim() || '-').slice(0, 1024) })))
+      .addFields(FIRST_PAGE.questions.map(q => ({ name: q.text.slice(0, 256), value: (answers[q.id]?.trim() || '-').slice(0, 1024) })))
       .setTimestamp();
     for (const member of role?.members.values() ?? []) {
       if (member.user.bot) continue;
@@ -211,7 +211,7 @@ const ticketsModule: EventModule = {
           return;
         }
 
-        // Panel button → staff application. Resumes a saved draft, else opens page 1.
+        // Panel button → staff application. Resumes a saved draft, else asks which role.
         if (btn.customId === 'ticket:apply') {
           const existing = await db.getOpenTicketByUser(btn.guildId!, btn.user.id, 'application');
           if (existing) {
@@ -227,7 +227,17 @@ const ticketsModule: EventModule = {
             await btn.reply({ ...buildPagePrompt(pages[page], page, pages.length, roles), flags: MessageFlags.Ephemeral });
             return;
           }
-          await btn.showModal(buildPageModal(FIRST_PAGE, 0, 0));
+          await btn.reply({ ...buildRolePicker(), flags: MessageFlags.Ephemeral });
+          return;
+        }
+
+        // Role button → remember the role (it decides the pages) and open page 1's form
+        if (btn.customId.startsWith(APPLY_ROLE_PREFIX)) {
+          const roles = parseRoleButton(btn.customId);
+          if (roles === null) return;
+          await db.saveApplicationDraft(btn.guildId!, btn.user.id, { roles, answers: {}, page: 0 });
+          const pages = buildApplicationPages(roles);
+          await btn.showModal(buildPageModal(pages[0], 0, pages.length)); // its submit replaces the picker with page 2
           return;
         }
 
@@ -236,7 +246,7 @@ const ticketsModule: EventModule = {
           const index = parseInt(btn.customId.slice(APPLY_PAGE_PREFIX.length));
           const draft = await db.getApplicationDraft(btn.guildId!, btn.user.id);
           if (!draft || draft.roles === null || isNaN(index)) {
-            await btn.showModal(buildPageModal(FIRST_PAGE, 0, 0));
+            await btn.update({ ...buildRolePicker(), content: 'Your draft had expired, so this starts from the role choice.' }).catch(() => {});
             return;
           }
           const pages = buildApplicationPages(draftRoles(draft));
@@ -247,7 +257,7 @@ const ticketsModule: EventModule = {
 
         if (btn.customId === APPLY_RESTART_ID) {
           await db.deleteApplicationDraft(btn.guildId!, btn.user.id);
-          await btn.showModal(buildPageModal(FIRST_PAGE, 0, 0)); // its submit replaces this prompt with page 2
+          await btn.update({ ...buildRolePicker(), content: 'Starting over; your earlier answers were discarded.' }).catch(() => {});
           return;
         }
 
@@ -368,22 +378,20 @@ const ticketsModule: EventModule = {
             return;
           }
 
-          // Page 0 decides the role and therefore the page list; later pages need the saved draft.
-          const draft = index === 0 ? null : await db.getApplicationDraft(guildId, userId);
-          if (index !== 0 && (!draft || draft.roles === null)) {
-            await respondEphemeral(modal, { content: 'Your application draft has expired. Press **Apply for Staff** to start again.', embeds: [], components: [] });
+          // The role was chosen with a button and saved as the draft; it decides the page list.
+          const draft = await db.getApplicationDraft(guildId, userId);
+          if (!draft || draft.roles === null || Date.now() - draft.updated_at > DRAFT_TTL_MS) {
+            await respondEphemeral(modal, { ...buildRolePicker(), content: 'Your application draft had expired, so this starts from the role choice.' });
             return;
           }
 
-          // Read this page's answers using the page list the form was built from.
-          const answers: Record<string, string> = { ...(draft?.answers ?? {}) };
-          const builtPages = buildApplicationPages(draftRoles(draft));
-          const page = index === 0 ? FIRST_PAGE : builtPages[Math.min(index, builtPages.length - 1)];
+          const roles = draftRoles(draft);
+          const pages = buildApplicationPages(roles);
+          const page = pages[Math.min(Math.max(index, 0), pages.length - 1)];
+          const answers: Record<string, string> = { ...draft.answers };
           for (const q of page.questions) {
             try { answers[q.id] = modal.fields.getTextInputValue(q.id).trim(); } catch { /* optional field left out */ }
           }
-          const roles = index === 0 ? parseApplicationRoles(answers.role ?? '') : draftRoles(draft);
-          const pages = buildApplicationPages(roles);
           const next = index + 1;
 
           if (next < pages.length) {

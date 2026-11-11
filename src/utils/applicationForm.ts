@@ -19,20 +19,59 @@ import {
 
 export type ApplicationRole = 'moderator' | 'admin' | 'developer';
 
+export const APPLY_CANCEL_ID = 'ticket:apply-cancel';
+
 export const APPLICATION_ROLE_NAMES: Record<ApplicationRole, string> = {
   moderator: 'Moderator',
   admin: 'Admin',
   developer: 'Developer Team',
 };
 
-/** Reads the free-text "which role" answer. Empty result = unsure, so every part is included. */
-export function parseApplicationRoles(text: string): ApplicationRole[] {
-  const t = text.toLowerCase();
-  const roles: ApplicationRole[] = [];
-  if (/\bmod/.test(t)) roles.push('moderator');
-  if (/\badmin/.test(t)) roles.push('admin');
-  if (/\bdev/.test(t)) roles.push('developer');
-  return roles;
+export const APPLY_ROLE_PREFIX = 'ticket:apply-role:';
+
+/** What each role is, from the owner's form; shown on the role picker. */
+const ROLE_BLURBS: Record<ApplicationRole | 'unsure', { scope: string; lookFor: string }> = {
+  moderator: { scope: 'Bare-minimum staff permissions', lookFor: 'Fairness, patience, steady presence, good judgment under pressure' },
+  admin: { scope: 'Full server commands and Discord admin roles for the servers', lookFor: 'Proven trustworthiness, strong Discord/server knowledge, calm in a crisis' },
+  developer: { scope: 'Game and level development work', lookFor: 'Advanced skills in Blender, Unreal Engine, the Squad SDK editor and related tools' },
+  unsure: { scope: 'You answer every role\'s questions', lookFor: 'Staff place you from your answers' },
+};
+
+/** Text for a role choice: [] = not sure (every role part is asked). */
+export function describeRoles(roles: ApplicationRole[]): string {
+  return roles.length ? roles.map(r => APPLICATION_ROLE_NAMES[r]).join(' / ') : 'Not sure, place me (all three role parts)';
+}
+
+/** The first thing the applicant sees: pick the role, which decides the pages that follow. */
+export function buildRolePicker() {
+  const rows = (Object.keys(ROLE_BLURBS) as (ApplicationRole | 'unsure')[]).map(k => {
+    const name = k === 'unsure' ? 'Not sure, place me' : APPLICATION_ROLE_NAMES[k];
+    return `**${name}** — ${ROLE_BLURBS[k].scope}\n*What we look for:* ${ROLE_BLURBS[k].lookFor}`;
+  }).join('\n\n');
+  const embed = new EmbedBuilder()
+    .setColor(0x5865F2)
+    .setTitle('📋 Staff Application — which role?')
+    .setDescription(
+      `Everyone answers the general questions and a short closing page. The middle of the form is only the questions for the role you pick ` +
+      `(Moderator, Admin or Developer Team). Pick **Not sure** and you answer all three.\n\n${rows}\n\n` +
+      `Be honest. "I haven't used that yet" is a fine answer and helps us place you in the right spot. Nothing is sent to staff until the last page.`
+    );
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(`${APPLY_ROLE_PREFIX}moderator`).setLabel('Moderator').setStyle(ButtonStyle.Primary).setEmoji('🛡️'),
+    new ButtonBuilder().setCustomId(`${APPLY_ROLE_PREFIX}admin`).setLabel('Admin').setStyle(ButtonStyle.Primary).setEmoji('⚙️'),
+    new ButtonBuilder().setCustomId(`${APPLY_ROLE_PREFIX}developer`).setLabel('Developer Team').setStyle(ButtonStyle.Primary).setEmoji('🧱'),
+    new ButtonBuilder().setCustomId(`${APPLY_ROLE_PREFIX}unsure`).setLabel('Not sure, place me').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(APPLY_CANCEL_ID).setLabel('Cancel').setStyle(ButtonStyle.Danger),
+  );
+  return { embeds: [embed], components: [row] };
+}
+
+/** Reads a role button's custom id: [] = not sure. null = not a role button. */
+export function parseRoleButton(customId: string): ApplicationRole[] | null {
+  if (!customId.startsWith(APPLY_ROLE_PREFIX)) return null;
+  const key = customId.slice(APPLY_ROLE_PREFIX.length);
+  if (key === 'unsure') return [];
+  return key in APPLICATION_ROLE_NAMES ? [key as ApplicationRole] : null;
 }
 
 export type ApplicationQuestion = {
@@ -63,7 +102,6 @@ export const FIRST_PAGE: ApplicationPage = {
   part: 'Part 1 – General questions (everyone)',
   intro: 'Everyone answers Part 1 and Part 5, then the part for the role you want. "I haven\'t used that yet" is a fine answer and helps us place you.',
   questions: [
-    { id: 'role', label: 'Role: Moderator, Admin, Developer, Not sure', text: 'Which role are you applying for? Rank your choices: Moderator, Admin, Developer Team, or "Not sure, place me."', style: S, max: 60, placeholder: 'One or more, or "not sure, place me"' },
     { id: 'age', label: 'Age', text: 'Age.', style: S, max: 10 },
     { id: 'tz', label: 'Time zone, usual online days and hours', text: "Time zone, and the days and hours you're usually online.", style: S, max: 120 },
     { id: 'hours', label: 'Hours per week for staff duties', text: 'How many hours per week can you realistically give to staff duties?', style: S, max: 60 },
@@ -228,7 +266,6 @@ export function buildApplicationPages(roles: ApplicationRole[]): ApplicationPage
 export const APPLY_MODAL_PREFIX = 'ticket:apply-modal:';
 export const APPLY_PAGE_PREFIX = 'ticket:apply-page:';
 export const APPLY_RESTART_ID = 'ticket:apply-restart';
-export const APPLY_CANCEL_ID = 'ticket:apply-cancel';
 
 /** The five-field form for one page. */
 export function buildPageModal(page: ApplicationPage, index: number, total: number): ModalBuilder {
@@ -253,7 +290,7 @@ export function buildPageModal(page: ApplicationPage, index: number, total: numb
  * button that opens its form. `total` may grow after page 0 once the role is known.
  */
 export function buildPagePrompt(page: ApplicationPage, index: number, total: number, roles: ApplicationRole[]) {
-  const roleText = roles.length ? roles.map(r => APPLICATION_ROLE_NAMES[r]).join(' / ') : 'Not sure (all three role parts)';
+  const roleText = describeRoles(roles);
   const qs = page.questions.map((q, i) => `**${i + 1}.** ${q.text}${q.required === false ? ' *(optional)*' : ''}`).join('\n\n');
   const embed = new EmbedBuilder()
     .setColor(0x5865F2)
