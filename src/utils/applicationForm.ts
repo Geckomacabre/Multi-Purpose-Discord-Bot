@@ -53,7 +53,7 @@ export function buildRolePicker() {
     .setTitle('📋 Staff Application — which role?')
     .setDescription(
       `Everyone answers the general questions and a short closing page. The middle of the form is only the questions for the role you pick ` +
-      `(Moderator, Admin or Developer Team). Pick **Not sure** and you answer all three.\n\n${rows}\n\n` +
+      `(Moderator, Admin or Developer Team); at the end you can add another role's questions if you like. Pick **Not sure** and you answer all three.\n\n${rows}\n\n` +
       `Be honest. "I haven't used that yet" is a fine answer and helps us place you in the right spot. Nothing is sent to staff until the last page.`
     );
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -253,14 +253,61 @@ const PART5_CLOSING: ApplicationPage[] = [{
 // ─── Page assembly ───────────────────────────────────────────────────────────
 
 /** All pages after page 0 for the role(s) picked (empty = unsure = every role part). */
+export const ALL_ROLES: ApplicationRole[] = ['moderator', 'admin', 'developer'];
+
+const ROLE_PARTS: Record<ApplicationRole, ApplicationPage[]> = {
+  moderator: PART2_MODERATOR,
+  admin: PART3_ADMIN,
+  developer: PART4_DEVELOPER,
+};
+
+/** Role parts come in the order picked: the role applied for first, then any added at the follow-up step. */
 export function buildApplicationPages(roles: ApplicationRole[]): ApplicationPage[] {
-  const chosen = roles.length ? roles : (['moderator', 'admin', 'developer'] as ApplicationRole[]);
+  const chosen = roles.length ? roles : ALL_ROLES;
   const pages: ApplicationPage[] = [FIRST_PAGE, ...PART1_REST];
-  if (chosen.includes('moderator')) pages.push(...PART2_MODERATOR);
-  if (chosen.includes('admin')) pages.push(...PART3_ADMIN);
-  if (chosen.includes('developer')) pages.push(...PART4_DEVELOPER);
+  for (const r of chosen) pages.push(...ROLE_PARTS[r]);
   pages.push(...PART5_CLOSING);
   return pages;
+}
+
+/** Index of the first closing (Part 5) page: where the "other roles?" follow-up goes. */
+export function closingPageIndex(roles: ApplicationRole[]): number {
+  return buildApplicationPages(roles).length - PART5_CLOSING.length;
+}
+
+export const APPLY_EXTRA_PREFIX = 'ticket:apply-extra:';
+
+/**
+ * Shown once the picked role's questions are done and before the closing page: would they also
+ * like to be considered for another role? A yes adds that role's part next. (Gecko's idea: a
+ * mod-only applicant answers mod questions only, unless they opt into more.)
+ */
+export function buildExtraRolesPrompt(roles: ApplicationRole[], pending: ApplicationRole[]) {
+  const others = ALL_ROLES.filter(r => !roles.includes(r));
+  const hooks: Record<ApplicationRole, string> = {
+    moderator: 'Would you also be up for day-to-day moderation (chat, tickets, keeping the peace)?',
+    admin: 'Are you interested in helping run the servers and the Discord itself (admin)?',
+    developer: 'Are you interested in helping develop the server (maps, levels, assets in Blender, Unreal, the Squad SDK)?',
+  };
+  const lines = others.map(r => `${pending.includes(r) ? '✅' : '▫️'} **${APPLICATION_ROLE_NAMES[r]}** — ${hooks[r]}`).join('\n');
+  const extraPages = pending.reduce((n, r) => n + ROLE_PARTS[r].length, 0);
+  const embed = new EmbedBuilder()
+    .setColor(0x5865F2)
+    .setTitle('📋 Staff Application — one more thing')
+    .setDescription(
+      `You're done with the **${describeRoles(roles)}** questions. Before the closing page:\n\n${lines}\n\n` +
+      `Tap a role to add its questions (tap again to remove), then **Continue**. ` +
+      (pending.length ? `That adds ${extraPages} page${extraPages === 1 ? '' : 's'}. ` : 'Skipping is fine; it only means you are considered for what you picked. ') +
+      `Staff may still suggest a different role from your answers.`
+    );
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    ...others.map(r => new ButtonBuilder()
+      .setCustomId(`${APPLY_EXTRA_PREFIX}${r}`)
+      .setLabel(`${pending.includes(r) ? 'Remove' : 'Add'} ${APPLICATION_ROLE_NAMES[r]}`)
+      .setStyle(pending.includes(r) ? ButtonStyle.Success : ButtonStyle.Secondary)),
+    new ButtonBuilder().setCustomId(`${APPLY_EXTRA_PREFIX}continue`).setLabel('Continue').setStyle(ButtonStyle.Primary).setEmoji('➡️'),
+  );
+  return { embeds: [embed], components: [row] };
 }
 
 export const APPLY_MODAL_PREFIX = 'ticket:apply-modal:';

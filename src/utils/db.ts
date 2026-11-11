@@ -1874,6 +1874,8 @@ export type IApplicationDraft = {
   answers: Record<string, string>;
   /** Index of the next page to answer. */
   page: number;
+  /** True once the "also interested in another role?" step has been answered (or didn't apply). */
+  extra_asked: boolean;
   updated_at: number;
 };
 
@@ -1883,12 +1885,12 @@ export async function getApplicationDraft(guild_id: string, user_id: string): Pr
   if (!row) return null;
   try {
     const parsed = JSON.parse((row as any).data);
-    return { roles: parsed.roles ?? null, answers: parsed.answers ?? {}, page: parsed.page ?? 0, updated_at: (row as any).updated_at };
+    return { roles: parsed.roles ?? null, answers: parsed.answers ?? {}, page: parsed.page ?? 0, extra_asked: !!parsed.extra_asked, updated_at: (row as any).updated_at };
   } catch { return null; }
 }
 
 export async function saveApplicationDraft(guild_id: string, user_id: string, draft: Omit<IApplicationDraft, 'updated_at'>): Promise<void> {
-  const data = JSON.stringify({ roles: draft.roles, answers: draft.answers, page: draft.page });
+  const data = JSON.stringify({ roles: draft.roles, answers: draft.answers, page: draft.page, extra_asked: draft.extra_asked });
   await db`
     INSERT INTO application_drafts (guild_id, user_id, data, updated_at)
     VALUES (${guild_id}, ${user_id}, ${data}, ${Date.now()})

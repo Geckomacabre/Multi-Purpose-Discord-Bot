@@ -11,8 +11,9 @@ import {
   type TicketKind,
 } from '../../utils/tickets.js';
 import {
-  APPLICATION_ROLE_NAMES, APPLY_CANCEL_ID, APPLY_MODAL_PREFIX, APPLY_PAGE_PREFIX, APPLY_RESTART_ID, APPLY_ROLE_PREFIX, FIRST_PAGE,
-  buildAnswerEmbeds, buildApplicationPages, buildPageModal, buildPagePrompt, buildRolePicker, describeRoles, parseRoleButton,
+  ALL_ROLES, APPLICATION_ROLE_NAMES, APPLY_CANCEL_ID, APPLY_EXTRA_PREFIX, APPLY_MODAL_PREFIX, APPLY_PAGE_PREFIX, APPLY_RESTART_ID,
+  APPLY_ROLE_PREFIX, FIRST_PAGE, buildAnswerEmbeds, buildApplicationPages, buildExtraRolesPrompt, buildPageModal, buildPagePrompt,
+  buildRolePicker, closingPageIndex, describeRoles, parseRoleButton,
   type ApplicationPage, type ApplicationRole,
 } from '../../utils/applicationForm.js';
 import type { IApplicationDraft, ITicketConfig } from '../../utils/db';
@@ -31,6 +32,18 @@ function applicationNotifyRoleId(guild: Guild, cfg: ITicketConfig | null): strin
 
 function draftRoles(draft: IApplicationDraft | null): ApplicationRole[] {
   return (draft?.roles ?? []).filter((r): r is ApplicationRole => r in APPLICATION_ROLE_NAMES);
+}
+
+/** Answer key that holds the roles ticked (but not yet confirmed) on the follow-up step. Never shown. */
+const PENDING_KEY = '__pending_roles';
+
+function pendingExtra(draft: IApplicationDraft): ApplicationRole[] {
+  return (draft.answers[PENDING_KEY] ?? '').split(',').filter((r): r is ApplicationRole => r in APPLICATION_ROLE_NAMES);
+}
+
+/** The follow-up is due when the picked role's part is done, the closing page is next, and it hasn't been answered. */
+function extraRolesDue(draft: IApplicationDraft, roles: ApplicationRole[]): boolean {
+  return !draft.extra_asked && roles.length > 0 && roles.length < ALL_ROLES.length && draft.page === closingPageIndex(roles);
 }
 
 type EphemeralPayload = { content?: string; embeds?: EmbedBuilder[]; components?: ActionRowBuilder<ButtonBuilder>[] };
@@ -222,6 +235,10 @@ const ticketsModule: EventModule = {
           const fresh = draft && draft.roles !== null && Date.now() - draft.updated_at < DRAFT_TTL_MS;
           if (fresh) {
             const roles = draftRoles(draft);
+            if (extraRolesDue(draft, roles)) {
+              await btn.reply({ ...buildExtraRolesPrompt(roles, pendingExtra(draft)), flags: MessageFlags.Ephemeral });
+              return;
+            }
             const pages = buildApplicationPages(roles);
             const page = Math.min(draft.page, pages.length - 1);
             await btn.reply({ ...buildPagePrompt(pages[page], page, pages.length, roles), flags: MessageFlags.Ephemeral });
@@ -235,9 +252,34 @@ const ticketsModule: EventModule = {
         if (btn.customId.startsWith(APPLY_ROLE_PREFIX)) {
           const roles = parseRoleButton(btn.customId);
           if (roles === null) return;
-          await db.saveApplicationDraft(btn.guildId!, btn.user.id, { roles, answers: {}, page: 0 });
+          await db.saveApplicationDraft(btn.guildId!, btn.user.id, { roles, answers: {}, page: 0, extra_asked: roles.length === 0 });
           const pages = buildApplicationPages(roles);
           await btn.showModal(buildPageModal(pages[0], 0, pages.length)); // its submit replaces the picker with page 2
+          return;
+        }
+
+        // Follow-up step: toggle another role's questions on/off, or continue
+        if (btn.customId.startsWith(APPLY_EXTRA_PREFIX)) {
+          const key = btn.customId.slice(APPLY_EXTRA_PREFIX.length);
+          const draft = await db.getApplicationDraft(btn.guildId!, btn.user.id);
+          if (!draft || draft.roles === null) {
+            await btn.update({ ...buildRolePicker(), content: 'Your draft had expired, so this starts from the role choice.' }).catch(() => {});
+            return;
+          }
+          const roles = draftRoles(draft);
+          let pending = pendingExtra(draft);
+          if (key === 'continue') {
+            const finalRoles = [...roles, ...pending];
+            const pages = buildApplicationPages(finalRoles);
+            const page = Math.min(draft.page, pages.length - 1);
+            await db.saveApplicationDraft(btn.guildId!, btn.user.id, { roles: finalRoles, answers: draft.answers, page, extra_asked: true });
+            await btn.update(buildPagePrompt(pages[page], page, pages.length, finalRoles)).catch(() => {});
+            return;
+          }
+          if (!ALL_ROLES.includes(key as ApplicationRole) || roles.includes(key as ApplicationRole)) return;
+          pending = pending.includes(key as ApplicationRole) ? pending.filter(r => r !== key) : [...pending, key as ApplicationRole];
+          await db.saveApplicationDraft(btn.guildId!, btn.user.id, { roles, answers: { ...draft.answers, [PENDING_KEY]: pending.join(',') }, page: draft.page, extra_asked: false });
+          await btn.update(buildExtraRolesPrompt(roles, pending)).catch(() => {});
           return;
         }
 
@@ -395,8 +437,9 @@ const ticketsModule: EventModule = {
           const next = index + 1;
 
           if (next < pages.length) {
-            await db.saveApplicationDraft(guildId, userId, { roles, answers, page: next });
-            await respondEphemeral(modal, buildPagePrompt(pages[next], next, pages.length, roles));
+            const askExtra = !draft.extra_asked && roles.length > 0 && roles.length < ALL_ROLES.length && next === closingPageIndex(roles);
+            await db.saveApplicationDraft(guildId, userId, { roles, answers, page: next, extra_asked: draft.extra_asked });
+            await respondEphemeral(modal, askExtra ? buildExtraRolesPrompt(roles, []) : buildPagePrompt(pages[next], next, pages.length, roles));
             return;
           }
 
@@ -416,7 +459,7 @@ const ticketsModule: EventModule = {
             await modal.editReply({ content: `✅ Application sent! Your answers are in <#${channel.id}>, and staff will be in contact with you there.`, embeds: [], components: [] });
           } catch (err) {
             console.error('[tickets] application create error:', err);
-            await db.saveApplicationDraft(guildId, userId, { roles, answers, page: index }).catch(() => {});
+            await db.saveApplicationDraft(guildId, userId, { roles, answers, page: index, extra_asked: draft.extra_asked }).catch(() => {});
             await modal.editReply({ content: '❌ Could not create your application channel; your answers are saved. Press **Apply for Staff** to try the last page again, or tell a staff member.', embeds: [], components: [] });
           }
           return;
