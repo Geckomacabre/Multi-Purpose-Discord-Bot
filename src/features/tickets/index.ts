@@ -5,22 +5,36 @@ import {
 } from 'discord.js';
 import { EventModule } from '../feature';
 import { cv2Text } from '../../utils/components.js';
-import { archiveTicket, buildModPanel, fetchAllMessages, buildTranscriptFile, canCloseTicket, isTicketStaff } from '../../utils/tickets.js';
+import {
+  APPLICATION_QUESTIONS, APPLICATION_TOPIC, archiveTicket, buildApplicationModal, buildModPanel, buildTranscriptFile,
+  canCloseTicket, fetchAllMessages, isTicketStaff, ticketCategoryId, ticketChannelName, ticketKind, ticketRoleId,
+  type TicketKind,
+} from '../../utils/tickets.js';
 
+type TicketDb = typeof import('../../utils/db');
+
+/**
+ * Create the private channel for a support ticket or a staff application.
+ * `answers` (application only) are the form's question/answer pairs, posted as embed fields.
+ */
 async function createTicketChannel(
   interaction: ButtonInteraction | ModalSubmitInteraction,
+  kind: TicketKind,
   topic: string,
-  db: any,
+  db: TicketDb,
+  answers: { name: string; value: string }[] = [],
 ): Promise<TextChannel> {
   const guildId = interaction.guildId!;
   const cfg = await db.getTicketConfig(guildId);
+  const roleId = ticketRoleId(cfg, kind);
+  const categoryId = ticketCategoryId(cfg, kind);
 
   const permOverwrites: any[] = [
     { id: guildId, deny: [PermissionFlagsBits.ViewChannel] },
     { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] },
     { id: interaction.guild!.members.me!.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels] },
   ];
-  if (cfg?.support_role_id) permOverwrites.push({ id: cfg.support_role_id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] });
+  if (roleId) permOverwrites.push({ id: roleId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] });
 
   await db.ensureConfig(guildId);
   await db.db`INSERT OR IGNORE INTO ticket_config (guild_id) VALUES (${guildId})`;
@@ -28,32 +42,45 @@ async function createTicketChannel(
   const ticketNum = cfgNow?.next_ticket_num ?? 1;
 
   const opts: any = {
-    name: `ticket-${ticketNum}`,
+    name: ticketChannelName(kind, ticketNum),
     permissionOverwrites: permOverwrites,
-    topic: `Ticket by ${interaction.user.tag} — ${topic}`,
+    topic: kind === 'application' ? `Staff application by ${interaction.user.tag}` : `Ticket by ${interaction.user.tag} — ${topic}`,
   };
-  if (cfg?.category_id) opts.parent = cfg.category_id;
+  if (categoryId) opts.parent = categoryId;
 
   const channel = await interaction.guild!.channels.create(opts) as TextChannel;
-  await db.createTicket(guildId, channel.id, interaction.user.id, topic);
+  await db.createTicket(guildId, channel.id, interaction.user.id, topic, kind);
 
   // Ping mention
-  await channel.send(`${cfg?.support_role_id ? `<@&${cfg.support_role_id}> ` : ''}<@${interaction.user.id}>`);
+  await channel.send(`${roleId ? `<@&${roleId}> ` : ''}<@${interaction.user.id}>`);
 
   // Welcome embed
   const embed = new EmbedBuilder()
     .setColor(0x5865F2)
     .setAuthor({ name: interaction.user.username, iconURL: interaction.user.displayAvatarURL() })
-    .setTitle('New Ticket!')
-    .setDescription(
-      `Hello **${interaction.user.username}**, this is your ticket!\n` +
-      `Please provide details about your problem below. Support will be with you shortly.\n\n` +
-      `You may ping a support member once after 30 minutes of no response; avoid mass-pinging.\n\n` +
-      `Staff can manage this ticket using the **Staff Panel** button.`
-    )
-    .addFields({ name: 'Ticket Subject', value: `\`\`\`${topic}\`\`\`` })
     .setFooter({ text: interaction.guild!.name, iconURL: interaction.guild!.iconURL() ?? undefined })
     .setTimestamp();
+
+  if (kind === 'application') {
+    embed
+      .setTitle('📋 Staff Application')
+      .setDescription(
+        `Thanks for applying, **${interaction.user.username}**! Your answers are below.\n` +
+        `The team will read your application and reply here. Feel free to add anything you forgot.\n\n` +
+        `Please don't ping staff about your application; you'll hear back in this channel either way.`
+      )
+      .addFields(answers.map(a => ({ name: a.name.slice(0, 256), value: `\`\`\`${a.value.slice(0, 1000) || '-'}\`\`\`` })));
+  } else {
+    embed
+      .setTitle('New Ticket!')
+      .setDescription(
+        `Hello **${interaction.user.username}**, this is your ticket!\n` +
+        `Please provide details about your problem below. Support will be with you shortly.\n\n` +
+        `You may ping a support member once after 30 minutes of no response; avoid mass-pinging.\n\n` +
+        `Staff can manage this ticket using the **Staff Panel** button.`
+      )
+      .addFields({ name: 'Ticket Subject', value: `\`\`\`${topic}\`\`\`` });
+  }
 
   // Staff panel buttons
   const modRows = buildModPanel(channel.id);
@@ -91,6 +118,17 @@ const ticketsModule: EventModule = {
           return;
         }
 
+        // Panel button → staff application form
+        if (btn.customId === 'ticket:apply') {
+          const existing = await db.getOpenTicketByUser(btn.guildId!, btn.user.id, 'application');
+          if (existing) {
+            await btn.reply({ content: `You already have an open application: <#${existing.channel_id}>. Add anything new there.`, flags: MessageFlags.Ephemeral });
+            return;
+          }
+          await btn.showModal(buildApplicationModal());
+          return;
+        }
+
         // Claim ticket
         if (btn.customId.startsWith('ticket:claim:')) {
           const channelId = btn.customId.split(':')[2];
@@ -99,16 +137,24 @@ const ticketsModule: EventModule = {
           const ticket = await db.getTicketByChannel(channelId);
           if (!ticket) { await btn.editReply('This is not an open ticket.'); return; }
           const cfg = await db.getTicketConfig(ticket.guild_id);
-          if (!isTicketStaff(btn, cfg)) { await btn.editReply('❌ Only support staff can claim tickets.'); return; }
-          if (ticket.claimed_by) { await btn.editReply(`This ticket is already claimed by <@${ticket.claimed_by}>.`); return; }
+          const isApplication = ticketKind(ticket) === 'application';
+          if (!isTicketStaff(btn, cfg, ticket)) {
+            await btn.editReply(isApplication ? '❌ Only the application reviewers can claim applications.' : '❌ Only support staff can claim tickets.');
+            return;
+          }
+          if (ticket.claimed_by) { await btn.editReply(`This ${isApplication ? 'application' : 'ticket'} is already claimed by <@${ticket.claimed_by}>.`); return; }
           await db.claimTicket(channelId, btn.user.id);
-          if (cfg?.support_role_id) {
-            await (btn.channel as TextChannel).permissionOverwrites.delete(cfg.support_role_id).catch(() => {});
+          const roleId = ticketRoleId(cfg, ticketKind(ticket));
+          if (roleId) {
+            await (btn.channel as TextChannel).permissionOverwrites.delete(roleId).catch(() => {});
           }
           await (btn.channel as TextChannel).permissionOverwrites.create(btn.user.id, { ViewChannel: true, SendMessages: true }).catch(() => {});
-          await (btn.channel as TextChannel).setTopic(`Ticket by <@${ticket.user_id}> — Claimed by ${btn.user.username}`).catch(() => {});
-          await (btn.channel as TextChannel | null)?.send(`🙋 Ticket claimed by <@${btn.user.id}>.`).catch(() => {});
-          await btn.editReply('✅ You have claimed this ticket.');
+          const topicText = isApplication
+            ? `Staff application by <@${ticket.user_id}> — Reviewed by ${btn.user.username}`
+            : `Ticket by <@${ticket.user_id}> — Claimed by ${btn.user.username}`;
+          await (btn.channel as TextChannel).setTopic(topicText).catch(() => {});
+          await (btn.channel as TextChannel | null)?.send(`🙋 ${isApplication ? 'Application' : 'Ticket'} claimed by <@${btn.user.id}>.`).catch(() => {});
+          await btn.editReply(`✅ You have claimed this ${isApplication ? 'application' : 'ticket'}.`);
           return;
         }
 
@@ -167,15 +213,41 @@ const ticketsModule: EventModule = {
       // ── Modal submit: create ticket ──────────────────────────────────────
       if ((interaction as any).isModalSubmit()) {
         const modal = interaction as ModalSubmitInteraction;
-        if (modal.customId !== 'ticket:modal') return;
-        await modal.deferReply({ flags: MessageFlags.Ephemeral });
-        const topic = modal.fields.getTextInputValue('topic') || 'No topic specified';
-        try {
-          const channel = await createTicketChannel(modal as any, topic, db);
-          await modal.editReply(`✅ Your ticket has been created: <#${channel.id}>`);
-        } catch (err) {
-          console.error('[tickets] create error:', err);
-          await modal.editReply('❌ Could not create ticket. Make sure the bot has permission to create channels.');
+
+        if (modal.customId === 'ticket:modal') {
+          await modal.deferReply({ flags: MessageFlags.Ephemeral });
+          const topic = modal.fields.getTextInputValue('topic') || 'No topic specified';
+          try {
+            const channel = await createTicketChannel(modal, 'support', topic, db);
+            await modal.editReply(`✅ Your ticket has been created: <#${channel.id}>`);
+          } catch (err) {
+            console.error('[tickets] create error:', err);
+            await modal.editReply('❌ Could not create ticket. Make sure the bot has permission to create channels.');
+          }
+          return;
+        }
+
+        // Staff application form → private application channel for the reviewers
+        if (modal.customId === 'ticket:apply-modal') {
+          await modal.deferReply({ flags: MessageFlags.Ephemeral });
+          const existing = await db.getOpenTicketByUser(modal.guildId!, modal.user.id, 'application');
+          if (existing) {
+            await modal.editReply(`You already have an open application: <#${existing.channel_id}>. Add anything new there.`);
+            return;
+          }
+          const answers = APPLICATION_QUESTIONS.map(q => {
+            let value = '';
+            try { value = modal.fields.getTextInputValue(q.id); } catch {}
+            return { name: q.label, value: value.trim() };
+          }).filter(a => a.value);
+          try {
+            const channel = await createTicketChannel(modal, 'application', APPLICATION_TOPIC, db, answers);
+            await modal.editReply(`✅ Your application is in: <#${channel.id}>. The team will reply there.`);
+          } catch (err) {
+            console.error('[tickets] application create error:', err);
+            await modal.editReply('❌ Could not create your application channel. Make sure the bot has permission to create channels.');
+          }
+          return;
         }
       }
     },

@@ -27,8 +27,14 @@ const Ticket: Command = {
       .addUserOption(o => o.setName('user').setDescription('User to add').setRequired(true)))
     .addSubcommand(sub => sub.setName('remove').setDescription('Remove a user from this ticket')
       .addUserOption(o => o.setName('user').setDescription('User to remove').setRequired(true)))
-    .addSubcommand(sub => sub.setName('panel').setDescription('Post a ticket panel with an Open Ticket button')
+    .addSubcommand(sub => sub.setName('panel').setDescription('Post a ticket panel with Open Ticket and/or Apply for Staff buttons')
       .addChannelOption(o => o.setName('channel').setDescription('Channel to post the panel in').setRequired(true))
+      .addStringOption(o => o.setName('buttons').setDescription('Which buttons the panel shows (default: both)')
+        .addChoices(
+          { name: 'Open a Ticket + Apply for Staff', value: 'both' },
+          { name: 'Open a Ticket only', value: 'support' },
+          { name: 'Apply for Staff only', value: 'applications' },
+        ))
       .addStringOption(o => o.setName('title').setDescription('Panel title'))
       .addStringOption(o => o.setName('description').setDescription('Panel description')))
     .addSubcommand(sub => sub.setName('ratings').setDescription('View support ratings for a staff member')
@@ -39,7 +45,9 @@ const Ticket: Command = {
       .addSubcommand(sub => sub.setName('set').setDescription('Set ticket system settings')
         .addChannelOption(o => o.setName('category').setDescription('Category for ticket channels').addChannelTypes(ChannelType.GuildCategory))
         .addChannelOption(o => o.setName('log').setDescription('Channel to log closed tickets'))
-        .addRoleOption(o => o.setName('support').setDescription('Support role added to all tickets')))
+        .addRoleOption(o => o.setName('support').setDescription('Support role added to all tickets'))
+        .addRoleOption(o => o.setName('applications').setDescription('Role that reviews staff applications (default: the support role)'))
+        .addChannelOption(o => o.setName('applications_category').setDescription('Category for staff application channels (default: the ticket category)').addChannelTypes(ChannelType.GuildCategory)))
       .addSubcommand(sub => sub.setName('view').setDescription('View current ticket settings'))) as any,
 
   async run(interaction: ChatInputCommandInteraction) {
@@ -57,7 +65,16 @@ const Ticket: Command = {
         const category = interaction.options.getChannel('category');
         const log = interaction.options.getChannel('log');
         const support = interaction.options.getRole('support');
-        await db.setTicketConfig(interaction.guildId!, { category_id: category?.id, log_channel_id: log?.id, support_role_id: support?.id });
+        const applyRole = interaction.options.getRole('applications');
+        const applyCategory = interaction.options.getChannel('applications_category');
+        if (!category && !log && !support && !applyRole && !applyCategory) {
+          await interaction.editReply('Nothing to change. Pass at least one option (category, log, support, applications, applications_category).');
+          return;
+        }
+        await db.setTicketConfig(interaction.guildId!, {
+          category_id: category?.id, log_channel_id: log?.id, support_role_id: support?.id,
+          apply_role_id: applyRole?.id, apply_category_id: applyCategory?.id,
+        });
         await interaction.editReply('✅ Ticket settings updated.');
       } else {
         const cfg = await db.getTicketConfig(interaction.guildId!);
@@ -69,6 +86,8 @@ const Ticket: Command = {
             { name: 'Category', value: cfg.category_id ? `<#${cfg.category_id}>` : 'Not set', inline: true },
             { name: 'Log Channel', value: cfg.log_channel_id ? `<#${cfg.log_channel_id}>` : 'Not set', inline: true },
             { name: 'Support Role', value: cfg.support_role_id ? `<@&${cfg.support_role_id}>` : 'Not set', inline: true },
+            { name: 'Application Reviewers', value: cfg.apply_role_id ? `<@&${cfg.apply_role_id}>` : (cfg.support_role_id ? `Support role <@&${cfg.support_role_id}>` : 'Not set'), inline: true },
+            { name: 'Application Category', value: cfg.apply_category_id ? `<#${cfg.apply_category_id}>` : (cfg.category_id ? `Ticket category <#${cfg.category_id}>` : 'Not set'), inline: true },
             { name: 'Next Ticket #', value: String(cfg.next_ticket_num), inline: true },
           );
         await interaction.editReply({ embeds: [embed] });
@@ -83,12 +102,18 @@ const Ticket: Command = {
         return;
       }
       const channel = interaction.options.getChannel('channel', true) as TextChannel;
-      const title = interaction.options.getString('title') ?? '🎫 Support Tickets';
-      const description = interaction.options.getString('description') ?? 'Click the button below to open a support ticket. Our team will be with you shortly.';
+      const buttons = (interaction.options.getString('buttons') ?? 'both') as 'both' | 'support' | 'applications';
+      const defaults = {
+        both: { title: '🎫 Support & Staff Applications', description: 'Need help? Click **Open a Ticket** and our team will be with you shortly.\nWant to join the team? Click **Apply for Staff** and fill in the short form.' },
+        support: { title: '🎫 Support Tickets', description: 'Click the button below to open a support ticket. Our team will be with you shortly.' },
+        applications: { title: '📋 Staff Applications', description: 'Want to join the staff team? Click the button below and fill in the short application form. A private channel is opened for you and the team will reply there.' },
+      }[buttons];
+      const title = interaction.options.getString('title') ?? defaults.title;
+      const description = interaction.options.getString('description') ?? defaults.description;
       const embed = new EmbedBuilder().setTitle(title).setDescription(description).setColor(Colors.Blurple);
-      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId('ticket:open').setLabel('Open a Ticket').setStyle(ButtonStyle.Primary).setEmoji('🎫')
-      );
+      const row = new ActionRowBuilder<ButtonBuilder>();
+      if (buttons !== 'applications') row.addComponents(new ButtonBuilder().setCustomId('ticket:open').setLabel('Open a Ticket').setStyle(ButtonStyle.Primary).setEmoji('🎫'));
+      if (buttons !== 'support') row.addComponents(new ButtonBuilder().setCustomId('ticket:apply').setLabel('Apply for Staff').setStyle(ButtonStyle.Success).setEmoji('📋'));
       try {
         await channel.send({ embeds: [embed], components: [row] });
         await interaction.reply({ content: `✅ Ticket panel posted in <#${channel.id}>.`, flags: MessageFlags.Ephemeral });
