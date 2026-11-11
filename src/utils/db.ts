@@ -145,6 +145,8 @@ export type ITicketConfig = {
   apply_role_id: string | null;
   /** Category for application channels. Falls back to category_id when null. */
   apply_category_id: string | null;
+  /** Role whose members are DMed about each new staff application. Falls back to apply_role_id when null. */
+  notify_role_id: string | null;
 };
 
 export type IStreamVcConfig = {
@@ -717,6 +719,7 @@ export async function initDb() {
   try { await db`ALTER TABLE tickets ADD COLUMN kind TEXT NOT NULL DEFAULT 'support'`; } catch {}
   try { await db`ALTER TABLE ticket_config ADD COLUMN apply_role_id TEXT`; } catch {}
   try { await db`ALTER TABLE ticket_config ADD COLUMN apply_category_id TEXT`; } catch {}
+  try { await db`ALTER TABLE ticket_config ADD COLUMN notify_role_id TEXT`; } catch {}
 
   await db`CREATE TABLE IF NOT EXISTS streamvc_config (
     guild_id         TEXT PRIMARY KEY,
@@ -1793,15 +1796,16 @@ export async function getTicketConfig(guild_id: string): Promise<ITicketConfig |
 export async function setTicketConfig(guild_id: string, fields: Partial<Omit<ITicketConfig, 'guild_id' | 'next_ticket_num'>>) {
   await ensureConfig(guild_id);
   await db`
-    INSERT INTO ticket_config (guild_id, category_id, log_channel_id, support_role_id, apply_role_id, apply_category_id)
+    INSERT INTO ticket_config (guild_id, category_id, log_channel_id, support_role_id, apply_role_id, apply_category_id, notify_role_id)
     VALUES (${guild_id}, ${fields.category_id ?? null}, ${fields.log_channel_id ?? null}, ${fields.support_role_id ?? null},
-            ${fields.apply_role_id ?? null}, ${fields.apply_category_id ?? null})
+            ${fields.apply_role_id ?? null}, ${fields.apply_category_id ?? null}, ${fields.notify_role_id ?? null})
     ON CONFLICT(guild_id) DO UPDATE SET
       category_id = COALESCE(excluded.category_id, category_id),
       log_channel_id = COALESCE(excluded.log_channel_id, log_channel_id),
       support_role_id = COALESCE(excluded.support_role_id, support_role_id),
       apply_role_id = COALESCE(excluded.apply_role_id, apply_role_id),
-      apply_category_id = COALESCE(excluded.apply_category_id, apply_category_id)
+      apply_category_id = COALESCE(excluded.apply_category_id, apply_category_id),
+      notify_role_id = COALESCE(excluded.notify_role_id, notify_role_id)
   `;
 }
 

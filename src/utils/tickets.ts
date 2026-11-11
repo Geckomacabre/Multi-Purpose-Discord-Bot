@@ -39,13 +39,17 @@ export function ticketChannelName(kind: TicketKind, ticketNum: number): string {
 
 export const APPLICATION_TOPIC = 'Staff Application';
 
-/** The questions on the staff application form. Discord allows at most 5 inputs per modal. */
+/**
+ * The questions on the staff application form (the basics of the owner's Part 1).
+ * Discord allows at most 5 inputs per modal; the rest of the questionnaire is posted in the
+ * application channel afterwards (see applicationForm.ts).
+ */
 export const APPLICATION_QUESTIONS: { id: string; label: string; placeholder: string; style: TextInputStyle; max: number; required: boolean }[] = [
-  { id: 'age_tz', label: 'Your age and timezone', placeholder: 'e.g. 21, EST', style: TextInputStyle.Short, max: 60, required: true },
-  { id: 'why', label: 'Why do you want to join the staff team?', placeholder: 'What would you bring to the team?', style: TextInputStyle.Paragraph, max: 1000, required: true },
-  { id: 'experience', label: 'Moderation or staff experience', placeholder: 'Other servers, communities, games... "none yet" is fine.', style: TextInputStyle.Paragraph, max: 1000, required: true },
-  { id: 'availability', label: 'How active can you be?', placeholder: 'e.g. 2-3 hours most evenings, weekends', style: TextInputStyle.Short, max: 100, required: true },
-  { id: 'extra', label: 'Anything else we should know? (optional)', placeholder: 'Languages, skills, past warnings, questions for us...', style: TextInputStyle.Paragraph, max: 800, required: false },
+  { id: 'role', label: 'Role: Moderator, Admin, Developer, Not sure', placeholder: 'One or more, or "not sure, place me"', style: TextInputStyle.Short, max: 60, required: true },
+  { id: 'age_tz', label: 'Age, time zone, usual online days/hours', placeholder: 'e.g. 21, EST, weekday evenings and weekends', style: TextInputStyle.Short, max: 120, required: true },
+  { id: 'time', label: 'Hours per week; how long you have been here', placeholder: 'e.g. about 10 hours a week; member since early 2025', style: TextInputStyle.Short, max: 120, required: true },
+  { id: 'history', label: 'Past staff roles, and any warnings or bans', placeholder: 'Role, how long, why you left. Any mute/kick/ban anywhere and what happened. "None" is fine.', style: TextInputStyle.Paragraph, max: 1000, required: true },
+  { id: 'why', label: 'Why do you want to be on staff here?', placeholder: 'In your own words.', style: TextInputStyle.Paragraph, max: 1000, required: true },
 ];
 
 export function buildApplicationModal(): ModalBuilder {

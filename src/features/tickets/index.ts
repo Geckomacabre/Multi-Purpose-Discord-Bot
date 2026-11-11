@@ -1,6 +1,6 @@
 import {
   ActionRowBuilder, ButtonBuilder, ButtonInteraction, ButtonStyle,
-  EmbedBuilder, MessageFlags, ModalBuilder, ModalSubmitInteraction,
+  EmbedBuilder, Guild, MessageFlags, ModalBuilder, ModalSubmitInteraction,
   PermissionFlagsBits, TextChannel, TextInputBuilder, TextInputStyle,
 } from 'discord.js';
 import { EventModule } from '../feature';
@@ -10,8 +10,74 @@ import {
   canCloseTicket, fetchAllMessages, isTicketStaff, ticketCategoryId, ticketChannelName, ticketKind, ticketRoleId,
   type TicketKind,
 } from '../../utils/tickets.js';
+import { APPLICATION_ROLE_NAMES, buildQuestionnaireEmbeds, parseApplicationRoles } from '../../utils/applicationForm.js';
+import type { ITicketConfig } from '../../utils/db';
 
 type TicketDb = typeof import('../../utils/db');
+
+/** Who gets a DM about a new application: the configured notify role, else the reviewers role, else a role named "founder". */
+function applicationNotifyRoleId(guild: Guild, cfg: ITicketConfig | null): string | null {
+  if (cfg?.notify_role_id) return cfg.notify_role_id;
+  if (cfg?.apply_role_id) return cfg.apply_role_id;
+  return guild.roles.cache.find(r => r.name.toLowerCase().replace(/[\s_-]/g, '') === 'founder')?.id ?? null;
+}
+
+/**
+ * After an application channel exists: post the rest of the owner's questionnaire for the role(s)
+ * picked, DM the applicant that staff will be in touch, and DM everyone in the notify role.
+ * Each step is best-effort; a closed DM must never fail the application.
+ */
+async function afterApplicationCreated(
+  modal: ModalSubmitInteraction,
+  channel: TextChannel,
+  cfg: ITicketConfig | null,
+  answers: { name: string; value: string }[],
+): Promise<{ notified: number; notifyRoleId: string | null }> {
+  const guild = modal.guild!;
+  const roleAnswer = answers.find(a => a.name === APPLICATION_QUESTIONS[0].label)?.value ?? '';
+  const roles = parseApplicationRoles(roleAnswer);
+  const roleText = roles.length ? roles.map(r => APPLICATION_ROLE_NAMES[r]).join(' / ') : 'Not sure (all parts posted)';
+
+  // 1. The questionnaire. Embeds share a 6,000-character budget per message, so one embed per message.
+  for (const embed of buildQuestionnaireEmbeds(roles)) {
+    await channel.send({ embeds: [embed] }).catch(err => console.error('[tickets] questionnaire post failed:', err));
+  }
+
+  // 2. Tell the applicant.
+  await modal.user.send({
+    embeds: [new EmbedBuilder()
+      .setColor(0x5865F2)
+      .setTitle(`📋 Your staff application to ${guild.name}`)
+      .setDescription(
+        `Thanks for applying! Your application has been received and the staff team has been notified.\n\n` +
+        `The rest of the questions are waiting for you in <#${channel.id}>; answer them there in your own time. ` +
+        `Staff will be in contact with you in that channel.`
+      )
+      .setFooter({ text: guild.name, iconURL: guild.iconURL() ?? undefined })
+      .setTimestamp()],
+  }).catch(() => { /* DMs closed; the channel message covers it */ });
+
+  // 3. DM the notify role's members (the founders on CTI).
+  const notifyRoleId = applicationNotifyRoleId(guild, cfg);
+  let notified = 0;
+  if (notifyRoleId) {
+    await guild.members.fetch().catch(() => null); // role.members only knows cached members
+    const role = guild.roles.cache.get(notifyRoleId);
+    const summary = new EmbedBuilder()
+      .setColor(0x57F287)
+      .setAuthor({ name: modal.user.tag, iconURL: modal.user.displayAvatarURL() })
+      .setTitle(`📋 New staff application in ${guild.name}`)
+      .setDescription(`<@${modal.user.id}> (${modal.user.tag}, ID ${modal.user.id}) applied for **${roleText}**.\n\nReview it in <#${channel.id}>: https://discord.com/channels/${guild.id}/${channel.id}`)
+      .addFields(answers.slice(1).map(a => ({ name: a.name.slice(0, 256), value: a.value.slice(0, 1024) || '-' })))
+      .setTimestamp();
+    for (const member of role?.members.values() ?? []) {
+      if (member.user.bot) continue;
+      const ok = await member.send({ embeds: [summary] }).then(() => true).catch(() => false);
+      if (ok) notified++;
+    }
+  }
+  return { notified, notifyRoleId };
+}
 
 /**
  * Create the private channel for a support ticket or a staff application.
@@ -242,7 +308,14 @@ const ticketsModule: EventModule = {
           }).filter(a => a.value);
           try {
             const channel = await createTicketChannel(modal, 'application', APPLICATION_TOPIC, db, answers);
-            await modal.editReply(`✅ Your application is in: <#${channel.id}>. The team will reply there.`);
+            await modal.editReply(`✅ Your application is in: <#${channel.id}>. The rest of the questions are posted there, and staff will be in contact with you.`);
+            const cfg = await db.getTicketConfig(modal.guildId!);
+            const { notified, notifyRoleId } = await afterApplicationCreated(modal, channel, cfg, answers);
+            await channel.send(
+              notifyRoleId
+                ? `-# ${notified} staff member${notified === 1 ? '' : 's'} notified by DM.`
+                : `-# No staff were DMed: set a role with \`/ticket config set applications_notify:@role\`.`
+            ).catch(() => {});
           } catch (err) {
             console.error('[tickets] application create error:', err);
             await modal.editReply('❌ Could not create your application channel. Make sure the bot has permission to create channels.');
