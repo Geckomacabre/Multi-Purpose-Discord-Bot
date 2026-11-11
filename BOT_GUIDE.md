@@ -101,7 +101,7 @@ Give respect to members you like. Rep counts toward their XP too.
 
 - Click the **Open Ticket** button in the support channel to create a private ticket with staff
 - Inside your ticket: use the buttons to **save a transcript**, **rate support** (after closing), or wait for a mod to assist
-- Want to join the team? Click **Apply for Staff** on the panel and fill in the short form. A private application channel is opened for you with the rest of the questions for the role you picked; answer them there, and staff will be in contact in that channel (one open application at a time)
+- Want to join the team? Click **Apply for Staff** on the panel and answer the questionnaire page by page (each page shows its questions, then a button opens the form). Your progress is saved for a week. When you finish the last page a private application channel is opened with your answers, and staff will be in contact in that channel (one open application at a time)
 
 ---
 

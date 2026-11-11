@@ -6,14 +6,21 @@ import {
 import { EventModule } from '../feature';
 import { cv2Text } from '../../utils/components.js';
 import {
-  APPLICATION_QUESTIONS, APPLICATION_TOPIC, archiveTicket, buildApplicationModal, buildModPanel, buildTranscriptFile,
+  APPLICATION_TOPIC, archiveTicket, buildModPanel, buildTranscriptFile,
   canCloseTicket, fetchAllMessages, isTicketStaff, ticketCategoryId, ticketChannelName, ticketKind, ticketRoleId,
   type TicketKind,
 } from '../../utils/tickets.js';
-import { APPLICATION_ROLE_NAMES, buildQuestionnaireEmbeds, parseApplicationRoles } from '../../utils/applicationForm.js';
-import type { ITicketConfig } from '../../utils/db';
+import {
+  APPLICATION_ROLE_NAMES, APPLY_CANCEL_ID, APPLY_MODAL_PREFIX, APPLY_PAGE_PREFIX, APPLY_RESTART_ID, FIRST_PAGE,
+  buildAnswerEmbeds, buildApplicationPages, buildPageModal, buildPagePrompt, parseApplicationRoles,
+  type ApplicationPage, type ApplicationRole,
+} from '../../utils/applicationForm.js';
+import type { IApplicationDraft, ITicketConfig } from '../../utils/db';
 
 type TicketDb = typeof import('../../utils/db');
+
+/** A saved application draft older than this starts over. */
+const DRAFT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** Who gets a DM about a new application: the configured notify role, else the reviewers role, else a role named "founder". */
 function applicationNotifyRoleId(guild: Guild, cfg: ITicketConfig | null): string | null {
@@ -22,25 +29,46 @@ function applicationNotifyRoleId(guild: Guild, cfg: ITicketConfig | null): strin
   return guild.roles.cache.find(r => r.name.toLowerCase().replace(/[\s_-]/g, '') === 'founder')?.id ?? null;
 }
 
+function draftRoles(draft: IApplicationDraft | null): ApplicationRole[] {
+  return (draft?.roles ?? []).filter((r): r is ApplicationRole => r in APPLICATION_ROLE_NAMES);
+}
+
+type EphemeralPayload = { content?: string; embeds?: EmbedBuilder[]; components?: ActionRowBuilder<ButtonBuilder>[] };
+
 /**
- * After an application channel exists: post the rest of the owner's questionnaire for the role(s)
- * picked, DM the applicant that staff will be in touch, and DM everyone in the notify role.
+ * Answer a modal ephemerally. A modal opened from one of our own ephemeral prompts edits that
+ * prompt in place (`update`); one opened from the public panel gets a fresh ephemeral reply, so
+ * the panel itself is never touched.
+ */
+async function respondEphemeral(modal: ModalSubmitInteraction, payload: EphemeralPayload): Promise<void> {
+  if (modal.isFromMessage() && modal.message.flags.has(MessageFlags.Ephemeral)) await modal.update(payload);
+  else await modal.reply({ ...payload, flags: MessageFlags.Ephemeral });
+}
+
+async function deferEphemeral(modal: ModalSubmitInteraction): Promise<void> {
+  if (modal.isFromMessage() && modal.message.flags.has(MessageFlags.Ephemeral)) await modal.deferUpdate();
+  else await modal.deferReply({ flags: MessageFlags.Ephemeral });
+}
+
+/**
+ * After the final page: post every answer in the new application channel (one embed per
+ * page), DM the applicant that staff will be in contact, and DM everyone in the notify role.
  * Each step is best-effort; a closed DM must never fail the application.
  */
 async function afterApplicationCreated(
   modal: ModalSubmitInteraction,
   channel: TextChannel,
   cfg: ITicketConfig | null,
-  answers: { name: string; value: string }[],
+  pages: ApplicationPage[],
+  roles: ApplicationRole[],
+  answers: Record<string, string>,
 ): Promise<{ notified: number; notifyRoleId: string | null }> {
   const guild = modal.guild!;
-  const roleAnswer = answers.find(a => a.name === APPLICATION_QUESTIONS[0].label)?.value ?? '';
-  const roles = parseApplicationRoles(roleAnswer);
-  const roleText = roles.length ? roles.map(r => APPLICATION_ROLE_NAMES[r]).join(' / ') : 'Not sure (all parts posted)';
+  const roleText = roles.length ? roles.map(r => APPLICATION_ROLE_NAMES[r]).join(' / ') : 'Not sure, place me';
 
-  // 1. The questionnaire. Embeds share a 6,000-character budget per message, so one embed per message.
-  for (const embed of buildQuestionnaireEmbeds(roles)) {
-    await channel.send({ embeds: [embed] }).catch(err => console.error('[tickets] questionnaire post failed:', err));
+  // 1. The full application. Embeds share a 6,000-character budget per message, so one per message.
+  for (const embed of buildAnswerEmbeds(pages, answers)) {
+    await channel.send({ embeds: [embed] }).catch(err => console.error('[tickets] answers post failed:', err));
   }
 
   // 2. Tell the applicant.
@@ -50,12 +78,11 @@ async function afterApplicationCreated(
       .setTitle(`📋 Your staff application to ${guild.name}`)
       .setDescription(
         `Thanks for applying! Your application has been received and the staff team has been notified.\n\n` +
-        `The rest of the questions are waiting for you in <#${channel.id}>; answer them there in your own time. ` +
-        `Staff will be in contact with you in that channel.`
+        `Your answers are in <#${channel.id}>. Staff will be in contact with you in that channel.`
       )
       .setFooter({ text: guild.name, iconURL: guild.iconURL() ?? undefined })
       .setTimestamp()],
-  }).catch(() => { /* DMs closed; the channel message covers it */ });
+  }).catch(() => { /* DMs closed; the channel covers it */ });
 
   // 3. DM the notify role's members (the founders on CTI).
   const notifyRoleId = applicationNotifyRoleId(guild, cfg);
@@ -67,8 +94,8 @@ async function afterApplicationCreated(
       .setColor(0x57F287)
       .setAuthor({ name: modal.user.tag, iconURL: modal.user.displayAvatarURL() })
       .setTitle(`📋 New staff application in ${guild.name}`)
-      .setDescription(`<@${modal.user.id}> (${modal.user.tag}, ID ${modal.user.id}) applied for **${roleText}**.\n\nReview it in <#${channel.id}>: https://discord.com/channels/${guild.id}/${channel.id}`)
-      .addFields(answers.slice(1).map(a => ({ name: a.name.slice(0, 256), value: a.value.slice(0, 1024) || '-' })))
+      .setDescription(`<@${modal.user.id}> (${modal.user.tag}, ID ${modal.user.id}) applied for **${roleText}**.\n\nFull answers: <#${channel.id}> — https://discord.com/channels/${guild.id}/${channel.id}`)
+      .addFields(FIRST_PAGE.questions.slice(1).map(q => ({ name: q.text.slice(0, 256), value: (answers[q.id]?.trim() || '-').slice(0, 1024) })))
       .setTimestamp();
     for (const member of role?.members.values() ?? []) {
       if (member.user.bot) continue;
@@ -81,14 +108,14 @@ async function afterApplicationCreated(
 
 /**
  * Create the private channel for a support ticket or a staff application.
- * `answers` (application only) are the form's question/answer pairs, posted as embed fields.
+ * `summary` (application only) is the short who-you-are part, posted as fields on the welcome embed.
  */
 async function createTicketChannel(
   interaction: ButtonInteraction | ModalSubmitInteraction,
   kind: TicketKind,
   topic: string,
   db: TicketDb,
-  answers: { name: string; value: string }[] = [],
+  summary: { name: string; value: string }[] = [],
 ): Promise<TextChannel> {
   const guildId = interaction.guildId!;
   const cfg = await db.getTicketConfig(guildId);
@@ -131,11 +158,11 @@ async function createTicketChannel(
     embed
       .setTitle('📋 Staff Application')
       .setDescription(
-        `Thanks for applying, **${interaction.user.username}**! Your answers are below.\n` +
+        `Thanks for applying, **${interaction.user.username}**! Your full answers are posted below.\n` +
         `The team will read your application and reply here. Feel free to add anything you forgot.\n\n` +
         `Please don't ping staff about your application; you'll hear back in this channel either way.`
       )
-      .addFields(answers.map(a => ({ name: a.name.slice(0, 256), value: `\`\`\`${a.value.slice(0, 1000) || '-'}\`\`\`` })));
+      .addFields(summary.map(a => ({ name: a.name.slice(0, 256), value: `\`\`\`${a.value.slice(0, 1000) || '-'}\`\`\`` })));
   } else {
     embed
       .setTitle('New Ticket!')
@@ -184,14 +211,49 @@ const ticketsModule: EventModule = {
           return;
         }
 
-        // Panel button → staff application form
+        // Panel button → staff application. Resumes a saved draft, else opens page 1.
         if (btn.customId === 'ticket:apply') {
           const existing = await db.getOpenTicketByUser(btn.guildId!, btn.user.id, 'application');
           if (existing) {
             await btn.reply({ content: `You already have an open application: <#${existing.channel_id}>. Add anything new there.`, flags: MessageFlags.Ephemeral });
             return;
           }
-          await btn.showModal(buildApplicationModal());
+          const draft = await db.getApplicationDraft(btn.guildId!, btn.user.id);
+          const fresh = draft && draft.roles !== null && Date.now() - draft.updated_at < DRAFT_TTL_MS;
+          if (fresh) {
+            const roles = draftRoles(draft);
+            const pages = buildApplicationPages(roles);
+            const page = Math.min(draft.page, pages.length - 1);
+            await btn.reply({ ...buildPagePrompt(pages[page], page, pages.length, roles), flags: MessageFlags.Ephemeral });
+            return;
+          }
+          await btn.showModal(buildPageModal(FIRST_PAGE, 0, 0));
+          return;
+        }
+
+        // "Answer page N" on an ephemeral prompt → that page's form
+        if (btn.customId.startsWith(APPLY_PAGE_PREFIX)) {
+          const index = parseInt(btn.customId.slice(APPLY_PAGE_PREFIX.length));
+          const draft = await db.getApplicationDraft(btn.guildId!, btn.user.id);
+          if (!draft || draft.roles === null || isNaN(index)) {
+            await btn.showModal(buildPageModal(FIRST_PAGE, 0, 0));
+            return;
+          }
+          const pages = buildApplicationPages(draftRoles(draft));
+          const page = Math.min(Math.max(index, 0), pages.length - 1);
+          await btn.showModal(buildPageModal(pages[page], page, pages.length));
+          return;
+        }
+
+        if (btn.customId === APPLY_RESTART_ID) {
+          await db.deleteApplicationDraft(btn.guildId!, btn.user.id);
+          await btn.showModal(buildPageModal(FIRST_PAGE, 0, 0)); // its submit replaces this prompt with page 2
+          return;
+        }
+
+        if (btn.customId === APPLY_CANCEL_ID) {
+          await db.deleteApplicationDraft(btn.guildId!, btn.user.id);
+          await btn.update({ content: '🗑️ Application cancelled; nothing was sent to staff. You can start again any time with **Apply for Staff**.', embeds: [], components: [] }).catch(() => {});
           return;
         }
 
@@ -276,10 +338,11 @@ const ticketsModule: EventModule = {
         }
       }
 
-      // ── Modal submit: create ticket ──────────────────────────────────────
+      // ── Modal submits ────────────────────────────────────────────────────
       if ((interaction as any).isModalSubmit()) {
         const modal = interaction as ModalSubmitInteraction;
 
+        // Support ticket
         if (modal.customId === 'ticket:modal') {
           await modal.deferReply({ flags: MessageFlags.Ephemeral });
           const topic = modal.fields.getTextInputValue('topic') || 'No topic specified';
@@ -293,32 +356,60 @@ const ticketsModule: EventModule = {
           return;
         }
 
-        // Staff application form → private application channel for the reviewers
-        if (modal.customId === 'ticket:apply-modal') {
-          await modal.deferReply({ flags: MessageFlags.Ephemeral });
-          const existing = await db.getOpenTicketByUser(modal.guildId!, modal.user.id, 'application');
+        // Staff application, one page at a time. Only the last page creates anything.
+        if (modal.customId.startsWith(APPLY_MODAL_PREFIX)) {
+          const index = parseInt(modal.customId.slice(APPLY_MODAL_PREFIX.length));
+          const guildId = modal.guildId!;
+          const userId = modal.user.id;
+
+          const existing = await db.getOpenTicketByUser(guildId, userId, 'application');
           if (existing) {
-            await modal.editReply(`You already have an open application: <#${existing.channel_id}>. Add anything new there.`);
+            await respondEphemeral(modal, { content: `You already have an open application: <#${existing.channel_id}>. Add anything new there.`, embeds: [], components: [] });
             return;
           }
-          const answers = APPLICATION_QUESTIONS.map(q => {
-            let value = '';
-            try { value = modal.fields.getTextInputValue(q.id); } catch {}
-            return { name: q.label, value: value.trim() };
-          }).filter(a => a.value);
+
+          // Page 0 decides the role and therefore the page list; later pages need the saved draft.
+          const draft = index === 0 ? null : await db.getApplicationDraft(guildId, userId);
+          if (index !== 0 && (!draft || draft.roles === null)) {
+            await respondEphemeral(modal, { content: 'Your application draft has expired. Press **Apply for Staff** to start again.', embeds: [], components: [] });
+            return;
+          }
+
+          // Read this page's answers using the page list the form was built from.
+          const answers: Record<string, string> = { ...(draft?.answers ?? {}) };
+          const builtPages = buildApplicationPages(draftRoles(draft));
+          const page = index === 0 ? FIRST_PAGE : builtPages[Math.min(index, builtPages.length - 1)];
+          for (const q of page.questions) {
+            try { answers[q.id] = modal.fields.getTextInputValue(q.id).trim(); } catch { /* optional field left out */ }
+          }
+          const roles = index === 0 ? parseApplicationRoles(answers.role ?? '') : draftRoles(draft);
+          const pages = buildApplicationPages(roles);
+          const next = index + 1;
+
+          if (next < pages.length) {
+            await db.saveApplicationDraft(guildId, userId, { roles, answers, page: next });
+            await respondEphemeral(modal, buildPagePrompt(pages[next], next, pages.length, roles));
+            return;
+          }
+
+          // Last page: create the channel, post everything, send the DMs.
+          await deferEphemeral(modal);
           try {
-            const channel = await createTicketChannel(modal, 'application', APPLICATION_TOPIC, db, answers);
-            await modal.editReply(`✅ Your application is in: <#${channel.id}>. The rest of the questions are posted there, and staff will be in contact with you.`);
-            const cfg = await db.getTicketConfig(modal.guildId!);
-            const { notified, notifyRoleId } = await afterApplicationCreated(modal, channel, cfg, answers);
+            const summary = FIRST_PAGE.questions.map(q => ({ name: q.text, value: answers[q.id] ?? '' })).filter(a => a.value);
+            const channel = await createTicketChannel(modal, 'application', APPLICATION_TOPIC, db, summary);
+            await db.deleteApplicationDraft(guildId, userId);
+            const cfg = await db.getTicketConfig(guildId);
+            const { notified, notifyRoleId } = await afterApplicationCreated(modal, channel, cfg, pages, roles, answers);
             await channel.send(
               notifyRoleId
                 ? `-# ${notified} staff member${notified === 1 ? '' : 's'} notified by DM.`
                 : `-# No staff were DMed: set a role with \`/ticket config set applications_notify:@role\`.`
             ).catch(() => {});
+            await modal.editReply({ content: `✅ Application sent! Your answers are in <#${channel.id}>, and staff will be in contact with you there.`, embeds: [], components: [] });
           } catch (err) {
             console.error('[tickets] application create error:', err);
-            await modal.editReply('❌ Could not create your application channel. Make sure the bot has permission to create channels.');
+            await db.saveApplicationDraft(guildId, userId, { roles, answers, page: index }).catch(() => {});
+            await modal.editReply({ content: '❌ Could not create your application channel; your answers are saved. Press **Apply for Staff** to try the last page again, or tell a staff member.', embeds: [], components: [] });
           }
           return;
         }

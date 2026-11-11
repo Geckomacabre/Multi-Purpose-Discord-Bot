@@ -721,6 +721,15 @@ export async function initDb() {
   try { await db`ALTER TABLE ticket_config ADD COLUMN apply_category_id TEXT`; } catch {}
   try { await db`ALTER TABLE ticket_config ADD COLUMN notify_role_id TEXT`; } catch {}
 
+  // A staff application in progress: answers so far, the pages for the role picked, next page.
+  await db`CREATE TABLE IF NOT EXISTS application_drafts (
+    guild_id   TEXT NOT NULL,
+    user_id    TEXT NOT NULL,
+    data       TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (guild_id, user_id)
+  )`;
+
   await db`CREATE TABLE IF NOT EXISTS streamvc_config (
     guild_id         TEXT PRIMARY KEY,
     vc_id            TEXT,
@@ -1857,6 +1866,38 @@ export async function createTicket(guild_id: string, channel_id: string, user_id
     RETURNING *
   `;
   return row as ITicket;
+}
+
+export type IApplicationDraft = {
+  /** Role keys picked on page 0 ('moderator' | 'admin' | 'developer'); [] = unsure (all parts); null = page 0 not done. */
+  roles: string[] | null;
+  answers: Record<string, string>;
+  /** Index of the next page to answer. */
+  page: number;
+  updated_at: number;
+};
+
+/** The applicant's saved progress through the staff application pages, if any. */
+export async function getApplicationDraft(guild_id: string, user_id: string): Promise<IApplicationDraft | null> {
+  const [row] = await db`SELECT data, updated_at FROM application_drafts WHERE guild_id = ${guild_id} AND user_id = ${user_id}`;
+  if (!row) return null;
+  try {
+    const parsed = JSON.parse((row as any).data);
+    return { roles: parsed.roles ?? null, answers: parsed.answers ?? {}, page: parsed.page ?? 0, updated_at: (row as any).updated_at };
+  } catch { return null; }
+}
+
+export async function saveApplicationDraft(guild_id: string, user_id: string, draft: Omit<IApplicationDraft, 'updated_at'>): Promise<void> {
+  const data = JSON.stringify({ roles: draft.roles, answers: draft.answers, page: draft.page });
+  await db`
+    INSERT INTO application_drafts (guild_id, user_id, data, updated_at)
+    VALUES (${guild_id}, ${user_id}, ${data}, ${Date.now()})
+    ON CONFLICT(guild_id, user_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at
+  `;
+}
+
+export async function deleteApplicationDraft(guild_id: string, user_id: string): Promise<void> {
+  await db`DELETE FROM application_drafts WHERE guild_id = ${guild_id} AND user_id = ${user_id}`;
 }
 
 /** The user's open ticket of one kind in a guild, if any (used to stop duplicate staff applications). */
