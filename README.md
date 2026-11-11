@@ -346,6 +346,8 @@ Joining the hub channel (like **➕ Join to Create**) creates a voice channel na
 
 Members open private support channels with a button or a command. Staff manage the ticket and collect ratings.
 
+**Staff applications** use the same system: an **Apply for Staff** button on the panel opens a five-question form (age and timezone, why, experience, availability, anything else). The answers are posted in a private `application-N` channel that only the applicant and the reviewers role see (`/ticket config set applications:@role`, falling back to the support role). Reviewers claim and close it like a ticket; the transcript, with the full answers, goes to the log channel, and the applicant gets no rating prompt. One open application per member.
+
 **Monthly maintenance** runs on the 1st for servers with a log channel: tickets idle for 14+ days are closed, a test ticket is opened and closed to confirm everything works, and a report is posted (tickets opened and closed, stale closures, average rating, and the test result).
 
 <details>
@@ -358,10 +360,10 @@ Members open private support channels with a button or a command. Staff manage t
 | `/ticket delete` | Permanently delete the ticket channel. |
 | `/ticket add <user>` | Add a user to the ticket. |
 | `/ticket remove <user>` | Remove a user from the ticket. |
-| `/ticket panel [channel]` | Post an **Open Ticket** button panel. |
+| `/ticket panel [channel] [buttons]` | Post a panel with **Open a Ticket** and/or **Apply for Staff** buttons. |
 | `/ticket redirect [channel]` | Post a "wrong channel" message that points to tickets. |
 | `/ticket ratings [user]` | View support ratings for one staff member or the whole server. |
-| `/ticket config set` | Set the ticket category, log channel, and support role. |
+| `/ticket config set` | Set the ticket category, log channel, support role, and the reviewers role and category for staff applications. |
 | `/ticket config view` | View ticket settings. |
 
 </details>

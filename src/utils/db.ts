@@ -141,6 +141,10 @@ export type ITicketConfig = {
   log_channel_id: string | null;
   support_role_id: string | null;
   next_ticket_num: number;
+  /** Role that reviews staff applications. Falls back to support_role_id when null. */
+  apply_role_id: string | null;
+  /** Category for application channels. Falls back to category_id when null. */
+  apply_category_id: string | null;
 };
 
 export type IStreamVcConfig = {
@@ -168,6 +172,8 @@ export type ITicket = {
   closed_at: number | null;
   claimed_by: string | null;
   rating: number | null;
+  /** 'support' (default) or 'application' (a staff application). */
+  kind: string;
 };
 
 export type IReminder = {
@@ -708,6 +714,9 @@ export async function initDb() {
   )`;
   try { await db`ALTER TABLE tickets ADD COLUMN claimed_by TEXT`; } catch {}
   try { await db`ALTER TABLE tickets ADD COLUMN rating INTEGER`; } catch {}
+  try { await db`ALTER TABLE tickets ADD COLUMN kind TEXT NOT NULL DEFAULT 'support'`; } catch {}
+  try { await db`ALTER TABLE ticket_config ADD COLUMN apply_role_id TEXT`; } catch {}
+  try { await db`ALTER TABLE ticket_config ADD COLUMN apply_category_id TEXT`; } catch {}
 
   await db`CREATE TABLE IF NOT EXISTS streamvc_config (
     guild_id         TEXT PRIMARY KEY,
@@ -1784,12 +1793,15 @@ export async function getTicketConfig(guild_id: string): Promise<ITicketConfig |
 export async function setTicketConfig(guild_id: string, fields: Partial<Omit<ITicketConfig, 'guild_id' | 'next_ticket_num'>>) {
   await ensureConfig(guild_id);
   await db`
-    INSERT INTO ticket_config (guild_id, category_id, log_channel_id, support_role_id)
-    VALUES (${guild_id}, ${fields.category_id ?? null}, ${fields.log_channel_id ?? null}, ${fields.support_role_id ?? null})
+    INSERT INTO ticket_config (guild_id, category_id, log_channel_id, support_role_id, apply_role_id, apply_category_id)
+    VALUES (${guild_id}, ${fields.category_id ?? null}, ${fields.log_channel_id ?? null}, ${fields.support_role_id ?? null},
+            ${fields.apply_role_id ?? null}, ${fields.apply_category_id ?? null})
     ON CONFLICT(guild_id) DO UPDATE SET
       category_id = COALESCE(excluded.category_id, category_id),
       log_channel_id = COALESCE(excluded.log_channel_id, log_channel_id),
-      support_role_id = COALESCE(excluded.support_role_id, support_role_id)
+      support_role_id = COALESCE(excluded.support_role_id, support_role_id),
+      apply_role_id = COALESCE(excluded.apply_role_id, apply_role_id),
+      apply_category_id = COALESCE(excluded.apply_category_id, apply_category_id)
   `;
 }
 
@@ -1829,18 +1841,27 @@ export async function removeStreamVcApprover(guild_id: string, target_id: string
   return (rows as unknown[]).length > 0;
 }
 
-export async function createTicket(guild_id: string, channel_id: string, user_id: string, topic: string | null): Promise<ITicket> {
+export async function createTicket(guild_id: string, channel_id: string, user_id: string, topic: string | null, kind: string = 'support'): Promise<ITicket> {
   await ensureConfig(guild_id);
   await db`INSERT OR IGNORE INTO ticket_config (guild_id) VALUES (${guild_id})`;
   const cfg = await getTicketConfig(guild_id);
   const ticket_num = cfg?.next_ticket_num ?? 1;
   await db`UPDATE ticket_config SET next_ticket_num = next_ticket_num + 1 WHERE guild_id = ${guild_id}`;
   const [row] = await db`
-    INSERT INTO tickets (guild_id, channel_id, user_id, ticket_num, topic, created_at)
-    VALUES (${guild_id}, ${channel_id}, ${user_id}, ${ticket_num}, ${topic}, ${Date.now()})
+    INSERT INTO tickets (guild_id, channel_id, user_id, ticket_num, topic, created_at, kind)
+    VALUES (${guild_id}, ${channel_id}, ${user_id}, ${ticket_num}, ${topic}, ${Date.now()}, ${kind})
     RETURNING *
   `;
   return row as ITicket;
+}
+
+/** The user's open ticket of one kind in a guild, if any (used to stop duplicate staff applications). */
+export async function getOpenTicketByUser(guild_id: string, user_id: string, kind: string): Promise<ITicket | null> {
+  const [row] = await db`
+    SELECT * FROM tickets WHERE guild_id = ${guild_id} AND user_id = ${user_id} AND kind = ${kind} AND status = 'open'
+    ORDER BY ticket_num DESC LIMIT 1
+  `;
+  return (row as ITicket) || null;
 }
 
 export async function getTicketByChannel(channel_id: string): Promise<ITicket | null> {

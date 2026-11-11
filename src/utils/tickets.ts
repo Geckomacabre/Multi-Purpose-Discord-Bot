@@ -1,11 +1,69 @@
 import {
   ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonInteraction, ButtonStyle,
-  ChatInputCommandInteraction, Client, EmbedBuilder, Message, PermissionFlagsBits, TextChannel,
+  ChatInputCommandInteraction, Client, EmbedBuilder, Message, ModalBuilder, PermissionFlagsBits, TextChannel,
+  TextInputBuilder, TextInputStyle,
 } from 'discord.js';
 import type { ITicket, ITicketConfig } from './db';
 
 function escHtml(str: string): string {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ─── Ticket kinds ─────────────────────────────────────────────────────────────
+
+/** 'support' is a normal help ticket; 'application' is a staff application reviewed by the apply role. */
+export type TicketKind = 'support' | 'application';
+
+export function ticketKind(ticket: Pick<ITicket, 'kind'> | null | undefined): TicketKind {
+  return ticket?.kind === 'application' ? 'application' : 'support';
+}
+
+/** The role that gets access to (and is pinged in) a ticket of this kind. Applications fall back to the support role. */
+export function ticketRoleId(cfg: ITicketConfig | null, kind: TicketKind): string | null {
+  if (kind === 'application') return cfg?.apply_role_id ?? cfg?.support_role_id ?? null;
+  return cfg?.support_role_id ?? null;
+}
+
+/** The category a ticket channel of this kind is created in. Applications fall back to the ticket category. */
+export function ticketCategoryId(cfg: ITicketConfig | null, kind: TicketKind): string | null {
+  if (kind === 'application') return cfg?.apply_category_id ?? cfg?.category_id ?? null;
+  return cfg?.category_id ?? null;
+}
+
+/** Channel name prefix: ticket-12 or application-12 (one shared counter). */
+export function ticketChannelName(kind: TicketKind, ticketNum: number): string {
+  return `${kind === 'application' ? 'application' : 'ticket'}-${ticketNum}`;
+}
+
+// ─── Staff applications ───────────────────────────────────────────────────────
+
+export const APPLICATION_TOPIC = 'Staff Application';
+
+/** The questions on the staff application form. Discord allows at most 5 inputs per modal. */
+export const APPLICATION_QUESTIONS: { id: string; label: string; placeholder: string; style: TextInputStyle; max: number; required: boolean }[] = [
+  { id: 'age_tz', label: 'Your age and timezone', placeholder: 'e.g. 21, EST', style: TextInputStyle.Short, max: 60, required: true },
+  { id: 'why', label: 'Why do you want to join the staff team?', placeholder: 'What would you bring to the team?', style: TextInputStyle.Paragraph, max: 1000, required: true },
+  { id: 'experience', label: 'Moderation or staff experience', placeholder: 'Other servers, communities, games... "none yet" is fine.', style: TextInputStyle.Paragraph, max: 1000, required: true },
+  { id: 'availability', label: 'How active can you be?', placeholder: 'e.g. 2-3 hours most evenings, weekends', style: TextInputStyle.Short, max: 100, required: true },
+  { id: 'extra', label: 'Anything else we should know? (optional)', placeholder: 'Languages, skills, past warnings, questions for us...', style: TextInputStyle.Paragraph, max: 800, required: false },
+];
+
+export function buildApplicationModal(): ModalBuilder {
+  const modal = new ModalBuilder().setCustomId('ticket:apply-modal').setTitle('Staff Application');
+  for (const q of APPLICATION_QUESTIONS) {
+    modal.addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId(q.id)
+          .setLabel(q.label.slice(0, 45))
+          .setPlaceholder(q.placeholder.slice(0, 100))
+          .setStyle(q.style)
+          .setMaxLength(q.max)
+          .setRequired(q.required),
+      ),
+    );
+  }
+  return modal;
 }
 
 export async function fetchAllMessages(channel: TextChannel): Promise<Message[]> {
@@ -24,9 +82,10 @@ export async function fetchAllMessages(channel: TextChannel): Promise<Message[]>
 const STARS: Record<number, string> = { 1: '⭐', 2: '⭐⭐', 3: '⭐⭐⭐', 4: '⭐⭐⭐⭐', 5: '⭐⭐⭐⭐⭐' };
 
 function buildTranscriptText(ticket: ITicket, messages: Message[], claimerName?: string): string {
+  const isApplication = ticketKind(ticket) === 'application';
   const lines: string[] = [
     `═══════════════════════════════════════`,
-    `  🎫 Ticket #${ticket.ticket_num} Transcript`,
+    isApplication ? `  📋 Staff Application #${ticket.ticket_num} Transcript` : `  🎫 Ticket #${ticket.ticket_num} Transcript`,
     `═══════════════════════════════════════`,
     `Topic    : ${ticket.topic ?? 'No topic'}`,
     `Opened by: ${ticket.user_id}`,
@@ -42,7 +101,11 @@ function buildTranscriptText(ticket: ITicket, messages: Message[], claimerName?:
     lines.push(`[${time}] ${m.author.username}${tag}`);
     if (m.content) lines.push(m.content);
     for (const a of m.attachments.values()) lines.push(`📎 ${a.url}`);
-    for (const e of m.embeds) if (e.description) lines.push(`[Embed] ${e.description.slice(0, 200)}`);
+    for (const e of m.embeds) {
+      if (e.description) lines.push(`[Embed] ${e.description.slice(0, 200)}`);
+      // Application answers live in embed fields; keep them whole so the log holds the full form.
+      for (const f of e.fields) lines.push(`  ${f.name}: ${f.value.replace(/```/g, '').trim()}`);
+    }
     lines.push('');
   }
 
@@ -53,7 +116,7 @@ function buildTranscriptText(ticket: ITicket, messages: Message[], claimerName?:
 
 export function buildTranscriptFile(ticket: ITicket, messages: Message[], claimerName?: string): AttachmentBuilder {
   const text = buildTranscriptText(ticket, messages, claimerName);
-  return new AttachmentBuilder(Buffer.from(text), { name: `ticket-${ticket.ticket_num}-transcript.txt` });
+  return new AttachmentBuilder(Buffer.from(text), { name: `${ticketChannelName(ticketKind(ticket), ticket.ticket_num)}-transcript.txt` });
 }
 
 export async function archiveTicket(
@@ -72,18 +135,33 @@ export async function archiveTicket(
   }
 
   const file = buildTranscriptFile(ticket, messages, claimerName);
+  const isApplication = ticketKind(ticket) === 'application';
 
   // Post transcript to log channel
   if (cfg?.log_channel_id) {
     try {
       const logCh = await bot.channels.fetch(cfg.log_channel_id) as TextChannel;
       const ratingText = ticket.rating ? ` • Rating: ${STARS[ticket.rating]}` : '';
-      const claimerText = claimerName ? ` • Claimed by: ${claimerName}` : '';
+      const claimerText = claimerName ? ` • ${isApplication ? 'Reviewed by' : 'Claimed by'}: ${claimerName}` : '';
+      const label = isApplication ? `**Staff Application #${ticket.ticket_num}**` : `**Ticket #${ticket.ticket_num}** closed — <@${ticket.user_id}> — **Topic:** ${ticket.topic ?? 'None'}`;
       await logCh.send({
-        content: `📋 **Ticket #${ticket.ticket_num}** closed — <@${ticket.user_id}> — **Topic:** ${ticket.topic ?? 'None'}${claimerText}${ratingText}`,
+        content: `📋 ${label}${isApplication ? ` closed — applicant <@${ticket.user_id}>` : ''}${claimerText}${ratingText}`,
         files: [file],
       });
     } catch {}
+  }
+
+  // Applications don't get a "rate your support" prompt: tell the applicant it's closed and delete.
+  if (isApplication) {
+    try {
+      const embed = new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setTitle('🔒 Application Closed')
+        .setDescription('Thanks for applying. This application has been closed by the team.\n\n*This channel will be deleted in 2 minutes.*');
+      await channel.send({ content: `<@${ticket.user_id}>`, embeds: [embed] });
+    } catch {}
+    setTimeout(() => channel.delete().catch(() => {}), 2 * 60 * 1000);
+    return;
   }
 
   // Post rating panel in the ticket channel before it gets deleted
@@ -137,10 +215,14 @@ function memberRoleIds(interaction: TicketInteraction): string[] {
   return [...(member.roles?.cache?.keys() ?? [])];
 }
 
-/** Admins, the configured support role, or anyone with Manage Messages when no support role is set. */
-export function isTicketStaff(interaction: TicketInteraction, cfg: ITicketConfig | null): boolean {
+/**
+ * Admins, the role for this ticket's kind (support role, or the apply role for a staff application),
+ * or anyone with Manage Messages when no role is set.
+ */
+export function isTicketStaff(interaction: TicketInteraction, cfg: ITicketConfig | null, ticket?: Pick<ITicket, 'kind'> | null): boolean {
   if (isTicketAdmin(interaction)) return true;
-  if (cfg?.support_role_id) return memberRoleIds(interaction).includes(cfg.support_role_id);
+  const roleId = ticketRoleId(cfg, ticketKind(ticket));
+  if (roleId) return memberRoleIds(interaction).includes(roleId);
   return interaction.memberPermissions?.has(PermissionFlagsBits.ManageMessages) ?? false;
 }
 
