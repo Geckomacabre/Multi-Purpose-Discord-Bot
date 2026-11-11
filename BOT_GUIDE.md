@@ -101,7 +101,7 @@ Give respect to members you like. Rep counts toward their XP too.
 
 - Click the **Open Ticket** button in the support channel to create a private ticket with staff
 - Inside your ticket: use the buttons to **save a transcript**, **rate support** (after closing), or wait for a mod to assist
-- Want to join the team? Click **Apply for Staff** on the panel and fill in the short form. A private application channel is opened for you; the team replies there (one open application at a time)
+- Want to join the team? Click **Apply for Staff** on the panel, pick the role (Moderator, Admin, Developer Team, or Not sure to answer all three), and answer the questionnaire page by page (each page shows its questions, then a button opens the form). After your role's questions you can add another role's questions if you'd like to be considered for it too. Your progress is saved for a week. When you finish the last page a private application channel is opened with your answers, and staff will be in contact in that channel (one open application at a time)
 
 ---
 
@@ -251,7 +251,7 @@ These commands work **inside an active ticket channel**.
 - `/ticket add user:` — Add a user to the ticket channel
 - `/ticket remove user:` — Remove a user from the ticket channel
 - **Claim button** — Click inside the ticket to claim it (removes the support role, assigns to you)
-- **Staff applications** — `application-N` channels work the same way; only the reviewers role (`/ticket config set applications:@role`) and admins see and claim them
+- **Staff applications** — `application-N` channels work the same way; only the reviewers role (`/ticket config set applications:@role`) and admins see and claim them. Everyone in the notify role (`applications_notify:@role`, default the reviewers, else a role named founder) is DMed a summary of each new application
 - `/ticket ratings` — View ticket rating stats and breakdown for the server
 
 ---

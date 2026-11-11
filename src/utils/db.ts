@@ -145,6 +145,8 @@ export type ITicketConfig = {
   apply_role_id: string | null;
   /** Category for application channels. Falls back to category_id when null. */
   apply_category_id: string | null;
+  /** Role whose members are DMed about each new staff application. Falls back to apply_role_id when null. */
+  notify_role_id: string | null;
 };
 
 export type IStreamVcConfig = {
@@ -717,6 +719,16 @@ export async function initDb() {
   try { await db`ALTER TABLE tickets ADD COLUMN kind TEXT NOT NULL DEFAULT 'support'`; } catch {}
   try { await db`ALTER TABLE ticket_config ADD COLUMN apply_role_id TEXT`; } catch {}
   try { await db`ALTER TABLE ticket_config ADD COLUMN apply_category_id TEXT`; } catch {}
+  try { await db`ALTER TABLE ticket_config ADD COLUMN notify_role_id TEXT`; } catch {}
+
+  // A staff application in progress: answers so far, the pages for the role picked, next page.
+  await db`CREATE TABLE IF NOT EXISTS application_drafts (
+    guild_id   TEXT NOT NULL,
+    user_id    TEXT NOT NULL,
+    data       TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (guild_id, user_id)
+  )`;
 
   await db`CREATE TABLE IF NOT EXISTS streamvc_config (
     guild_id         TEXT PRIMARY KEY,
@@ -1793,15 +1805,16 @@ export async function getTicketConfig(guild_id: string): Promise<ITicketConfig |
 export async function setTicketConfig(guild_id: string, fields: Partial<Omit<ITicketConfig, 'guild_id' | 'next_ticket_num'>>) {
   await ensureConfig(guild_id);
   await db`
-    INSERT INTO ticket_config (guild_id, category_id, log_channel_id, support_role_id, apply_role_id, apply_category_id)
+    INSERT INTO ticket_config (guild_id, category_id, log_channel_id, support_role_id, apply_role_id, apply_category_id, notify_role_id)
     VALUES (${guild_id}, ${fields.category_id ?? null}, ${fields.log_channel_id ?? null}, ${fields.support_role_id ?? null},
-            ${fields.apply_role_id ?? null}, ${fields.apply_category_id ?? null})
+            ${fields.apply_role_id ?? null}, ${fields.apply_category_id ?? null}, ${fields.notify_role_id ?? null})
     ON CONFLICT(guild_id) DO UPDATE SET
       category_id = COALESCE(excluded.category_id, category_id),
       log_channel_id = COALESCE(excluded.log_channel_id, log_channel_id),
       support_role_id = COALESCE(excluded.support_role_id, support_role_id),
       apply_role_id = COALESCE(excluded.apply_role_id, apply_role_id),
-      apply_category_id = COALESCE(excluded.apply_category_id, apply_category_id)
+      apply_category_id = COALESCE(excluded.apply_category_id, apply_category_id),
+      notify_role_id = COALESCE(excluded.notify_role_id, notify_role_id)
   `;
 }
 
@@ -1853,6 +1866,40 @@ export async function createTicket(guild_id: string, channel_id: string, user_id
     RETURNING *
   `;
   return row as ITicket;
+}
+
+export type IApplicationDraft = {
+  /** Role keys picked on page 0 ('moderator' | 'admin' | 'developer'); [] = unsure (all parts); null = page 0 not done. */
+  roles: string[] | null;
+  answers: Record<string, string>;
+  /** Index of the next page to answer. */
+  page: number;
+  /** True once the "also interested in another role?" step has been answered (or didn't apply). */
+  extra_asked: boolean;
+  updated_at: number;
+};
+
+/** The applicant's saved progress through the staff application pages, if any. */
+export async function getApplicationDraft(guild_id: string, user_id: string): Promise<IApplicationDraft | null> {
+  const [row] = await db`SELECT data, updated_at FROM application_drafts WHERE guild_id = ${guild_id} AND user_id = ${user_id}`;
+  if (!row) return null;
+  try {
+    const parsed = JSON.parse((row as any).data);
+    return { roles: parsed.roles ?? null, answers: parsed.answers ?? {}, page: parsed.page ?? 0, extra_asked: !!parsed.extra_asked, updated_at: (row as any).updated_at };
+  } catch { return null; }
+}
+
+export async function saveApplicationDraft(guild_id: string, user_id: string, draft: Omit<IApplicationDraft, 'updated_at'>): Promise<void> {
+  const data = JSON.stringify({ roles: draft.roles, answers: draft.answers, page: draft.page, extra_asked: draft.extra_asked });
+  await db`
+    INSERT INTO application_drafts (guild_id, user_id, data, updated_at)
+    VALUES (${guild_id}, ${user_id}, ${data}, ${Date.now()})
+    ON CONFLICT(guild_id, user_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at
+  `;
+}
+
+export async function deleteApplicationDraft(guild_id: string, user_id: string): Promise<void> {
+  await db`DELETE FROM application_drafts WHERE guild_id = ${guild_id} AND user_id = ${user_id}`;
 }
 
 /** The user's open ticket of one kind in a guild, if any (used to stop duplicate staff applications). */

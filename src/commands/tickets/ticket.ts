@@ -47,7 +47,8 @@ const Ticket: Command = {
         .addChannelOption(o => o.setName('log').setDescription('Channel to log closed tickets'))
         .addRoleOption(o => o.setName('support').setDescription('Support role added to all tickets'))
         .addRoleOption(o => o.setName('applications').setDescription('Role that reviews staff applications (default: the support role)'))
-        .addChannelOption(o => o.setName('applications_category').setDescription('Category for staff application channels (default: the ticket category)').addChannelTypes(ChannelType.GuildCategory)))
+        .addChannelOption(o => o.setName('applications_category').setDescription('Category for staff application channels (default: the ticket category)').addChannelTypes(ChannelType.GuildCategory))
+        .addRoleOption(o => o.setName('applications_notify').setDescription('Role DMed about each new application (default: reviewers, else a role named founder)')))
       .addSubcommand(sub => sub.setName('view').setDescription('View current ticket settings'))) as any,
 
   async run(interaction: ChatInputCommandInteraction) {
@@ -67,13 +68,14 @@ const Ticket: Command = {
         const support = interaction.options.getRole('support');
         const applyRole = interaction.options.getRole('applications');
         const applyCategory = interaction.options.getChannel('applications_category');
-        if (!category && !log && !support && !applyRole && !applyCategory) {
-          await interaction.editReply('Nothing to change. Pass at least one option (category, log, support, applications, applications_category).');
+        const notifyRole = interaction.options.getRole('applications_notify');
+        if (!category && !log && !support && !applyRole && !applyCategory && !notifyRole) {
+          await interaction.editReply('Nothing to change. Pass at least one option (category, log, support, applications, applications_category, applications_notify).');
           return;
         }
         await db.setTicketConfig(interaction.guildId!, {
           category_id: category?.id, log_channel_id: log?.id, support_role_id: support?.id,
-          apply_role_id: applyRole?.id, apply_category_id: applyCategory?.id,
+          apply_role_id: applyRole?.id, apply_category_id: applyCategory?.id, notify_role_id: notifyRole?.id,
         });
         await interaction.editReply('✅ Ticket settings updated.');
       } else {
@@ -88,6 +90,7 @@ const Ticket: Command = {
             { name: 'Support Role', value: cfg.support_role_id ? `<@&${cfg.support_role_id}>` : 'Not set', inline: true },
             { name: 'Application Reviewers', value: cfg.apply_role_id ? `<@&${cfg.apply_role_id}>` : (cfg.support_role_id ? `Support role <@&${cfg.support_role_id}>` : 'Not set'), inline: true },
             { name: 'Application Category', value: cfg.apply_category_id ? `<#${cfg.apply_category_id}>` : (cfg.category_id ? `Ticket category <#${cfg.category_id}>` : 'Not set'), inline: true },
+            { name: 'Application DMs go to', value: cfg.notify_role_id ? `<@&${cfg.notify_role_id}>` : (cfg.apply_role_id ? `Reviewers <@&${cfg.apply_role_id}>` : 'A role named "founder", if there is one'), inline: true },
             { name: 'Next Ticket #', value: String(cfg.next_ticket_num), inline: true },
           );
         await interaction.editReply({ embeds: [embed] });

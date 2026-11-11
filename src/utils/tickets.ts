@@ -1,7 +1,6 @@
 import {
   ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonInteraction, ButtonStyle,
-  ChatInputCommandInteraction, Client, EmbedBuilder, Message, ModalBuilder, PermissionFlagsBits, TextChannel,
-  TextInputBuilder, TextInputStyle,
+  ChatInputCommandInteraction, Client, EmbedBuilder, Message, PermissionFlagsBits, TextChannel,
 } from 'discord.js';
 import type { ITicket, ITicketConfig } from './db';
 
@@ -39,32 +38,6 @@ export function ticketChannelName(kind: TicketKind, ticketNum: number): string {
 
 export const APPLICATION_TOPIC = 'Staff Application';
 
-/** The questions on the staff application form. Discord allows at most 5 inputs per modal. */
-export const APPLICATION_QUESTIONS: { id: string; label: string; placeholder: string; style: TextInputStyle; max: number; required: boolean }[] = [
-  { id: 'age_tz', label: 'Your age and timezone', placeholder: 'e.g. 21, EST', style: TextInputStyle.Short, max: 60, required: true },
-  { id: 'why', label: 'Why do you want to join the staff team?', placeholder: 'What would you bring to the team?', style: TextInputStyle.Paragraph, max: 1000, required: true },
-  { id: 'experience', label: 'Moderation or staff experience', placeholder: 'Other servers, communities, games... "none yet" is fine.', style: TextInputStyle.Paragraph, max: 1000, required: true },
-  { id: 'availability', label: 'How active can you be?', placeholder: 'e.g. 2-3 hours most evenings, weekends', style: TextInputStyle.Short, max: 100, required: true },
-  { id: 'extra', label: 'Anything else we should know? (optional)', placeholder: 'Languages, skills, past warnings, questions for us...', style: TextInputStyle.Paragraph, max: 800, required: false },
-];
-
-export function buildApplicationModal(): ModalBuilder {
-  const modal = new ModalBuilder().setCustomId('ticket:apply-modal').setTitle('Staff Application');
-  for (const q of APPLICATION_QUESTIONS) {
-    modal.addComponents(
-      new ActionRowBuilder<TextInputBuilder>().addComponents(
-        new TextInputBuilder()
-          .setCustomId(q.id)
-          .setLabel(q.label.slice(0, 45))
-          .setPlaceholder(q.placeholder.slice(0, 100))
-          .setStyle(q.style)
-          .setMaxLength(q.max)
-          .setRequired(q.required),
-      ),
-    );
-  }
-  return modal;
-}
 
 export async function fetchAllMessages(channel: TextChannel): Promise<Message[]> {
   const all: Message[] = [];
