@@ -2353,12 +2353,17 @@ export async function getOrCreateEconomy(guild_id: string, user_id: string): Pro
 export async function adjustBalance(
   guild_id: string, user_id: string, delta: number
 ): Promise<{ success: boolean; newBalance: number }> {
-  const eco = await getOrCreateEconomy(guild_id, user_id);
-  const newBalance = eco.balance + delta;
-  if (newBalance < 0) return { success: false, newBalance: eco.balance };
+  await getOrCreateEconomy(guild_id, user_id);
   const earned = delta > 0 ? delta : 0;
-  await db`UPDATE economy SET balance = ${newBalance}, total_earned = total_earned + ${earned} WHERE user_id = ${user_id}`;
-  return { success: true, newBalance };
+  // One conditional UPDATE, not read-then-write: two games settling at the same
+  // moment used to overwrite each other's change, so a debit could vanish.
+  const [row] = await db`
+    UPDATE economy SET balance = balance + ${delta}, total_earned = total_earned + ${earned}
+    WHERE user_id = ${user_id} AND balance + ${delta} >= 0
+    RETURNING balance
+  `;
+  if (!row) return { success: false, newBalance: await peekBalance(user_id) };
+  return { success: true, newBalance: row.balance as number };
 }
 
 /** A user's balance without creating an economy row (0 if they have none). */

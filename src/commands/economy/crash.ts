@@ -14,10 +14,17 @@ import { cv2Err } from '../../utils/components.js';
 // current value (never below 1.00x) any time — the only way to lose is the "crash
 // to 0" bust event, whose chance rises the higher the multiplier climbs.
 //
-// FAIRNESS: each tick is EV-neutral — the upward drift exactly offsets the bust
-// risk ((1-h)·E[next] = current), so EVERY cash-out strategy breaks even long-run
-// (simulated EV 0.999–1.010 for targets 1.1x–8x). The extra hazard near the floor
-// compensates for the 1.00x floor clipping away downside moves there.
+// The bet is taken when the game starts and paid back (times the multiplier) on
+// cash-out. It used to be charged only on a crash, and a charge the balance
+// couldn't cover was skipped, so running several all-in games at once (or
+// spending mid-game) made every loss free and every win real.
+//
+// HOUSE EDGE: the upward drift offsets the base bust risk, but the 1.00x floor
+// clips away the downside near the start, which made early cash-outs pay
+// (simulated EV 1.014 for "all in, cash out at 1.10x"). A small flat hazard plus
+// a stronger one near the floor now puts every strategy slightly under 1.0:
+// simulated EV 0.98 at 1.01x-1.1x (about 4 in 5 still win), 0.96 at 1.25x,
+// 0.94 at 1.5x, 0.92 at 2x, 0.90 at 5x. The jackpot cut is on top of that.
 const FLOOR = 1.00;
 
 function baseHazard(m: number): number {
@@ -25,7 +32,7 @@ function baseHazard(m: number): number {
 }
 
 function bustChance(m: number): number {
-  return Math.min(0.4, baseHazard(m) + 0.13 * Math.max(0, 1.25 - m));
+  return Math.min(0.45, baseHazard(m) + 0.002 + 0.18 * Math.max(0, 1.25 - m));
 }
 
 function nextMultiplier(m: number): number {
@@ -62,9 +69,12 @@ const Crash: Command = {
     const userId = interaction.user.id;
     const bet = interaction.options.getInteger('bet', true);
 
-    const [eco, cfg] = await Promise.all([getOrCreateEconomy(guildId, userId), getEconomyConfig(guildId)]);
-    if (eco.balance < bet) {
-      await interaction.reply(cv2Err(`❌ Not enough ${cfg.currency_name}. Balance: **${cfg.currency_symbol} ${eco.balance.toLocaleString()}**.`)); return;
+    const cfg = await getEconomyConfig(guildId);
+    // Take the stake now, in one atomic step. Fails if the balance can't cover it,
+    // including when other games already hold that money.
+    const stake = await adjustBalance(guildId, userId, -bet);
+    if (!stake.success) {
+      await interaction.reply(cv2Err(`❌ Not enough ${cfg.currency_name}. Balance: **${cfg.currency_symbol} ${stake.newBalance.toLocaleString()}**.`)); return;
     }
 
     const sym = cfg.currency_symbol;
@@ -72,12 +82,18 @@ const Crash: Command = {
     let peak = 1.00;
     let gameOver = false;
 
-    await interaction.deferReply();
-
-    const msg = await interaction.editReply(buildGamePanel(
-      `**🚀 Crash**\n\n📈 **${fmtMult(current)}** — Bet: ${sym} ${bet.toLocaleString()}\n\n*The price swings up and down — cash out before it crashes to 0!*`,
-      Colors.Blurple, buildCashOutRow(current, sym, bet),
-    ));
+    let msg;
+    try {
+      await interaction.deferReply();
+      msg = await interaction.editReply(buildGamePanel(
+        `**🚀 Crash**\n\n📈 **${fmtMult(current)}** — Bet: ${sym} ${bet.toLocaleString()}\n\n*The price swings up and down — cash out before it crashes to 0!*`,
+        Colors.Blurple, buildCashOutRow(current, sym, bet),
+      ));
+    } catch (err) {
+      // The game never started, so hand the stake back.
+      await adjustBalance(guildId, userId, bet);
+      throw err;
+    }
 
     const collector = msg.createMessageComponentCollector({
       componentType: ComponentType.Button,
@@ -96,8 +112,7 @@ const Crash: Command = {
 
       const luckMult = await getGambleMultiplier(guildId, userId);
       const winAmount = Math.floor(bet * current * luckMult);
-      const delta = winAmount - bet;
-      const { newBalance } = await adjustBalance(guildId, userId, delta);
+      const { newBalance } = await adjustBalance(guildId, userId, winAmount);
       recordGameResult(guildId, userId, 'crash', winAmount >= bet, bet).catch(() => {});
 
       let xpLine = '';
@@ -125,7 +140,7 @@ const Crash: Command = {
         gameOver = true;
         clearInterval(tick);
         const winAmount = Math.floor(bet * current);
-        const { newBalance } = await adjustBalance(guildId, userId, winAmount - bet);
+        const { newBalance } = await adjustBalance(guildId, userId, winAmount);
         recordGameResult(guildId, userId, 'crash', winAmount >= bet, bet).catch(() => {});
         await interaction.editReply(buildGamePanel(
           `**🚀 Crash**\n\n⏰ **Timed out** — auto-cashed you out at **${fmtMult(current)}** for **${sym} ${winAmount.toLocaleString()}**. *(peak ${fmtMult(peak)})*\n**Balance:** ${sym} **${newBalance.toLocaleString()}**`,
@@ -146,7 +161,7 @@ const Crash: Command = {
 
         // Second Chance (one-shot shop item): a bust below 1.5x refunds the bet.
         if (current < 1.5 && await consumeBoost(guildId, userId, 'second_chance')) {
-          const { balance } = await getOrCreateEconomy(guildId, userId);
+          const { newBalance: balance } = await adjustBalance(guildId, userId, bet);
           await interaction.editReply(buildGamePanel(
             `**🚀 Crash**\n\n💥 **CRASHED to 0 from ${fmtMult(current)}!** *(peak ${fmtMult(peak)})*\n🔁 **Second Chance!** Your bet of **${sym} ${bet.toLocaleString()}** was refunded.\n**Balance:** ${sym} **${balance.toLocaleString()}**`,
             Colors.Green,
@@ -154,7 +169,8 @@ const Crash: Command = {
           return;
         }
 
-        const { newBalance } = await adjustBalance(guildId, userId, -bet);
+        // The stake was taken at the start, so there is nothing left to charge.
+        const { balance: newBalance } = await getOrCreateEconomy(guildId, userId);
         const refund = await applyLossInsurance(guildId, userId, bet);
         const jp = await settleJackpot(guildId, userId, bet, bet);
         await interaction.editReply(buildGamePanel(
