@@ -253,6 +253,7 @@ These commands work **inside an active ticket channel**.
 - **Claim button** — Click inside the ticket to claim it (removes the support role, assigns to you)
 - **Staff applications** — `application-N` channels work the same way; only the reviewers role (`/ticket config set applications:@role`) and admins see and claim them. Everyone in the notify role (`applications_notify:@role`, default the reviewers, else a role named founder) is DMed a summary of each new application
 - `/ticket ratings` — View ticket rating stats and breakdown for the server
+- `/support` — Post the "wrong channel" message here: links to the support channels set with `/ticket config redirect-add`, or an Open a Ticket button if none are set
 
 ---
 

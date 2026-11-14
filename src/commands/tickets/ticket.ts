@@ -7,7 +7,7 @@ import {
 import * as db from '../../utils/db';
 import { Command } from '../../interfaces/command';
 import { cv2Text } from '../../utils/components.js';
-import { archiveTicket, buildModPanel, canCloseTicket, isTicketAdmin } from '../../utils/tickets.js';
+import { archiveTicket, buildModPanel, buildRedirectMessage, canCloseTicket, isTicketAdmin, resolveRedirectTargets } from '../../utils/tickets.js';
 import { TicketRedirectChannels } from '../../constants';
 
 const IS_CV2 = MessageFlags.IsComponentsV2;
@@ -39,8 +39,8 @@ const Ticket: Command = {
       .addStringOption(o => o.setName('description').setDescription('Panel description')))
     .addSubcommand(sub => sub.setName('ratings').setDescription('View support ratings for a staff member')
       .addUserOption(o => o.setName('user').setDescription('Staff member to check (defaults to yourself)')))
-    .addSubcommand(sub => sub.setName('redirect').setDescription('Post a "wrong channel" redirect panel')
-      .addChannelOption(o => o.setName('channel').setDescription('Channel to post this in').setRequired(true)))
+    .addSubcommand(sub => sub.setName('redirect').setDescription('Post a "this is not a support channel" message (same as /support)')
+      .addChannelOption(o => o.setName('channel').setDescription('Channel to post it in (default: this one)')))
     .addSubcommandGroup(g => g.setName('config').setDescription('Configure the ticket system')
       .addSubcommand(sub => sub.setName('set').setDescription('Set ticket system settings')
         .addChannelOption(o => o.setName('category').setDescription('Category for ticket channels').addChannelTypes(ChannelType.GuildCategory))
@@ -49,7 +49,12 @@ const Ticket: Command = {
         .addRoleOption(o => o.setName('applications').setDescription('Role that reviews staff applications (default: the support role)'))
         .addChannelOption(o => o.setName('applications_category').setDescription('Category for staff application channels (default: the ticket category)').addChannelTypes(ChannelType.GuildCategory))
         .addRoleOption(o => o.setName('applications_notify').setDescription('Role DMed about each new application (default: reviewers, else a role named founder)')))
-      .addSubcommand(sub => sub.setName('view').setDescription('View current ticket settings'))) as any,
+      .addSubcommand(sub => sub.setName('view').setDescription('View current ticket settings'))
+      .addSubcommand(sub => sub.setName('redirect-add').setDescription('Add a support channel that /support and /ticket redirect link to (max 5)')
+        .addChannelOption(o => o.setName('channel').setDescription('The support channel').setRequired(true))
+        .addStringOption(o => o.setName('label').setDescription('Button text (default: the channel name)').setMaxLength(80)))
+      .addSubcommand(sub => sub.setName('redirect-remove').setDescription('Remove a channel from the /support links')
+        .addChannelOption(o => o.setName('channel').setDescription('The channel to remove').setRequired(true)))) as any,
 
   async run(interaction: ChatInputCommandInteraction) {
     const group = interaction.options.getSubcommandGroup(false);
@@ -62,6 +67,19 @@ const Ticket: Command = {
         return;
       }
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      if (sub === 'redirect-add') {
+        const ch = interaction.options.getChannel('channel', true);
+        const label = interaction.options.getString('label') ?? ch.name ?? 'Support';
+        const ok = await db.addTicketRedirect(interaction.guildId!, ch.id, label);
+        await interaction.editReply(ok ? `✅ /support now links to <#${ch.id}> as **${label}**.` : '❌ Five channels is the limit (one row of buttons). Remove one first.');
+        return;
+      }
+      if (sub === 'redirect-remove') {
+        const ch = interaction.options.getChannel('channel', true);
+        const ok = await db.removeTicketRedirect(interaction.guildId!, ch.id);
+        await interaction.editReply(ok ? `✅ Removed <#${ch.id}> from the /support links.` : `<#${ch.id}> wasn't in the list.`);
+        return;
+      }
       if (sub === 'set') {
         const category = interaction.options.getChannel('category');
         const log = interaction.options.getChannel('log');
@@ -93,6 +111,13 @@ const Ticket: Command = {
             { name: 'Application DMs go to', value: cfg.notify_role_id ? `<@&${cfg.notify_role_id}>` : (cfg.apply_role_id ? `Reviewers <@&${cfg.apply_role_id}>` : 'A role named "founder", if there is one'), inline: true },
             { name: 'Next Ticket #', value: String(cfg.next_ticket_num), inline: true },
           );
+        const redirects = await db.getTicketRedirects(interaction.guildId!);
+        embed.addFields({
+          name: '/support links to',
+          value: redirects.length
+            ? redirects.map(r => `<#${r.channel_id}> (${r.label})`).join(', ')
+            : 'Nothing set for this server; only the Open a Ticket button is shown. Add with `/ticket config redirect-add`.',
+        });
         await interaction.editReply({ embeds: [embed] });
       }
       return;
@@ -162,37 +187,13 @@ const Ticket: Command = {
         await interaction.reply({ content: '❌ You need **Manage Server** to post a redirect panel.', flags: MessageFlags.Ephemeral });
         return;
       }
-      const postChannel = interaction.options.getChannel('channel', true) as TextChannel;
-      const guildId = interaction.guildId!;
-
-      // Set in the private env file (TICKET_REDIRECT_CHANNELS), not here: the repo is public. A row holds 5 buttons.
-      const REDIRECT_CHANNELS = TicketRedirectChannels.slice(0, 5);
-      if (!REDIRECT_CHANNELS.length) {
-        await interaction.reply({ content: '❌ No support channels are set up for the redirect panel (`TICKET_REDIRECT_CHANNELS` in the env file of the bot).', flags: MessageFlags.Ephemeral });
-        return;
-      }
-
-      const embed = new EmbedBuilder()
-        .setColor(Colors.Blurple)
-        .setTitle('Hello there!')
-        .setDescription(
-          `🔴 This channel is not intended for support queries. All support-related matters should be discussed within the appropriate support channels.\n\n` +
-          `🟡 Please use the buttons below to navigate to the relevant support channel.`
-        )
-        .setFooter({ text: `Sent by ${interaction.guild!.members.me!.displayName}`, iconURL: interaction.client.user.displayAvatarURL() });
-
-      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-        REDIRECT_CHANNELS.map(({ id, label }) =>
-          new ButtonBuilder()
-            .setLabel(label)
-            .setStyle(ButtonStyle.Link)
-            .setURL(`https://discord.com/channels/${guildId}/${id}`)
-        )
-      );
-
+      const postChannel = (interaction.options.getChannel('channel') ?? interaction.channel) as TextChannel;
+      const configured = (await db.getTicketRedirects(interaction.guildId!)).map(r => ({ id: r.channel_id, label: r.label }));
+      const targets = resolveRedirectTargets(interaction.guild!, configured, TicketRedirectChannels);
       try {
-        await postChannel.send({ embeds: [embed], components: [row] });
-        await interaction.reply({ content: `✅ Redirect panel posted in <#${postChannel.id}>.`, flags: MessageFlags.Ephemeral });
+        await postChannel.send(buildRedirectMessage(interaction.guild!, targets, interaction.client.user.displayAvatarURL()));
+        const note = targets.length ? '' : ' (no support channels are set for this server, so it only offers a ticket; add some with `/ticket config redirect-add`)';
+        await interaction.reply({ content: `✅ Posted in <#${postChannel.id}>${note}.`, flags: MessageFlags.Ephemeral });
       } catch {
         await interaction.reply({ content: '❌ Could not post in that channel.', flags: MessageFlags.Ephemeral });
       }

@@ -721,6 +721,15 @@ export async function initDb() {
   try { await db`ALTER TABLE ticket_config ADD COLUMN apply_category_id TEXT`; } catch {}
   try { await db`ALTER TABLE ticket_config ADD COLUMN notify_role_id TEXT`; } catch {}
 
+  // Where /ticket redirect and /support point people, per server (the env list is one server's).
+  await db`CREATE TABLE IF NOT EXISTS ticket_redirects (
+    guild_id   TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    label      TEXT NOT NULL,
+    position   INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (guild_id, channel_id)
+  )`;
+
   // A staff application in progress: answers so far, the pages for the role picked, next page.
   await db`CREATE TABLE IF NOT EXISTS application_drafts (
     guild_id   TEXT NOT NULL,
@@ -1898,6 +1907,31 @@ export async function saveApplicationDraft(guild_id: string, user_id: string, dr
   `;
 }
 
+export type ITicketRedirect = { guild_id: string; channel_id: string; label: string; position: number };
+
+export async function getTicketRedirects(guild_id: string): Promise<ITicketRedirect[]> {
+  const rows = await db`SELECT * FROM ticket_redirects WHERE guild_id = ${guild_id} ORDER BY position, rowid`;
+  return rows as ITicketRedirect[];
+}
+
+/** Add or relabel a redirect target. Returns false when the server already has five (one button row). */
+export async function addTicketRedirect(guild_id: string, channel_id: string, label: string): Promise<boolean> {
+  const existing = await getTicketRedirects(guild_id);
+  if (!existing.some(r => r.channel_id === channel_id) && existing.length >= 5) return false;
+  const position = existing.find(r => r.channel_id === channel_id)?.position ?? existing.length;
+  await db`
+    INSERT INTO ticket_redirects (guild_id, channel_id, label, position)
+    VALUES (${guild_id}, ${channel_id}, ${label}, ${position})
+    ON CONFLICT(guild_id, channel_id) DO UPDATE SET label = excluded.label
+  `;
+  return true;
+}
+
+export async function removeTicketRedirect(guild_id: string, channel_id: string): Promise<boolean> {
+  const rows = await db`DELETE FROM ticket_redirects WHERE guild_id = ${guild_id} AND channel_id = ${channel_id} RETURNING channel_id`;
+  return (rows as unknown[]).length > 0;
+}
+
 export async function deleteApplicationDraft(guild_id: string, user_id: string): Promise<void> {
   await db`DELETE FROM application_drafts WHERE guild_id = ${guild_id} AND user_id = ${user_id}`;
 }
@@ -2353,12 +2387,17 @@ export async function getOrCreateEconomy(guild_id: string, user_id: string): Pro
 export async function adjustBalance(
   guild_id: string, user_id: string, delta: number
 ): Promise<{ success: boolean; newBalance: number }> {
-  const eco = await getOrCreateEconomy(guild_id, user_id);
-  const newBalance = eco.balance + delta;
-  if (newBalance < 0) return { success: false, newBalance: eco.balance };
+  await getOrCreateEconomy(guild_id, user_id);
   const earned = delta > 0 ? delta : 0;
-  await db`UPDATE economy SET balance = ${newBalance}, total_earned = total_earned + ${earned} WHERE user_id = ${user_id}`;
-  return { success: true, newBalance };
+  // One conditional UPDATE, not read-then-write: two games settling at the same
+  // moment used to overwrite each other's change, so a debit could vanish.
+  const [row] = await db`
+    UPDATE economy SET balance = balance + ${delta}, total_earned = total_earned + ${earned}
+    WHERE user_id = ${user_id} AND balance + ${delta} >= 0
+    RETURNING balance
+  `;
+  if (!row) return { success: false, newBalance: await peekBalance(user_id) };
+  return { success: true, newBalance: row.balance as number };
 }
 
 /** A user's balance without creating an economy row (0 if they have none). */

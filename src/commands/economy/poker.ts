@@ -81,14 +81,25 @@ const Poker: Command = {
     const userId = interaction.user.id;
     const bet = interaction.options.getInteger('bet', true);
 
-    const [eco, cfg] = await Promise.all([getOrCreateEconomy(guildId, userId), getEconomyConfig(guildId)]);
-    if (eco.balance < bet) {
-      await interaction.reply(cv2Err(`❌ Not enough ${cfg.currency_name}. Balance: **${cfg.currency_symbol} ${eco.balance.toLocaleString()}**.`)); return;
+    const cfg = await getEconomyConfig(guildId);
+    // Take the stake now, in one atomic step, and pay the whole return on a win.
+    // Charging only on a loss let several all-in hands share one balance: a loss
+    // the balance couldn't cover was skipped, so losses were free and wins real.
+    const stake = await adjustBalance(guildId, userId, -bet);
+    if (!stake.success) {
+      await interaction.reply(cv2Err(`❌ Not enough ${cfg.currency_name}. Balance: **${cfg.currency_symbol} ${stake.newBalance.toLocaleString()}**.`)); return;
     }
 
-    const luckMult = await getGambleMultiplier(guildId, userId);
-
-    await interaction.deferReply();
+    let settled = false;
+    let luckMult = 1;
+    try {
+      luckMult = await getGambleMultiplier(guildId, userId);
+      await interaction.deferReply();
+    } catch (err) {
+      settled = true;
+      await adjustBalance(guildId, userId, bet); // the hand never started
+      throw err;
+    }
 
     const deck = shuffleDeck(newDeck());
     let di = 0;
@@ -98,13 +109,20 @@ const Poker: Command = {
     const held: boolean[] = new Array(5).fill(false);
     const sym = cfg.currency_symbol;
 
-    const msg = await interaction.editReply(pokerPanel(
-      hand, held,
-      `**🃏 Video Poker** — Bet: ${sym} ${bet.toLocaleString()}\n\n` +
-        `${heldSummary(hand, held)}\n\n` +
-        `Toggle cards to **Hold**, then click **Draw** to replace the rest.\n${PAYTABLE}`,
-      Colors.Blurple, buildHoldRows(hand, held),
-    ));
+    let msg;
+    try {
+      msg = await interaction.editReply(pokerPanel(
+        hand, held,
+        `**🃏 Video Poker** — Bet: ${sym} ${bet.toLocaleString()}\n\n` +
+          `${heldSummary(hand, held)}\n\n` +
+          `Toggle cards to **Hold**, then click **Draw** to replace the rest.\n${PAYTABLE}`,
+        Colors.Blurple, buildHoldRows(hand, held),
+      ));
+    } catch (err) {
+      settled = true;
+      await adjustBalance(guildId, userId, bet); // no hand to play
+      throw err;
+    }
 
     const collector = msg.createMessageComponentCollector({
       componentType: ComponentType.Button,
@@ -113,9 +131,12 @@ const Poker: Command = {
     });
 
     collector.on('collect', async (btn) => {
-      await btn.deferUpdate();
+      await btn.deferUpdate().catch(() => {});
+      if (settled) return;
 
       if (btn.customId === 'poker_draw') {
+        // Settle once: a double click on Draw used to pay the hand twice.
+        settled = true;
         collector.stop('draw');
 
         // Replace non-held cards straight off the shuffled deck — fair draw.
@@ -126,8 +147,10 @@ const Poker: Command = {
         const result = evaluatePokerHand(hand);
         const isWin = result.multiplier > 0;
         const winAmount = Math.floor(bet * result.multiplier * (isWin ? luckMult : 1));
-        const delta = isWin ? winAmount - bet : -bet;
-        const { newBalance } = await adjustBalance(guildId, userId, delta);
+        // The stake is already off the balance: a win pays winAmount, a loss nothing.
+        const { newBalance } = isWin
+          ? await adjustBalance(guildId, userId, winAmount)
+          : { newBalance: (await getOrCreateEconomy(guildId, userId)).balance };
         recordGameResult(guildId, userId, 'poker', isWin, bet).catch(() => {});
         const refund = isWin ? 0 : await applyLossInsurance(guildId, userId, bet);
         const jp = await settleJackpot(guildId, userId, bet, isWin ? Math.max(0, bet - winAmount) : bet);
@@ -169,7 +192,8 @@ const Poker: Command = {
     });
 
     collector.on('end', async (_c, reason) => {
-      if (reason === 'time') {
+      if (reason === 'time' && !settled) {
+        settled = true; // the stake taken at the start is the loss
         await interaction.editReply(pokerPanel(
           hand, new Array(5).fill(false),
           `**🃏 Video Poker** — Bet: ${sym} ${bet.toLocaleString()}\n\n` +
@@ -177,7 +201,6 @@ const Poker: Command = {
             `⏰ Timed out — you lost **${sym} ${bet.toLocaleString()}**.`,
           Colors.Red, undefined, undefined, false,
         )).catch(() => {});
-        await adjustBalance(guildId, userId, -bet);
       }
     });
   },

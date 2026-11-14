@@ -1,6 +1,6 @@
 import {
   ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonInteraction, ButtonStyle,
-  ChatInputCommandInteraction, Client, EmbedBuilder, Message, PermissionFlagsBits, TextChannel,
+  ChatInputCommandInteraction, Client, EmbedBuilder, Guild, Message, PermissionFlagsBits, TextChannel,
 } from 'discord.js';
 import type { ITicket, ITicketConfig } from './db';
 
@@ -159,6 +159,43 @@ export async function archiveTicket(
 
   // Delete channel after 2 minutes
   setTimeout(() => channel.delete().catch(() => {}), 2 * 60 * 1000);
+}
+
+// ─── "Not a support channel" message (/ticket redirect, /support) ─────────────
+
+export type RedirectTarget = { id: string; label: string };
+
+/**
+ * The targets for this server: the ones set with /ticket config redirect-add, else the
+ * bot-wide env list (TICKET_REDIRECT_CHANNELS) filtered to channels that exist in THIS
+ * server, so another server's IDs never turn into dead links.
+ */
+export function resolveRedirectTargets(guild: Guild, configured: RedirectTarget[], envList: RedirectTarget[]): RedirectTarget[] {
+  const list = configured.length ? configured : envList;
+  return list.filter(t => guild.channels.cache.has(t.id)).slice(0, 5);
+}
+
+/**
+ * The message itself, unchanged from the original when there are channel links. A server with
+ * no links gets the same embed with an Open a Ticket button instead of a dead end.
+ */
+export function buildRedirectMessage(guild: Guild, targets: RedirectTarget[], botAvatar?: string) {
+  const embed = new EmbedBuilder()
+    .setColor(0x5865F2)
+    .setTitle('Hello there!')
+    .setDescription(
+      `🔴 This channel is not intended for support queries. All support-related matters should be discussed within the appropriate support channels.\n\n` +
+      (targets.length
+        ? `🟡 Please use the buttons below to navigate to the relevant support channel.`
+        : `🟡 Please open a ticket with the button below and a staff member will assist you there.`)
+    )
+    .setFooter({ text: `Sent by ${guild.members.me?.displayName ?? 'the bot'}`, iconURL: botAvatar });
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    targets.length
+      ? targets.map(({ id, label }) => new ButtonBuilder().setLabel(label.slice(0, 80)).setStyle(ButtonStyle.Link).setURL(`https://discord.com/channels/${guild.id}/${id}`))
+      : [new ButtonBuilder().setCustomId('ticket:open').setLabel('Open a Ticket').setStyle(ButtonStyle.Primary).setEmoji('🎫')],
+  );
+  return { embeds: [embed], components: [row] };
 }
 
 export function buildModPanel(channelId: string): ActionRowBuilder<ButtonBuilder>[] {
