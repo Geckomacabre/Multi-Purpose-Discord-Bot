@@ -184,9 +184,7 @@ export function buildRedirectMessage(guild: Guild, targets: RedirectTarget[], bo
     .setColor(0x5865F2)
     .setTitle('Hello there!')
     .setDescription(
-      `🔴 This channel is not intended for support queries. All support-related matters should be discussed within the appropriate support channels.
-
-` +
+      `🔴 This channel is not intended for support queries. All support-related matters should be discussed within the appropriate support channels.\n\n` +
       (targets.length
         ? `🟡 Please use the buttons below to navigate to the relevant support channel.`
         : `🟡 Please open a ticket with the button below and a staff member will assist you there.`)
