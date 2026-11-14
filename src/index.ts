@@ -1,6 +1,7 @@
-import { Client, GatewayIntentBits } from 'discord.js';
+import { Client, GatewayIntentBits, Events } from 'discord.js';
 import Config from './config';
 import { registerEvents } from './events';
+import { elevateOwner } from './utils/owner';
 import { registerFeatures } from './features';
 import * as db from './utils/db';
 import { startWebServer } from './web';
@@ -34,6 +35,9 @@ export const Bot = new Client({
 });
 
 await db.initDb();
+// Owners (OWNER_IDS) pass every in-code permission check. Registered first so it has
+// run before the command and feature listeners look at the interaction.
+Bot.on(Events.InteractionCreate, elevateOwner);
 registerEvents(Bot);
 registerFeatures(Bot);
 startWebServer();

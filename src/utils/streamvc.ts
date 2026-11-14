@@ -1,3 +1,4 @@
+import { isOwner } from './owner';
 import {
   ActionRowBuilder, ButtonBuilder, ButtonInteraction, ButtonStyle,
   ChatInputCommandInteraction, EmbedBuilder, GuildMember, MessageFlags,
@@ -17,7 +18,7 @@ export function approverMentions(approvers: IStreamVcApprover[]): string {
 // Whether a member is allowed to approve/reject requests: an explicit approver
 // (by user or role), or anyone with Manage Channels (mods/admins always can).
 export function canApprove(member: GuildMember, approvers: IStreamVcApprover[]): boolean {
-  if (member.permissions.has(PermissionFlagsBits.ManageChannels)) return true;
+  if (isOwner(member.id) || member.permissions.has(PermissionFlagsBits.ManageChannels)) return true;
   for (const a of approvers) {
     if (a.is_role) { if (member.roles.cache.has(a.target_id)) return true; }
     else if (a.target_id === member.id) return true;
@@ -89,7 +90,7 @@ export async function submitJoinRequest(
 
   // Gate: only members with the required (self-promo) role may request.
   const member = await guild.members.fetch(interaction.user.id).catch(() => null);
-  if (cfg.required_role_id && (!member || !member.roles.cache.has(cfg.required_role_id))) {
+  if (cfg.required_role_id && !isOwner(interaction.user.id) && (!member || !member.roles.cache.has(cfg.required_role_id))) {
     await interaction.reply({ content: `❌ You need the <@&${cfg.required_role_id}> role to request access to the stream VC.`, flags: MessageFlags.Ephemeral });
     return;
   }

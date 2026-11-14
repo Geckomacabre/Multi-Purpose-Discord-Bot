@@ -1,3 +1,4 @@
+import { isOwner } from '../../utils/owner';
 import {
   ActivityType, ApplicationIntegrationType, ChatInputCommandInteraction,
   InteractionContextType, MessageFlags, SlashCommandBuilder,
@@ -23,10 +24,6 @@ const TYPE_LABELS: Record<number, string> = {
   [ActivityType.Competing]: 'Competing in',
 };
 
-function isOwner(userId: string): boolean {
-  const ids = Config.OWNER_IDS?.split(',').map(s => s.trim()).filter(Boolean) ?? [];
-  return ids.includes(userId);
-}
 
 const Status: Command = {
   data: new SlashCommandBuilder()
