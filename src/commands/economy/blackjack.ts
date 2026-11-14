@@ -83,14 +83,25 @@ const Blackjack: Command = {
     const userId = interaction.user.id;
     const bet = interaction.options.getInteger('bet', true);
 
-    const [eco, cfg] = await Promise.all([getOrCreateEconomy(guildId, userId), getEconomyConfig(guildId)]);
-    if (eco.balance < bet) {
-      await interaction.reply(cv2Err(`❌ Not enough ${cfg.currency_name}. Balance: **${cfg.currency_symbol} ${eco.balance.toLocaleString()}**.`)); return;
+    const cfg = await getEconomyConfig(guildId);
+    // Take the stake now, in one atomic step, and pay stake + winnings at the end.
+    // Charging only on a loss let several all-in hands share one balance: a loss
+    // the balance couldn't cover was skipped, so losses were free and wins real.
+    const stake = await adjustBalance(guildId, userId, -bet);
+    if (!stake.success) {
+      await interaction.reply(cv2Err(`❌ Not enough ${cfg.currency_name}. Balance: **${cfg.currency_symbol} ${stake.newBalance.toLocaleString()}**.`)); return;
     }
 
-    const luckMult = await getGambleMultiplier(guildId, userId);
-
-    await interaction.deferReply();
+    let settled = false;
+    let luckMult = 1;
+    try {
+      luckMult = await getGambleMultiplier(guildId, userId);
+      await interaction.deferReply();
+    } catch (err) {
+      settled = true;
+      await adjustBalance(guildId, userId, bet); // the hand never started
+      throw err;
+    }
 
     const deck = shuffleDeck(newDeck());
     let di = 0;
@@ -103,12 +114,20 @@ const Blackjack: Command = {
     let canDouble = true;
 
     async function endGame(outcome: Outcome, msg: string): Promise<void> {
-      let delta = 0;
-      if (outcome === 'win')       delta =  Math.floor(activeBet * luckMult);
-      if (outcome === 'blackjack') delta =  Math.floor(activeBet * 1.5 * luckMult);
-      if (outcome === 'lose')      delta = -activeBet;
+      // Pay out once. Two fast Stand clicks (or Stand racing the timeout) each
+      // reached here and paid the hand twice.
+      if (settled) return;
+      settled = true;
 
-      const { newBalance } = await adjustBalance(guildId, userId, delta);
+      // activeBet is already off the balance, so this is the whole return.
+      let credit = 0;
+      if (outcome === 'win')       credit = activeBet + Math.floor(activeBet * luckMult);
+      if (outcome === 'blackjack') credit = activeBet + Math.floor(activeBet * 1.5 * luckMult);
+      if (outcome === 'push')      credit = activeBet;
+
+      const { newBalance } = credit > 0
+        ? await adjustBalance(guildId, userId, credit)
+        : { newBalance: (await getOrCreateEconomy(guildId, userId)).balance };
       if (outcome !== 'push') {
         recordGameResult(guildId, userId, 'blackjack', outcome === 'win' || outcome === 'blackjack', activeBet).catch(() => {});
       }
@@ -173,11 +192,18 @@ const Blackjack: Command = {
       return;
     }
 
-    const msg = await interaction.editReply(bjPanel(
-      playerHand, dealerHand, true,
-      gameContent(playerHand, dealerHand, activeBet, sym, true),
-      Colors.Blurple, buildButtons(true, sym, activeBet),
-    ));
+    let msg;
+    try {
+      msg = await interaction.editReply(bjPanel(
+        playerHand, dealerHand, true,
+        gameContent(playerHand, dealerHand, activeBet, sym, true),
+        Colors.Blurple, buildButtons(true, sym, activeBet),
+      ));
+    } catch (err) {
+      settled = true;
+      await adjustBalance(guildId, userId, bet); // no table to play on
+      throw err;
+    }
 
     const collector = msg.createMessageComponentCollector({
       componentType: ComponentType.Button,
@@ -186,7 +212,8 @@ const Blackjack: Command = {
     });
 
     collector.on('collect', async (btn) => {
-      await btn.deferUpdate();
+      await btn.deferUpdate().catch(() => {});
+      if (settled) return;
 
       if (btn.customId === 'bj_stand') {
         collector.stop('stand');
@@ -195,8 +222,12 @@ const Blackjack: Command = {
       }
 
       if (btn.customId === 'bj_double') {
-        const eco2 = await getOrCreateEconomy(guildId, userId);
-        if (eco2.balance < activeBet) {
+        // A stale Double button can still be clicked after the first card.
+        if (!canDouble) return;
+        canDouble = false;
+        const extra = await adjustBalance(guildId, userId, -activeBet);
+        if (!extra.success) {
+          canDouble = true;
           await interaction.followUp(cv2Err(`❌ Not enough ${cfg.currency_name} to double down.`));
           return;
         }
@@ -224,7 +255,7 @@ const Blackjack: Command = {
     });
 
     collector.on('end', async (_c, reason) => {
-      if (reason === 'time') await resolveStand();
+      if (reason === 'time' && !settled) await resolveStand();
     });
   },
 };
