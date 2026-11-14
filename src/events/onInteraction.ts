@@ -4,6 +4,7 @@ import logger from '../utils/logger';
 import * as db from '../utils/db';
 import { checkCommandSpam } from '../features/spamdetect/index.js';
 import { logCommandUsage } from '../features/logs/index.js';
+import { commandDenied } from '../utils/owner';
 
 export const onInteraction = async (interaction: Interaction) => {
   if (interaction.isAutocomplete()) {
@@ -33,6 +34,11 @@ export const onInteraction = async (interaction: Interaction) => {
 
   if (interaction.isMessageContextMenuCommand()) {
     const command = commands.get(interaction.commandName);
+    const deniedCtx = commandDenied(interaction);
+    if (deniedCtx) {
+      await interaction.reply({ content: deniedCtx, flags: MessageFlags.Ephemeral }).catch(() => {});
+      return;
+    }
     if (command?.runMessage) {
       try {
         await command.runMessage(interaction);
@@ -50,6 +56,13 @@ export const onInteraction = async (interaction: Interaction) => {
 
   const command = commands.get(interaction.commandName);
   if (!command) return;
+
+  // Permissions the bot enforces itself (see COMMANDS_VISIBLE_TO_ALL). Owners always pass.
+  const denied = commandDenied(interaction);
+  if (denied) {
+    await interaction.reply({ content: denied, flags: MessageFlags.Ephemeral }).catch(() => {});
+    return;
+  }
 
   // Raid scripts hammer slash commands — catch it before the command even runs.
   if (interaction.guildId && await checkCommandSpam(interaction, db)) return;

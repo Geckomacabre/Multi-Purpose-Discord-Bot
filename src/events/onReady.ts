@@ -1,3 +1,4 @@
+import { prepareCommandData } from '../utils/owner';
 import { ActivityType, REST, Routes, type Client } from 'discord.js';
 import logger from '../utils/logger';
 import Config from '../config';
@@ -7,7 +8,9 @@ import { getBotConfig } from '../utils/db';
 
 export const onReady = async (Bot: Client) => {
   const rest = new REST({ version: '10' }).setToken(Config.DISCORD_TOKEN);
-  const commandData = Array.from(commands.values()).map((command) => command.data.toJSON());
+  // With COMMANDS_VISIBLE_TO_ALL the Discord-side permission defaults are stripped here
+  // and enforced by commandDenied() in onInteraction instead, so owners can use everything.
+  const commandData = prepareCommandData(Array.from(commands.values()).map((command) => command.data.toJSON()));
 
   try {
     logger.info('Clearing existing commands...');

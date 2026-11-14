@@ -29,6 +29,7 @@ interface Config {
   TENOR_API_KEY?: string;
   OWNER_IDS?: string;    // comma-separated Discord user IDs of bot owners
   OWNER_GUARD?: boolean; // if true, bot leaves guilds where no owner is present
+  COMMANDS_VISIBLE_TO_ALL?: boolean; // register commands without Discord-side permission defaults; the bot enforces them (owners always pass)
   GLOBAL_BAN_IDS: string[]; // user IDs banned from every server; kept in env so it never reaches the public repo
 }
 
@@ -47,6 +48,7 @@ const Config: Config = {
   TENOR_API_KEY: Bun.env.TENOR_API_KEY,
   OWNER_IDS: Bun.env.OWNER_IDS,
   OWNER_GUARD: Bun.env.OWNER_GUARD === 'true',
+  COMMANDS_VISIBLE_TO_ALL: Bun.env.COMMANDS_VISIBLE_TO_ALL === 'true',
   GLOBAL_BAN_IDS: (Bun.env.GLOBAL_BAN_IDS ?? '').split(',').map(id => id.trim()).filter(Boolean),
 };
 

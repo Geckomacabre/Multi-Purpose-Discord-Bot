@@ -28,6 +28,49 @@ export function isOwner(userId: string | null | undefined): boolean {
 
 const ALL_PERMISSIONS: Readonly<PermissionsBitField> = Object.freeze(new PermissionsBitField(PermissionsBitField.All));
 
+// ── Command visibility ────────────────────────────────────────────────────────
+// A command's default member permissions are enforced by Discord before the bot is
+// involved, so an owner without Manage Server never even sees /mediaguess setup. With
+// COMMANDS_VISIBLE_TO_ALL=true the bot registers its commands without those defaults
+// and enforces the same permissions itself, which lets owners through (their
+// permissions were elevated above) and refuses everyone else with a clear message.
+
+const requiredPermissions = new Map<string, bigint>();
+
+type CommandJson = { name: string; default_member_permissions?: string | null };
+
+/** Strip the Discord-side defaults (remembering them) when the flag is on. */
+export function prepareCommandData<T extends CommandJson>(commandData: T[]): T[] {
+  requiredPermissions.clear();
+  for (const c of commandData) {
+    if (c.default_member_permissions) {
+      try { requiredPermissions.set(c.name, BigInt(c.default_member_permissions)); } catch { /* ignore */ }
+    }
+  }
+  if (!Config.COMMANDS_VISIBLE_TO_ALL) return commandData;
+  return commandData.map(c => (c.default_member_permissions ? { ...c, default_member_permissions: null } : c));
+}
+
+/** The permission names a command needs, for the refusal message. */
+function describe(bits: bigint): string {
+  const names = new PermissionsBitField(bits).toArray();
+  return names.map(n => `**${n.replace(/([a-z])([A-Z])/g, '$1 $2')}**`).join(', ') || 'a staff permission';
+}
+
+/**
+ * What the bot enforces itself when the Discord-side defaults were stripped.
+ * Returns a refusal message, or null when the user may run the command.
+ */
+export function commandDenied(interaction: Interaction & { commandName: string }): string | null {
+  if (!Config.COMMANDS_VISIBLE_TO_ALL) return null;
+  const required = requiredPermissions.get(interaction.commandName);
+  if (!required) return null;
+  if (isOwner(interaction.user.id)) return null;
+  const perms = interaction.memberPermissions;
+  if (perms && perms.has(required)) return null;
+  return `❌ This command needs ${describe(required)}.`;
+}
+
 /**
  * Make an owner's interaction look like it comes from an administrator.
  * Synchronous on purpose: registered as the first interactionCreate listener, it has
