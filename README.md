@@ -361,7 +361,9 @@ Members open private support channels with a button or a command. Staff manage t
 | `/ticket add <user>` | Add a user to the ticket. |
 | `/ticket remove <user>` | Remove a user from the ticket. |
 | `/ticket panel [channel] [buttons]` | Post a panel with **Open a Ticket** and/or **Apply for Staff** buttons. |
-| `/ticket redirect [channel]` | Post a "wrong channel" message that points to tickets. |
+| `/support`, `/ticket redirect [channel]` | Post the "wrong channel" message: links to this server's support channels, or an **Open a Ticket** button when none are set (default: the current channel). |
+| `/ticket config redirect-add <channel> [label]` | Add a support channel to the `/support` links for this server (max 5). |
+| `/ticket config redirect-remove <channel>` | Remove one. |
 | `/ticket ratings [user]` | View support ratings for one staff member or the whole server. |
 | `/ticket config set` | Set the ticket category, log channel, support role, and for staff applications the reviewers role, category and the role DMed about new applications. |
 | `/ticket config view` | View ticket settings. |

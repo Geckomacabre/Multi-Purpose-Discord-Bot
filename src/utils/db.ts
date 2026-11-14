@@ -721,6 +721,15 @@ export async function initDb() {
   try { await db`ALTER TABLE ticket_config ADD COLUMN apply_category_id TEXT`; } catch {}
   try { await db`ALTER TABLE ticket_config ADD COLUMN notify_role_id TEXT`; } catch {}
 
+  // Where /ticket redirect and /support point people, per server (the env list is one server's).
+  await db`CREATE TABLE IF NOT EXISTS ticket_redirects (
+    guild_id   TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    label      TEXT NOT NULL,
+    position   INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (guild_id, channel_id)
+  )`;
+
   // A staff application in progress: answers so far, the pages for the role picked, next page.
   await db`CREATE TABLE IF NOT EXISTS application_drafts (
     guild_id   TEXT NOT NULL,
@@ -1896,6 +1905,31 @@ export async function saveApplicationDraft(guild_id: string, user_id: string, dr
     VALUES (${guild_id}, ${user_id}, ${data}, ${Date.now()})
     ON CONFLICT(guild_id, user_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at
   `;
+}
+
+export type ITicketRedirect = { guild_id: string; channel_id: string; label: string; position: number };
+
+export async function getTicketRedirects(guild_id: string): Promise<ITicketRedirect[]> {
+  const rows = await db`SELECT * FROM ticket_redirects WHERE guild_id = ${guild_id} ORDER BY position, rowid`;
+  return rows as ITicketRedirect[];
+}
+
+/** Add or relabel a redirect target. Returns false when the server already has five (one button row). */
+export async function addTicketRedirect(guild_id: string, channel_id: string, label: string): Promise<boolean> {
+  const existing = await getTicketRedirects(guild_id);
+  if (!existing.some(r => r.channel_id === channel_id) && existing.length >= 5) return false;
+  const position = existing.find(r => r.channel_id === channel_id)?.position ?? existing.length;
+  await db`
+    INSERT INTO ticket_redirects (guild_id, channel_id, label, position)
+    VALUES (${guild_id}, ${channel_id}, ${label}, ${position})
+    ON CONFLICT(guild_id, channel_id) DO UPDATE SET label = excluded.label
+  `;
+  return true;
+}
+
+export async function removeTicketRedirect(guild_id: string, channel_id: string): Promise<boolean> {
+  const rows = await db`DELETE FROM ticket_redirects WHERE guild_id = ${guild_id} AND channel_id = ${channel_id} RETURNING channel_id`;
+  return (rows as unknown[]).length > 0;
 }
 
 export async function deleteApplicationDraft(guild_id: string, user_id: string): Promise<void> {
